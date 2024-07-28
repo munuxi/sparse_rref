@@ -166,9 +166,9 @@ int main(int argc, char **argv){
 		opt->search_depth = ULLONG_MAX;
 	if (opt->sort_step == 0){
 		if (prime == 0)
-			opt->sort_step = std::max(1000ULL, mat_Q->ncol / 100);
+			opt->sort_step = std::max((ulong)1000, mat_Q->ncol / 100);
 		else 
-			opt->sort_step = std::max(1000ULL, mat_Zp->ncol / 100);
+			opt->sort_step = std::max((ulong)1000, mat_Zp->ncol / 100);
 	}
 
 	start = clocknow();

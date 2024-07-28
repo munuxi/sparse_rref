@@ -9,8 +9,6 @@
 
 slong* snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool, rref_option_t opt) ;
 
-void snmod_mat_transpose(snmod_mat_t mat, snmod_mat_t src) ;
-
 // IO
 template <typename T>
 void snmod_mat_read(snmod_mat_t mat, nmod_t p, T& st) {
