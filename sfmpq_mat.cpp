@@ -124,24 +124,26 @@ auto findmanypivots(sfmpq_mat_t mat, sparse_mat_t<fmpq*> tranmat, slong* rowpivs
 	std::vector<slong>::iterator start, size_t max_depth = ULLONG_MAX) {
 
 	std::vector<std::pair<slong, std::vector<slong>::iterator>> pivots;
+	std::unordered_set<slong> prows;
+	prows.reserve(std::min((size_t)4096,max_depth));
 	for (auto col = start; col < colperm.end(); col++){
 		if (col - start > max_depth)
 			break;
 		bool flag = true;
-		for (auto& pp : pivots){
-			if (sparse_mat_entry(tranmat, *col, pp.first, true) != NULL){
-				flag = false;
+		auto thecol = tranmat->rows + *col;
+		auto indices = thecol->indices;
+		for (size_t i = 0; i < thecol->nnz; i++){
+			flag = flag && (prows.find(indices[i]) == prows.end());
+			if (!flag)
 				break;
-			}
 		}
 		if (!flag)
 			continue;
-		auto thecol = tranmat->rows + *col;
+
 		if (thecol->nnz == 0)
 			continue;
 		slong row;
 		ulong mnnz = ULLONG_MAX;
-		auto indices = thecol->indices;
 		for (size_t i = 0; i < thecol->nnz; i++){
 			if (rowpivs[indices[i]] != -1)
 				continue;
@@ -150,8 +152,10 @@ auto findmanypivots(sfmpq_mat_t mat, sparse_mat_t<fmpq*> tranmat, slong* rowpivs
 				mnnz = mat->rows[row].nnz;
 			}
 		}
-		if (mnnz != ULLONG_MAX)
+		if (mnnz != ULLONG_MAX) {
 			pivots.push_back(std::make_pair(row, col));
+			prows.insert(row);
+		}
 	}
 	return pivots;
 }
