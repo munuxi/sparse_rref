@@ -1,17 +1,17 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <iostream>
-#include <string>
-#include <vector>
+#include "flint/fmpq.h"
+#include "flint/nmod.h"
+#include "thread_pool.hpp"
 #include <algorithm>
 #include <chrono>
+#include <iostream>
 #include <queue>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include "flint/nmod.h"
-#include "flint/fmpq.h"
-#include "thread_pool.hpp"
+#include <vector>
 
 struct rref_option {
     bool verbose = false;
@@ -23,69 +23,66 @@ struct rref_option {
 typedef struct rref_option rref_option_t[1];
 
 struct sindex_vec_struct {
-	ulong len;
-	ulong nnz;
-	ulong alloc;
-	slong* indices;
+    ulong len;
+    ulong nnz;
+    ulong alloc;
+    slong *indices;
 };
 typedef struct sindex_vec_struct sindex_vec_t[1];
 
 struct sindex_mat_struct {
-	ulong nrow;
-	ulong ncol;
-	sindex_vec_struct* rows;
+    ulong nrow;
+    ulong ncol;
+    sindex_vec_struct *rows;
 };
 typedef struct sindex_mat_struct sindex_mat_t[1];
 
 // init and clear
-static inline 
-void _sindex_vec_init(sindex_vec_t vec, ulong len, ulong alloc) {
-	vec->len = len;
-	vec->nnz = 0;
-	vec->alloc = std::min(alloc, len);
-	vec->indices = (slong*)malloc(vec->alloc * sizeof(slong));
+static inline void _sindex_vec_init(sindex_vec_t vec, ulong len, ulong alloc) {
+    vec->len = len;
+    vec->nnz = 0;
+    vec->alloc = std::min(alloc, len);
+    vec->indices = (slong *)malloc(vec->alloc * sizeof(slong));
 }
 
-static inline 
-void sindex_vec_init(sindex_vec_t vec, ulong len) {
-	// alloc at least 1 to make sure that indices and entries are not NULL
-	_sindex_vec_init(vec, len, 1ULL);
+static inline void sindex_vec_init(sindex_vec_t vec, ulong len) {
+    // alloc at least 1 to make sure that indices and entries are not NULL
+    _sindex_vec_init(vec, len, 1ULL);
 }
 
-static inline 
-void sindex_vec_clear(sindex_vec_t vec) {
-	free(vec->indices);
-	vec->nnz = 0;
-	vec->alloc = 0;
-	vec->indices = NULL;
+static inline void sindex_vec_clear(sindex_vec_t vec) {
+    free(vec->indices);
+    vec->nnz = 0;
+    vec->alloc = 0;
+    vec->indices = NULL;
 }
 
 void sindex_vec_realloc(sindex_vec_t vec, ulong alloc);
 void _sindex_vec_set_entry(sindex_vec_t vec, slong index);
 
-static inline void _sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol, ulong alloc) {
-	mat->nrow = nrow;
-	mat->ncol = ncol;
-	mat->rows = (sindex_vec_struct*)malloc(nrow * sizeof(sindex_vec_struct));
-	for (size_t i = 0; i < nrow; i++)
-		_sindex_vec_init(mat->rows + i, ncol, alloc);
+static inline void _sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol,
+                                    ulong alloc) {
+    mat->nrow = nrow;
+    mat->ncol = ncol;
+    mat->rows = (sindex_vec_struct *)malloc(nrow * sizeof(sindex_vec_struct));
+    for (size_t i = 0; i < nrow; i++)
+        _sindex_vec_init(mat->rows + i, ncol, alloc);
 }
 
 static inline void sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol) {
-	_sindex_mat_init(mat, nrow, ncol, 1ULL);
+    _sindex_mat_init(mat, nrow, ncol, 1ULL);
 }
 
 static inline void sindex_mat_clear(sindex_mat_t mat) {
-	for (size_t i = 0; i < mat->nrow; i++)
-		sindex_vec_clear(mat->rows + i);
-	free(mat->rows);
-	mat->nrow = 0;
-	mat->ncol = 0;
-	mat->rows = NULL;
+    for (size_t i = 0; i < mat->nrow; i++)
+        sindex_vec_clear(mat->rows + i);
+    free(mat->rows);
+    mat->nrow = 0;
+    mat->ncol = 0;
+    mat->rows = NULL;
 }
 
-template <typename T>
-static inline T* binarysearch(T* begin, T* end, T val) {
+template <typename T> static inline T *binarysearch(T *begin, T *end, T val) {
     auto ptr = std::lower_bound(begin, end, val);
     if (ptr == end || *ptr == val)
         return ptr;
@@ -93,29 +90,31 @@ static inline T* binarysearch(T* begin, T* end, T val) {
         return end;
 }
 
-// string 
-void DeleteSpaces(std::string& str);
-std::vector<std::string> SplitString (const std::string &s, std::string delim);
+// string
+void DeleteSpaces(std::string &str);
+std::vector<std::string> SplitString(const std::string &s, std::string delim);
 
 // time
 static inline std::chrono::system_clock::time_point clocknow() {
-	return std::chrono::system_clock::now();
+    return std::chrono::system_clock::now();
 }
 
-static inline double usedtime(std::chrono::system_clock::time_point start, std::chrono::system_clock::time_point end) {
-	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-	return double(duration.count()) * std::chrono::microseconds::period::num / std::chrono::microseconds::period::den;
+static inline double usedtime(std::chrono::system_clock::time_point start,
+                              std::chrono::system_clock::time_point end) {
+    auto duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    return double(duration.count()) * std::chrono::microseconds::period::num /
+           std::chrono::microseconds::period::den;
 }
 
-// vector 
+// vector
 template <typename T>
-void remove_indices(std::vector<T>& vec, std::vector<slong>& indices) {
+void remove_indices(std::vector<T> &vec, std::vector<slong> &indices) {
     auto it = indices.rbegin();
     for (; it != indices.rend(); ++it) {
         if (*it >= 0 && *it < vec.size()) {
             vec.erase(vec.begin() + *it);
-        }
-        else {
+        } else {
             std::cerr << "Index out of range: " << *it << std::endl;
         }
     }
@@ -123,15 +122,13 @@ void remove_indices(std::vector<T>& vec, std::vector<slong>& indices) {
 
 // Hopcroft-Karp algorithm for maximum cardinality matching in bipartite graphs
 class BipartiteMatcher {
-public:
-    BipartiteMatcher(slong U, slong V) : U(U), V(V), NIL(0) {
-        init();
-    }
+  public:
+    BipartiteMatcher(slong U, slong V) : U(U), V(V), NIL(0) { init(); }
 
     void init() {
         adj.resize(U + 1);
         pairU.resize(U + 1, NIL);
-        pairV.resize(U + V + 1, NIL); 
+        pairV.resize(U + V + 1, NIL);
         dist.resize(U + 1, LLONG_MAX);
     }
 
@@ -143,15 +140,13 @@ public:
     }
 
     void clearAdj() {
-        for (auto& vec : adj) {
+        for (auto &vec : adj) {
             vec.clear();
         }
         adj.clear();
     }
 
-    void addEdge(slong u, slong v) {
-        adj[u].push_back(v);
-    }
+    void addEdge(slong u, slong v) { adj[u].push_back(v); }
 
     slong maxMatching() {
         slong matching = 0;
@@ -169,8 +164,9 @@ public:
         pairU[u] = v;
         pairV[v] = u;
 
-        for (auto& neighbors : adj) {
-            neighbors.erase(remove(neighbors.begin(), neighbors.end(), v), neighbors.end());
+        for (auto &neighbors : adj) {
+            neighbors.erase(remove(neighbors.begin(), neighbors.end(), v),
+                            neighbors.end());
         }
         adj[u].clear();
 
@@ -195,7 +191,7 @@ public:
         return pairs;
     }
 
-private:
+  private:
     slong U, V, NIL;
     std::vector<std::vector<slong>> adj;
     std::vector<slong> pairU, pairV, dist;
@@ -244,30 +240,26 @@ private:
     }
 };
 
-
 class Graph {
-public:
-    Graph(int V) {
-        this->V = V;
-    }
+  public:
+    Graph(int V) { this->V = V; }
     void addEdge(int v, int w) {
         adj[v].push_back(w);
         adj[w].push_back(v);
     }
-    void clear() {
-        adj.clear();
-    }
+    void clear() { adj.clear(); }
     std::vector<std::vector<int>> findMaximalConnectedComponents();
     std::unordered_set<int> findMaximalCliqueContainingEdge(int v, int w);
     std::unordered_set<int> findMaximalCliqueContainingVertex(int v);
 
-private:
-    void DFS(int v, std::unordered_set<int>& visited, std::vector<int>& component);
-    bool isClique(const std::unordered_set<int>& vertices);
-    void expandClique(std::unordered_set<int>& clique, int new_vertex);
+  private:
+    void DFS(int v, std::unordered_set<int> &visited,
+             std::vector<int> &component);
+    bool isClique(const std::unordered_set<int> &vertices);
+    void expandClique(std::unordered_set<int> &clique, int new_vertex);
 
-    int V; 
-    std::unordered_map<int, std::vector<int>> adj; 
+    int V;
+    std::unordered_map<int, std::vector<int>> adj;
 };
 
 #endif
