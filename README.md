@@ -7,11 +7,14 @@ The MIT License (MIT)
 
 ### Dependence
 
-Mainly depend on [FLINT](https://flintlib.org/) to support arithmetic of rational field $\mathbb Q$ and $\mathbb Z/p\mathbb Z$, where $p$ is a prime.  And we also use  [BS::thread_pool](https://github.com/bshoshany/thread-pool), [argparse](https://github.com/p-ranav/argparse) (they are included). 
+Mainly depend on [FLINT](https://flintlib.org/) to support arithmetic.  And we also use  [BS::thread_pool](https://github.com/bshoshany/thread-pool), [argparse](https://github.com/p-ranav/argparse) (they are included). 
 
-Some algorithms are motivated by [Spasm](https://github.com/cbouilla/spasm), but we do not depend on it. The algorithm here is definite not random, so once the parameters are given, the result is stable, which is important for some purposes.
+Some algorithms are motivated by [Spasm](https://github.com/cbouilla/spasm), but we do not depend on it. The algorithm here is definite (Spasm is random), so once the parameters are given, the result is stable, which is important for some purposes.
 
 ### How to use this code
+
+We only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime.
+It is possible to generalize to other field/ring by some small modification.
 
 Build it; and help is 
 
