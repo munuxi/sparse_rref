@@ -7,15 +7,15 @@ Sparse Reduced Row Echelon Form (RREF) in C++
 
 ### Dependence
 
-Mainly depend on [FLINT](https://flintlib.org/) to support arithmetic.  And we also use  [BS::thread_pool](https://github.com/bshoshany/thread-pool), [argparse](https://github.com/p-ranav/argparse) (they are included) to support thread_pool and parse args.
+The code mainly depends on [FLINT](https://flintlib.org/) to support arithmetic, and [BS::thread_pool](https://github.com/bshoshany/thread-pool) and [argparse](https://github.com/p-ranav/argparse) (they are included) are also used to support thread pool and parse args.
 
 Some algorithms are motivated by [Spasm](https://github.com/cbouilla/spasm), but we do not depend on it. The algorithm here is definite (Spasm is random), so once the parameters are given, the result is stable, which is important for some purposes.
 
 ### How to use this code
 
-We only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime, but It is possible to generalize to other field/ring by some small modification.
+We only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime, but It is possible to generalize to other fields/rings by some small modification.
 
-It is highly recommend to use [mimalloc](https://github.com/microsoft/mimalloc) to dynamic override the standard malloc, especially on Windows.
+It is highly recommended to use [mimalloc](https://github.com/microsoft/mimalloc) to dynamicly override the standard malloc, especially on Windows.
 
 Build it, e.g.
 
@@ -44,7 +44,15 @@ Optional arguments:
   -sm, --search_min    the minimal length to go out of search
                        if depth < min, only search once [default: 200]
   -ss, --sort_step     sort the cols when rrefing
-                       if sort_step=0, it equals max(1000,#cols/100) [default: 0]
+                       if sort_step = 0, it equals max(1000,#cols/100) [default: 0]
   -V, --verbose        prints information of calculation
   -ps, --print_step    print step when --verbose is enabled [default: 100]
 ```
+
+### TODO
+
+0. There are a lot of similar codes at `sfmpq_*` and `snmod_*`, we should union 
+it in `sparse_*`. 
+
+1. Improve the algorithms.
+

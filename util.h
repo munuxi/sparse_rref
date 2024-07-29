@@ -97,7 +97,11 @@ template <typename T> static inline T *binarysearch(T *begin, T *end, T val) {
 }
 
 // string
-void DeleteSpaces(std::string &str);
+static inline void DeleteSpaces(std::string &str) {
+    str.erase(std::remove_if(str.begin(), str.end(),
+                             [](unsigned char x) { return std::isspace(x); }),
+              str.end());
+}
 std::vector<std::string> SplitString(const std::string &s, std::string delim);
 
 // time

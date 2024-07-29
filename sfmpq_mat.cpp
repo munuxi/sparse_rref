@@ -165,14 +165,6 @@ auto findmanypivots(sfmpq_mat_t mat, sparse_mat_t<fmpq *> tranmat,
     return pivots;
 }
 
-// TODO: add a DFS algorithm to look for invariant rows
-// if two rows looks like this:
-// 		* 0
-// 		0 *
-// then they are invariant rows, and their elimination will be invariant.
-// be careful one should lock the row when eliminating it
-// to make sure that the row is not eliminated by other threads
-
 slong findrowpivot(sfmpq_mat_t mat, slong col, slong *rowpivs,
                    std::vector<slong> &colparts, std::vector<slong> &kkparts,
                    std::vector<std::vector<slong>> &rowparts, slong *dolist,
@@ -205,8 +197,8 @@ slong findrowpivot(sfmpq_mat_t mat, slong col, slong *rowpivs,
 
         auto row = rowparts[mm][i];
 
-        if (rowpivs[row] !=
-            -1) // do not choose rows that have been used to eliminate
+        // do not choose rows that have been used to eliminate
+        if (rowpivs[row] != -1) 
             continue;
 
         dolist[dolist_len] = row;
@@ -601,14 +593,14 @@ slong *sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool &pool,
         auto start = clocknow();
         if (thecol->nnz != 1) {
             pool.detach_loop<slong>(0, thecol->nnz, [&](slong j) {
-                if (thecol->indices[j] == p.first)
+                auto row = thecol->indices[j];
+                if (row == p.first)
                     return;
-                auto entry =
-                    sparse_mat_entry(mat, thecol->indices[j], p.second, true);
+                auto entry = sparse_mat_entry(mat, row, p.second, true);
                 // auto this_id = BS::this_thread::get_index().value();
-                // sfmpq_mat_xmay_cached(mat, thecol->indices[j], p.first,
+                // sfmpq_mat_xmay_cached(mat, row, p.first,
                 // cachemat->rows + this_id, entry);
-                sfmpq_mat_xmay(mat, thecol->indices[j], p.first, entry);
+                sfmpq_mat_xmay(mat, row, p.first, entry);
             });
             pool.wait();
         }

@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
         .nargs(1)
         .scan<'i', int>();
     program.add_argument("-ss", "--sort_step")
-        .help("sort the cols when rrefing\nif sort_step=0, it equals "
+        .help("sort the cols when rrefing\nif sort_step = 0, it equals "
               "max(1000,#cols/100)")
         .default_value(0)
         .nargs(1)

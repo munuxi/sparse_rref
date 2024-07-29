@@ -34,12 +34,6 @@ std::vector<std::string> SplitString(const std::string &s, std::string delim) {
     return result;
 }
 
-void DeleteSpaces(std::string &str) {
-    str.erase(std::remove_if(str.begin(), str.end(),
-                             [](unsigned char x) { return std::isspace(x); }),
-              str.end());
-}
-
 void Graph::DFS(int start, std::unordered_set<int> &visited,
                 std::vector<int> &component) {
     std::stack<int> stack;
