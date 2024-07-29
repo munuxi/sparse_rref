@@ -6,9 +6,6 @@
 #include "snmod_vec.h"
 #include "sparse_vec.h"
 
-// print stuff
-void print_dense_vec(sfmpq_vec_t vec);
-
 // arithmetic operations
 void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar);
 void sfmpq_vec_neg(sfmpq_vec_t vec);

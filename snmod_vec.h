@@ -2,21 +2,6 @@
 #define SNMOD_VEC_H
 
 #include "sparse_vec.h"
-#include <algorithm>
-#include <bitset>
-#include <cinttypes>
-#include <iostream>
-
-// get the bit at position bit
-#define GET_BIT(x, bit) (((x) >> (bit)) & 1ULL)
-// set the bit at position bit
-#define SET_BIT_ONE(x, bit) ((x) |= (1ULL << (bit)))
-#define SET_BIT_NIL(x, bit) ((x) &= ~(1ULL << (bit)))
-
-static inline void ulong_set(ulong *val, ulong *newval) { *val = *newval; }
-
-// print stuff
-void print_dense_vec(snmod_vec_t vec);
 
 // arithmetic operations
 void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p);

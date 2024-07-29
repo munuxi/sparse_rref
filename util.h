@@ -13,6 +13,12 @@
 #include <unordered_set>
 #include <vector>
 
+// get the bit at position bit
+#define GET_BIT(x, bit) (((x) >> (bit)) & 1ULL)
+// set the bit at position bit
+#define SET_BIT_ONE(x, bit) ((x) |= (1ULL << (bit)))
+#define SET_BIT_NIL(x, bit) ((x) &= ~(1ULL << (bit)))
+
 struct rref_option {
     bool verbose = false;
     int printlen = 100;
