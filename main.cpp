@@ -5,9 +5,7 @@
 #include <iostream>
 
 #include "argparse.hpp"
-#include "sfmpq_mat.h"
-#include "snmod_mat.h"
-#include "util.h"
+#include "sparse_mat.h"
 
 #define printtime(str)                                                         \
     std::cout << (str) << " spent " << std::fixed << std::setprecision(6)      \

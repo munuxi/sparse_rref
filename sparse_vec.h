@@ -268,7 +268,7 @@ static inline void sparse_vec_canonicalize(sparse_vec_t<T> vec) {
     vec->nnz = new_nnz;
 }
 
-// arithmetic
+// arithmetic operations
 
 // void sparse_vec_mul(sparse_vec_t<fmpq> vec, const fmpq_t a) {
 //	for (auto i = 0; i < vec->nnz; i++)
@@ -362,7 +362,32 @@ static inline void sparse_vec_compress(sparse_vec_t<T> vec) {
     vec->alloc = vec->nnz;
 }
 
-// arithmic
+void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p);
+void snmod_vec_neg(snmod_vec_t vec, nmod_t p);
+int snmod_vec_add(snmod_vec_t vec, const snmod_vec_t src, nmod_t p);
+int snmod_vec_sub(snmod_vec_t vec, const snmod_vec_t src, nmod_t p);
+int snmod_vec_sub_scalar(snmod_vec_t vec, const snmod_vec_t src, const ulong a,
+                         nmod_t p);
+int snmod_vec_sub_scalar_sorted(snmod_vec_t vec, const snmod_vec_t src,
+                                const ulong a, nmod_t p);
+int snmod_vec_sub_scalar_sorted_cached(snmod_vec_t vec, const snmod_vec_t src,
+                                       snmod_vec_t cache, const ulong a,
+                                       nmod_t p);
+int snmod_vec_add_densed(snmod_vec_t vec, ulong *src, nmod_t p);
+int snmod_vec_sub_densed(snmod_vec_t vec, ulong *src, nmod_t p);
+
+void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar);
+void sfmpq_vec_neg(sfmpq_vec_t vec);
+int sfmpq_vec_sub_scalar_sorted(sfmpq_vec_t prevec, const sfmpq_vec_t src,
+                                const fmpq_t a);
+int sfmpq_vec_sub_scalar_sorted_cached(sfmpq_vec_t prevec,
+                                       const sfmpq_vec_t src, sfmpq_vec_t cache,
+                                       const fmpq_t a);
+int sfmpq_vec_add_sorted(sfmpq_vec_t vec, const sfmpq_vec_t src);
+int sfmpq_vec_add_mul_sorted(sfmpq_vec_t vec, const sfmpq_vec_t src,
+                             const fmpq_t a);
+
+void snmod_vec_from_sfmpq(snmod_vec_t vec, const sfmpq_vec_t src, nmod_t p);
 
 // debug only, not used to the large vector
 template <typename T> void print_vec_info(sparse_vec_t<T> vec) {

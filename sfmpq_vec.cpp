@@ -1,4 +1,4 @@
-#include "sfmpq_vec.h"
+#include "sparse_vec.h"
 #include <iostream>
 
 void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar) {

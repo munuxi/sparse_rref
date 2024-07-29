@@ -1,4 +1,4 @@
-#include "snmod_vec.h"
+#include "sparse_vec.h"
 #include <iostream>
 
 void snmod_vec_neg(snmod_vec_t vec, nmod_t p) {

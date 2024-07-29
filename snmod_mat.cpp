@@ -1,9 +1,5 @@
-#include "snmod_mat.h"
-#include "flint/thread_support.h"
-#include "snmod_vec.h"
+#include "sparse_mat.h"
 #include <cstring>
-// #include <thread>
-// #include <mutex>
 #include "thread_pool.hpp"
 
 // Row x - a*Row y
@@ -17,21 +13,6 @@ static inline void snmod_mat_xmay_cached(snmod_mat_t mat, slong x, slong y,
                                          snmod_vec_t cache, ulong a, nmod_t p) {
     snmod_vec_sub_scalar_sorted_cached(mat->rows + x, mat->rows + y, cache, a,
                                        p);
-}
-
-static void snmod_mat_transpose(snmod_mat_t mat2, snmod_mat_t mat) {
-    for (size_t i = 0; i < mat2->nrow; i++)
-        mat2->rows[i].nnz = 0;
-
-    for (size_t i = 0; i < mat->nrow; i++) {
-        auto therow = mat->rows + i;
-        for (size_t j = 0; j < therow->nnz; j++) {
-            if (scalar_is_zero(therow->entries + j))
-                continue;
-            auto col = therow->indices[j];
-            _sparse_vec_set_entry(mat2->rows + col, i, therow->entries + j);
-        }
-    }
 }
 
 static void snmod_mat_transpose_index(sindex_mat_t mat2, snmod_mat_t mat) {
@@ -49,27 +30,9 @@ static void snmod_mat_transpose_index(sindex_mat_t mat2, snmod_mat_t mat) {
     }
 }
 
-static void snmod_mat_transpose_pointer(sparse_mat_t<ulong *> mat2,
-                                        snmod_mat_t mat) {
-    for (size_t i = 0; i < mat2->nrow; i++)
-        mat2->rows[i].nnz = 0;
-
-    for (size_t i = 0; i < mat->nrow; i++) {
-        auto therow = mat->rows + i;
-        for (size_t j = 0; j < therow->nnz; j++) {
-            if (scalar_is_zero(therow->entries + j))
-                continue;
-            auto col = therow->indices[j];
-            _sparse_vec_set_entry(mat2->rows + col, i, therow->entries + j);
-        }
-    }
-}
-
 // first look for rows with only one nonzero value and eliminate them
 // we assume that mat is canonical, i.e. each index is sorted
 // and the result is also canonical
-// true: if the matrix is changed
-// false: if the matrix is not changed
 static ulong eliminate_row_with_one_nnz(snmod_mat_t mat,
                                         sparse_mat_t<ulong *> tranmat,
                                         slong *donelist) {
@@ -98,7 +61,7 @@ static ulong eliminate_row_with_one_nnz(snmod_mat_t mat,
         return localcounter;
     }
 
-    snmod_mat_transpose_pointer(tranmat, mat);
+    sparse_mat_transpose_pointer(tranmat, mat);
     for (size_t i = 0; i < mat->nrow; i++) {
         if (pivlist[i] == -1)
             continue;
@@ -155,58 +118,6 @@ static inline slong rowcolpart(std::vector<int> conp, slong nrow) {
             break;
     return i;
 }
-
-// for upper triangle mat
-static inline bool is_irr_tri(slong i, slong j, snmod_mat_t mat,
-                              slong *rowpivs) {
-    if (i == j)
-        return false;
-    if (i > j)
-        return is_irr_tri(j, i, mat, rowpivs);
-    return sparse_mat_entry(mat, i, rowpivs[j], true) == NULL;
-}
-
-static inline bool is_irr(slong v, slong w, snmod_mat_t mat, slong *rowpivs) {
-    if (v == w)
-        return false;
-    return (sparse_mat_entry(mat, v, rowpivs[w], true) == NULL) &&
-           (sparse_mat_entry(mat, w, rowpivs[v], true) == NULL);
-}
-
-std::vector<slong> findirrpivs_tri(slong start, snmod_mat_t mat, slong *rowpivs,
-                                   std::vector<bool> &statuslist,
-                                   int max_depth = INT_MAX) {
-    std::vector<slong> result;
-
-    result.push_back(start);
-    int depth = 0;
-    for (auto i = start - 1; i >= 0 && depth < max_depth; i--) {
-        depth++;
-        if (statuslist[i])
-            continue;
-        bool isok = true;
-        for (auto &v : result) {
-            if (!is_irr(i, v, mat, rowpivs)) {
-                isok = false;
-                break;
-            }
-        }
-        if (isok)
-            result.push_back(i);
-    }
-    return result;
-}
-
-// TODO: add a DFS algorithm to look for invariant rows
-// if two rows looks like this:
-// 		* 0
-// 		0 *
-// then they are invariant rows, and their elimination will be invariant.
-// we can connect them as a edge and we get a graph, then
-// we can use DFS to look for a complete subgraph from an initial row
-// For rows in the subgraph, we can eliminate them parallelly
-// be careful one should lock the row when eliminating it
-// to make sure that the row is not eliminated by other threads
 
 slong findrowpivot(snmod_mat_t mat, slong col, slong *rowpivs,
                    std::vector<slong> &colparts, std::vector<slong> &kkparts,
@@ -342,7 +253,7 @@ slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
                   << std::endl;
     }
 
-    snmod_mat_transpose_pointer(tranmat, mat);
+    sparse_mat_transpose_pointer(tranmat, mat);
 
     // sort pivots by nnz, it will be faster
     std::stable_sort(colperm.begin(), colperm.end(),
