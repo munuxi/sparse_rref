@@ -95,7 +95,7 @@ static ulong eliminate_row_with_one_nnz_rec(sfmpq_mat_t mat,
 }
 
 // lowerbound?
-static inline slong rowcolpart(std::vector<int> conp, slong nrow) {
+static inline slong rowcolpart(std::vector<slong> conp, slong nrow) {
     slong i;
     for (i = 0; i < conp.size(); i++)
         if (conp[i] >= nrow)
@@ -341,7 +341,7 @@ slong *sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool &pool,
     }
 
     std::sort(connected_components.begin(), connected_components.end(),
-              [](std::vector<int> &a, std::vector<int> &b) {
+              [](std::vector<slong> &a, std::vector<slong> &b) {
                   return a.size() < b.size();
               });
 

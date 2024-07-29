@@ -252,24 +252,24 @@ class BipartiteMatcher {
 
 class Graph {
   public:
-    Graph(int V) { this->V = V; }
-    void addEdge(int v, int w) {
+    Graph(slong V) { this->V = V; }
+    void addEdge(slong v, slong w) {
         adj[v].push_back(w);
         adj[w].push_back(v);
     }
     void clear() { adj.clear(); }
-    std::vector<std::vector<int>> findMaximalConnectedComponents();
-    std::unordered_set<int> findMaximalCliqueContainingEdge(int v, int w);
-    std::unordered_set<int> findMaximalCliqueContainingVertex(int v);
+    std::vector<std::vector<slong>> findMaximalConnectedComponents();
+    std::unordered_set<slong> findMaximalCliqueContainingEdge(slong v, slong w);
+    std::unordered_set<slong> findMaximalCliqueContainingVertex(slong v);
 
   private:
-    void DFS(int v, std::unordered_set<int> &visited,
-             std::vector<int> &component);
-    bool isClique(const std::unordered_set<int> &vertices);
-    void expandClique(std::unordered_set<int> &clique, int new_vertex);
+    void DFS(slong v, std::unordered_set<slong> &visited,
+             std::vector<slong> &component);
+    bool isClique(const std::unordered_set<slong> &vertices);
+    void expandClique(std::unordered_set<slong> &clique, slong new_vertex);
 
-    int V;
-    std::unordered_map<int, std::vector<int>> adj;
+    slong V;
+    std::unordered_map<slong, std::vector<slong>> adj;
 };
 
 #endif

@@ -127,7 +127,10 @@ static inline void sparse_mat_transpose(sparse_mat_t<T> mat2,
     }
 }
 
-slong *sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool &pool,
+// rref 
+slong *sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool &pool, rref_option_t opt);
+
+slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
                       rref_option_t opt);
 
 static inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src,
@@ -202,10 +205,6 @@ template <typename T> void sfmpq_mat_dense_write(sfmpq_mat_t mat, T &st) {
     }
 }
 
-slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
-                      rref_option_t opt);
-
-// IO
 template <typename T> void snmod_mat_read(snmod_mat_t mat, nmod_t p, T &st) {
     if (!st.is_open())
         return;
