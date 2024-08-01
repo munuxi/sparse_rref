@@ -91,8 +91,8 @@ static ulong eliminate_row_with_one_nnz(snmod_mat_t mat,
 
 static ulong eliminate_row_with_one_nnz_rec(snmod_mat_t mat,
                                             sparse_mat_t<ulong *> tranmat,
-                                            slong *donelist,
-                                            bool verbose = false) {
+                                            slong* donelist, bool verbose,
+                                            slong max_depth = INT_MAX) {
     slong depth = 0;
     ulong oldnnz = 0;
     ulong localcounter = 0;
@@ -107,7 +107,7 @@ static ulong eliminate_row_with_one_nnz_rec(snmod_mat_t mat,
         }
         count += localcounter;
         depth++;
-    } while (localcounter > 0);
+    } while (localcounter > 0 && depth < max_depth);
     return count;
 }
 
@@ -453,7 +453,7 @@ slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
         //	std::swap(colperm[countone + i], *ps[i].second);
         // }
 
-        count = eliminate_row_with_one_nnz_rec(mat, tranmat, rowpivs, false);
+        count = eliminate_row_with_one_nnz_rec(mat, tranmat, rowpivs, false, 3);
         rank += count;
         now_nnz = sparse_mat_nnz(mat);
         // if (verbose) {
