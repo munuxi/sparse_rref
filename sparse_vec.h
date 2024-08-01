@@ -71,7 +71,7 @@ static inline T *sparse_vec_entry(sparse_vec_t<T> vec, slong index,
         ptr = std::find(vec->indices, vec->indices + vec->nnz, index);
     if (ptr == vec->indices + vec->nnz)
         return NULL;
-    return vec->entries + std::distance(vec->indices, ptr);
+    return vec->entries + (ptr - vec->indices);
 }
 
 template <typename T>

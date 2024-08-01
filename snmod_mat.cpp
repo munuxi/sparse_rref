@@ -151,8 +151,8 @@ slong findrowpivot(snmod_mat_t mat, slong col, slong *rowpivs,
 
         auto row = rowparts[mm][i];
 
-        if (rowpivs[row] !=
-            -1) // do not choose rows that have been used to eliminate
+        // do not choose rows that have been used to eliminate
+        if (rowpivs[row] != -1) 
             continue;
 
         dolist[dolist_len] = row;
@@ -431,9 +431,9 @@ slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
                           << tranmat->rows[*pp.second].nnz - 1 << "  "
                           << "rank: " << rank << "  " << "nnz: " << now_nnz
                           << "  " << "density: "
-                          << (double)now_nnz / (mat->nrow * mat->ncol) << "  "
-                          << "speed: " << 1 / usedtime(start, end) << " col/s"
-                          << std::flush;
+                          << 100 * (double)now_nnz / (mat->nrow * mat->ncol) 
+                          << "%  " << "speed: " << 1 / usedtime(start, end) 
+                          << " col/s" << std::flush;
             }
         }
 
@@ -558,9 +558,9 @@ slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
                           << "row to eliminate: " << dolist_len << "  "
                           << "rank: " << rank << "  " << "nnz: " << now_nnz
                           << "  " << "density: "
-                          << (double)now_nnz / (mat->nrow * mat->ncol) << "  "
-                          << "speed: " << 1 / usedtime(start, end) << " col/s"
-                          << std::flush;
+                          << (double) 100 * now_nnz / (mat->nrow * mat->ncol) 
+                          << "%  " << "speed: " << 1 / usedtime(start, end) 
+                          << " col/s" << std::flush;
             }
         }
     }
@@ -617,9 +617,9 @@ slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
                 std::cout << "\r-- Row: " << (i + 1) << "/" << pivots.size()
                           << "  " << "row to eliminate: " << thecol->nnz - 1
                           << "  " << "nnz: " << now_nnz << "  " << "density: "
-                          << (double)now_nnz / (mat->nrow * mat->ncol) << "  "
-                          << "speed: " << 1 / usedtime(start, end) << " row/s"
-                          << std::flush;
+                          << (double) 100 * now_nnz / (mat->nrow * mat->ncol) 
+                          << "%  " << "speed: " << 1 / usedtime(start, end) 
+                          << " row/s" << std::flush;
             }
         }
     }

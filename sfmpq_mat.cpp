@@ -532,9 +532,9 @@ slong *sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool &pool,
                           << "row to eliminate: " << dolist_len << "  "
                           << "rank: " << rank << "  " << "nnz: " << now_nnz
                           << "  " << "density: "
-                          << (double)now_nnz / (mat->nrow * mat->ncol) << "  "
-                          << "speed: " << 1 / usedtime(start, end) << " col/s"
-                          << std::flush;
+                          << (double)100 * now_nnz / (mat->nrow * mat->ncol) 
+                          << "%  " << "speed: " << 1 / usedtime(start, end) 
+                          << " col/s" << std::flush;
             }
         }
     }
@@ -610,9 +610,9 @@ slong *sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool &pool,
                 std::cout << "\r-- Row: " << (i + 1) << "/" << pivots.size()
                           << "  " << "row to eliminate: " << thecol->nnz - 1
                           << "  " << "nnz: " << now_nnz << "  " << "density: "
-                          << (double)now_nnz / (mat->nrow * mat->ncol) << "  "
-                          << "speed: " << 1 / usedtime(start, end) << " row/s"
-                          << std::flush;
+                          << (double)100 * now_nnz / (mat->nrow * mat->ncol) 
+                          << "%  " << "speed: " << 1 / usedtime(start, end) 
+                          << " row/s" << std::flush;
             }
         }
     }
