@@ -168,29 +168,21 @@ int sfmpq_vec_sub_scalar_sorted(sfmpq_vec_t vec, const sfmpq_vec_t src,
             ptr1++;
             ptr2++;
         } else if (vec->indices[ptr1] < src->indices[ptr2]) {
-            if (!scalar_is_zero(vec->entries + ptr1))
-                _sparse_vec_set_entry(tmpvec, vec->indices[ptr1],
-                                      vec->entries + ptr1);
+            _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], vec->entries + ptr1);
             ptr1++;
         } else {
-            if (!scalar_is_zero(src->entries + ptr2)) {
-                scalar_mul(entry, na, src->entries + ptr2);
-                _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
-            }
+            scalar_mul(entry, na, src->entries + ptr2);
+            _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
             ptr2++;
         }
     }
     while (ptr1 < vec->nnz) {
-        if (!scalar_is_zero(vec->entries + ptr1))
-            _sparse_vec_set_entry(tmpvec, vec->indices[ptr1],
-                                  vec->entries + ptr1);
+        _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], vec->entries + ptr1);
         ptr1++;
     }
     while (ptr2 < src->nnz) {
-        if (!scalar_is_zero(src->entries + ptr2)) {
-            scalar_mul(entry, na, src->entries + ptr2);
-            _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
-        }
+        scalar_mul(entry, na, src->entries + ptr2);
+        _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
         ptr2++;
     }
 

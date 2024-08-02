@@ -132,10 +132,7 @@ static inline void sparse_vec_set(sparse_vec_t<T> vec,
     vec->nnz = src->nnz;
     for (ulong i = 0; i < src->nnz; i++) {
         vec->indices[i] = src->indices[i];
-        if constexpr (std::is_same_v<T, fmpq>)
-            fmpq_set((fmpq *)(vec->entries) + i, (fmpq *)(src->entries) + i);
-        else
-            vec->entries[i] = src->entries[i];
+        scalar_set(vec->entries + i, src->entries + i);
     }
 }
 
@@ -176,7 +173,7 @@ static inline void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index,
     }
 
     if (vec->nnz == vec->alloc) {
-        ulong new_alloc = std::min(2 * (vec->alloc + 1), vec->len);
+        ulong new_alloc = std::min(2 * vec->alloc, vec->len);
         sparse_vec_realloc(vec, new_alloc);
     }
     vec->indices[vec->nnz] = index;
@@ -221,17 +218,10 @@ template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
     });
 
     // apply permutation
-    if constexpr (std::is_same_v<T, fmpq>) {
-        for (size_t i = 0; i < vec->nnz; i++)
-            fmpq_set(entries + i, vec->entries + perm[i]);
-        for (size_t i = 0; i < vec->nnz; i++)
-            fmpq_set(vec->entries + i, entries + i);
-    } else {
-        for (size_t i = 0; i < vec->nnz; i++)
-            entries[i] = vec->entries[perm[i]];
-        for (size_t i = 0; i < vec->nnz; i++)
-            vec->entries[i] = entries[i];
-    }
+    for (size_t i = 0; i < vec->nnz; i++)
+        scalar_set(entries + i, vec->entries + perm[i]);
+    for (size_t i = 0; i < vec->nnz; i++)
+        scalar_set(vec->entries + i, entries + i);
 
     std::sort(vec->indices, vec->indices + vec->nnz);
     _perm_clear(perm);
@@ -247,21 +237,10 @@ static inline void sparse_vec_canonicalize(sparse_vec_t<T> vec) {
     // sparse_vec_sort_indices(vec);
     ulong new_nnz = 0;
     for (size_t i = 0; i < vec->nnz; i++) {
-        bool is_zero;
-        if constexpr (std::is_same_v<T, fmpq>) {
-            is_zero = fmpq_is_zero(vec->entries + i);
-        } else {
-            is_zero = (vec->entries[i] == 0);
-        }
-
-        if (is_zero)
+        if (scalar_is_zero(vec->entries + i))
             continue;
         vec->indices[new_nnz] = vec->indices[i];
-        if constexpr (std::is_same_v<T, fmpq>) {
-            fmpq_set(vec->entries + new_nnz, vec->entries + i);
-        } else {
-            vec->entries[new_nnz] = vec->entries[i];
-        }
+        scalar_set(vec->entries + new_nnz, vec->entries + i);
 
         new_nnz++;
     }

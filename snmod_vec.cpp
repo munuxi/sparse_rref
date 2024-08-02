@@ -265,32 +265,26 @@ int snmod_vec_sub_scalar_sorted(snmod_vec_t vec, const snmod_vec_t src,
             ptr1++;
             ptr2++;
         } else if (vec->indices[ptr1] < src->indices[ptr2]) {
-            if (vec->entries[ptr1] != 0)
-                _sparse_vec_set_entry(tmpvec, vec->indices[ptr1],
-                                      vec->entries[ptr1]);
+            _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], vec->entries[ptr1]);
             ptr1++;
         } else {
-            if (src->entries[ptr2] != 0) {
-                ulong entry =
-                    n_mulmod_shoup(na, src->entries[ptr2], na_pr, p.n);
-                _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
-            }
+            ulong entry = n_mulmod_shoup(na, src->entries[ptr2], na_pr, p.n);
+            _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
             ptr2++;
         }
     }
-    while (ptr1 < vec->nnz) {
-        if (vec->entries[ptr1] != 0)
-            _sparse_vec_set_entry(tmpvec, vec->indices[ptr1],
-                                  vec->entries[ptr1]);
-        ptr1++;
-    }
     while (ptr2 < src->nnz) {
-        if (src->entries[ptr2] != 0) {
-            ulong entry = n_mulmod_shoup(na, src->entries[ptr2], na_pr, p.n);
-            _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
-        }
+        ulong entry = n_mulmod_shoup(na, src->entries[ptr2], na_pr, p.n);
+        _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
         ptr2++;
     }
+    // while (ptr1 < vec->nnz) {
+    //     _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], vec->entries[ptr1]);
+    //     ptr1++;
+    // }
+    memcpy(tmpvec->indices + tmpvec->nnz, vec->indices + ptr1, (vec->nnz - ptr1) * sizeof(slong));
+    memcpy(tmpvec->entries + tmpvec->nnz, vec->entries + ptr1, (vec->nnz - ptr1) * sizeof(ulong));
+    tmpvec->nnz += vec->nnz - ptr1;
 
     sparse_vec_swap(vec, tmpvec);
     sparse_vec_clear(tmpvec);
