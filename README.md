@@ -15,13 +15,13 @@ Some algorithms are motivated by [Spasm](https://github.com/cbouilla/spasm), but
 
 We only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime, but It is possible to generalize to other fields/rings by some small modification.
 
-It is highly recommended to use [mimalloc](https://github.com/microsoft/mimalloc) to dynamicly override the standard malloc, especially on Windows.
+It is highly recommended to use [mimalloc](https://github.com/microsoft/mimalloc) to dynamically override the standard malloc, especially on Windows.
 
 Build it, e.g.
 
 ```bash
-g++ util.cpp snmod_vec.cpp snmod_mat.cpp sfmpq_vec.cpp sfmpq_mat.cpp main.cpp -o sparserref -O3 -std=c++17 -Llibpath -lflint -Iincludepath
-```
+g++ util.cpp snmod_vec.cpp snmod_mat.cpp sfmpq_vec.cpp sfmpq_mat.cpp main.cpp -o sparserref -O3 -std=c++17 -Iincludepath -Llibpath -lflint -lgmp
+``` 
 
 and help is 
 
@@ -38,7 +38,7 @@ Optional arguments:
   --output-pivots      output pivots
   -f, --field          QQ: rational field
                        Zp: Z/p for a prime p [default: "QQ"]
-  -p, --prime          a prime number, only vaild when field is Zp  [default: "4194319"]
+  -p, --prime          a prime number, only vaild when field is Zp  [default: "34534567"]
   -t, --threads        the number of threads  [default: 1]
   -sd, --search_depth  the depth of search, default is the max of size_t  [default: 0]
   -sm, --search_min    the minimal length to go out of search
@@ -51,8 +51,7 @@ Optional arguments:
 
 ### TODO
 
-0. There are a lot of similar codes at `sfmpq_*` and `snmod_*`, we should union 
+* There are a lot of similar codes at `sfmpq_*` and `snmod_*`, we should union 
 it in `sparse_*`. 
-
-1. Improve the algorithms.
+* Improve the algorithms.
 
