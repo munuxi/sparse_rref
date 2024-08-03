@@ -5,12 +5,7 @@ using namespace std::chrono_literals;
 
 // Row x - a*Row y
 static inline void sfmpq_mat_xmay(sfmpq_mat_t mat, slong x, slong y, fmpq_t a) {
-    sfmpq_vec_sub_scalar_sorted(mat->rows + x, mat->rows + y, a);
-}
-
-static inline void sfmpq_mat_xmay_cached(sfmpq_mat_t mat, slong x, slong y,
-                                         sfmpq_vec_t cache, fmpq_t a) {
-    sfmpq_vec_sub_scalar_sorted_cached(mat->rows + x, mat->rows + y, cache, a);
+    sfmpq_vec_sub_mul(mat->rows + x, mat->rows + y, a);
 }
 
 // first look for rows with only one nonzero value and eliminate them

@@ -5,14 +5,7 @@
 // Row x - a*Row y
 static inline void snmod_mat_xmay(snmod_mat_t mat, slong x, slong y, ulong a,
                                   nmod_t p) {
-    snmod_vec_sub_scalar_sorted(mat->rows + x, mat->rows + y, a, p);
-}
-
-// Row x - a*Row y
-static inline void snmod_mat_xmay_cached(snmod_mat_t mat, slong x, slong y,
-                                         snmod_vec_t cache, ulong a, nmod_t p) {
-    snmod_vec_sub_scalar_sorted_cached(mat->rows + x, mat->rows + y, cache, a,
-                                       p);
+    snmod_vec_sub_mul(mat->rows + x, mat->rows + y, a, p);
 }
 
 static void snmod_mat_transpose_index(sindex_mat_t mat2, snmod_mat_t mat) {
@@ -399,6 +392,8 @@ slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
 
         auto ps = findmanypivots(mat, tranmat, rowpivs, colperm,
                                  colperm.begin() + countone, opt->search_depth);
+        if (ps.size() == 0)
+            break;
 
         for (auto kk = 0; kk < ps.size(); kk++) {
             auto start = clocknow();
@@ -420,7 +415,7 @@ slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
                 // snmod_mat_xmay_cached(mat, thecol->indices[i], row,
                 // cachemat->rows + this_id, *entry, p);
                 snmod_mat_xmay(mat, thecol->indices[i], row, *entry, p);
-            });
+                });
             pool.wait();
             auto end = clocknow();
 
