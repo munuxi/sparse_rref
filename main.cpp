@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
         .help("QQ: rational field\nZp: Z/p for a prime p")
         .nargs(1);
     program.add_argument("-p", "--prime")
-        .default_value("4194319")
+        .default_value("34534567")
         .help("a prime number, only vaild when field is Zp ")
         .nargs(1);
     program.add_argument("-t", "--threads")
@@ -83,8 +83,8 @@ int main(int argc, char **argv) {
     if (program.get<std::string>("--field") == "QQ") {
         prime = 0;
     } else if (program.get<std::string>("--field") == "Zp") {
-        if (program.get<std::string>("--prime") == "4194319") {
-            prime = 4194319;
+        if (program.get<std::string>("--prime") == "34534567") {
+            prime = 34534567;
         } else {
             auto str = program.get<std::string>("--prime");
             fmpz_t prep;
@@ -92,15 +92,15 @@ int main(int argc, char **argv) {
             fmpz_set_str(prep, str.c_str(), 10);
             int is_max;
             if constexpr (FLINT64) {
-                is_max = fmpz_cmp_ui(prep, ULLONG_MAX);
+                is_max = fmpz_cmp_ui(prep, 1ULL << 63);
             } else {
-                is_max = fmpz_cmp_ui(prep, ULONG_MAX);
+                is_max = fmpz_cmp_ui(prep, 1ULL << 31);
             }
             if (is_max > 0) {
                 std::cerr << "The prime number is too large: " << str
                           << std::endl;
                 std::cerr << "It should be less than " << 2 << "^"
-                          << ((FLINT64) ? 64 : 32) << std::endl;
+                          << ((FLINT64) ? 63 : 31) << std::endl;
                 std::exit(1);
             }
             prime = fmpz_get_ui(prep);

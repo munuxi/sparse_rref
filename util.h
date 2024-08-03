@@ -6,6 +6,7 @@
 #include "thread_pool.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <queue>
 #include <string>
