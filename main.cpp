@@ -13,8 +13,8 @@
 
 #define printmatinfo(mat)                                                      \
     std::cout << "nnz: " << sparse_mat_nnz(mat) << " ";                        \
-    std::cout << "nrow: " << mat->nrow << " ";                                 \
-    std::cout << "ncol: " << mat->ncol << std::endl
+    std::cout << "nrow: " << (mat)->nrow << " ";                               \
+    std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char **argv) {
     argparse::ArgumentParser program("sparserref", "v0.1.0");
@@ -59,6 +59,10 @@ int main(int argc, char **argv) {
         .default_value(0)
         .nargs(1)
         .scan<'i', int>();
+    program.add_argument("-pd", "--pivot_direction")
+        .help("the direction to select pivots")
+        .default_value("row")
+        .nargs(1);
     program.add_argument("-V", "--verbose")
         .default_value(false)
         .help("prints information of calculation")
@@ -140,6 +144,9 @@ int main(int argc, char **argv) {
     }
     file.close();
 
+    auto n_row = (prime == 0) ? mat_Q->nrow : mat_Zp->nrow;
+    auto n_col = (prime == 0) ? mat_Q->ncol : mat_Zp->ncol;
+
     auto end = clocknow();
     std::cout << "-------------------" << std::endl;
     printtime("read");
@@ -159,38 +166,29 @@ int main(int argc, char **argv) {
 
     rref_option_t opt;
     opt->verbose = (program["--verbose"] == true);
-    opt->printlen = program.get<int>("--print_step");
+    opt->print_step = program.get<int>("--print_step");
     opt->sort_step = program.get<int>("--sort_step");
     opt->search_depth = (ulong)program.get<int>("--search_depth");
     opt->search_min = program.get<int>("--search_min");
+    opt->pivot_dir = (program.get<std::string>("--pivot_direction") == "row");
     if (opt->search_depth == 0)
         opt->search_depth = ULLONG_MAX;
-    if (opt->sort_step == 0) {
-        if (prime == 0)
-            opt->sort_step = std::max((ulong)1000, mat_Q->ncol / 100);
-        else
-            opt->sort_step = std::max((ulong)1000, mat_Zp->ncol / 100);
-    }
+    if (opt->sort_step == 0)
+        opt->sort_step = std::max((ulong)1000, n_col / 100);
 
     start = clocknow();
-    slong *pivots;
+    std::vector<std::pair<slong,slong>> pivots;
     if (prime == 0) {
         pivots = sfmpq_mat_rref(mat_Q, pool, opt);
     } else {
         pivots = snmod_mat_rref(mat_Zp, p, pool, opt);
     }
 
-    ulong rank = 0;
-    for (size_t i = 0; i < ((prime == 0) ? mat_Q->nrow : mat_Zp->nrow); i++) {
-        if (pivots[i] != -1)
-            rank++;
-    }
-
     end = clocknow();
     std::cout << "-------------------" << std::endl;
     printtime("RREF");
 
-    std::cout << "rank: " << rank << " ";
+    std::cout << "rank: " << pivots.size() << " ";
     if (prime == 0) {
         printmatinfo(mat_Q);
     } else {
@@ -218,13 +216,8 @@ int main(int argc, char **argv) {
     if (program["--output-pivots"] == true) {
         outname_add = ".piv";
         file2.open(outname + outname_add);
-        if (prime == 0) {
-            for (size_t i = 0; i < mat_Q->nrow; i++)
-                file2 << pivots[i] + 1 << '\n';
-        } else {
-            for (size_t i = 0; i < mat_Zp->nrow; i++)
-                file2 << pivots[i] + 1 << '\n';
-        }
+        for (size_t i = 0; i < n_row; i++)
+            file2 << pivots[i].first + 1 << " " << pivots[i].second + 1 << '\n';
         file2.close();
     }
 

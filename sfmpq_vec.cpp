@@ -11,9 +11,7 @@ void sfmpq_vec_neg(sfmpq_vec_t vec) {
         fmpq_neg(vec->entries + i, vec->entries + i);
 }
 
-// we assume that vec and src are sorted, and the result is also sorted
-int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src,
-                                const fmpq_t a) {
+int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
     // -1 : Different lengths
     if (vec->len != src->len)
         return -1;
@@ -23,57 +21,71 @@ int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src,
 
     if (vec->nnz == 0) {
         sparse_vec_set(vec, src);
-        // sfmpq_vec_neg(vec);
         sfmpq_vec_rescale(vec, a);
     }
 
     fmpq_t na, entry;
     fmpq_init(na);
+    fmpq_set(na, a);
     fmpq_init(entry);
-    // fmpq_neg(na, a);
 
-    sfmpq_vec_t tmpvec;
-    _sparse_vec_init(tmpvec, vec->len, vec->nnz + src->nnz);
+    if (vec->nnz + src->nnz > vec->alloc)
+        sparse_vec_realloc(vec, vec->nnz + src->nnz);
 
-    ulong ptr1 = 0;
-    ulong ptr2 = 0;
-    while (ptr1 < vec->nnz && ptr2 < src->nnz) {
-        if (vec->indices[ptr1] == src->indices[ptr2]) {
-            scalar_mul(entry, na, src->entries + ptr2);
-            scalar_add(entry, vec->entries + ptr1, entry);
-            if (entry != 0)
-                _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], entry);
-            ptr1++;
-            ptr2++;
-        } else if (vec->indices[ptr1] < src->indices[ptr2]) {
-            _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], vec->entries + ptr1);
-            ptr1++;
-        } else {
-            scalar_mul(entry, na, src->entries + ptr2);
-            _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
-            ptr2++;
+    ulong ptr1 = vec->nnz;
+    ulong ptr2 = src->nnz;
+    ulong ptr = vec->nnz + src->nnz;
+    while (ptr1 > 0 && ptr2 > 0) {
+        if (vec->indices[ptr1 - 1] == src->indices[ptr2 - 1]) {
+            scalar_mul(entry, na, src->entries + ptr2 - 1);
+            scalar_add(entry, vec->entries + ptr1 - 1, entry);
+            if (!scalar_is_zero(entry)) {
+                vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
+                fmpq_set(vec->entries + ptr - 1,entry);
+                ptr--;
+            }
+            ptr1--;
+            ptr2--;
+        }
+        else if (vec->indices[ptr1 - 1] < src->indices[ptr2 - 1]) {
+            scalar_mul(entry, na, src->entries + ptr2 - 1);
+            vec->indices[ptr - 1] = src->indices[ptr2 - 1];
+            fmpq_set(vec->entries + ptr - 1, entry);
+            ptr2--;
+            ptr--;
+        }
+        else {
+            vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
+            fmpq_set(vec->entries + ptr - 1, vec->entries + ptr1 - 1);
+            ptr1--;
+            ptr--;
         }
     }
-    while (ptr1 < vec->nnz) {
-        _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], vec->entries + ptr1);
-        ptr1++;
-    }
-    while (ptr2 < src->nnz) {
-        scalar_mul(entry, na, src->entries + ptr2);
-        _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
-        ptr2++;
+    while (ptr2 > 0) {
+        scalar_mul(entry, na, src->entries + ptr2 - 1);
+        vec->indices[ptr - 1] = src->indices[ptr2 - 1];
+        fmpq_set(vec->entries + ptr - 1, entry);
+        ptr2--;
+        ptr--;
     }
 
-    sparse_vec_swap(vec, tmpvec);
-    sparse_vec_clear(tmpvec);
+    // if ptr1 > 0, and ptr > 0
+    for (size_t i = ptr1; i < ptr; i++) {
+        fmpq_zero(vec->entries + i);
+    }
+
+    vec->nnz += src->nnz;
+    sparse_vec_canonicalize(vec);
+    if (vec->alloc > 4 * vec->nnz)
+        sparse_vec_realloc(vec, 2 * vec->nnz);
+
     fmpq_clear(na);
     fmpq_clear(entry);
     return 0;
 }
 
 // we assume that vec and src are sorted, and the result is also sorted
-int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src,
-    const fmpq_t a) {
+int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
     // -1 : Different lengths
     if (vec->len != src->len)
         return -1;
@@ -83,51 +95,65 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src,
 
     if (vec->nnz == 0) {
         sparse_vec_set(vec, src);
-        sfmpq_vec_neg(vec);
         sfmpq_vec_rescale(vec, a);
+        sfmpq_vec_neg(vec);
     }
 
     fmpq_t na, entry;
     fmpq_init(na);
-    fmpq_init(entry);
     fmpq_neg(na, a);
+    fmpq_init(entry);
 
-    sfmpq_vec_t tmpvec;
-    _sparse_vec_init(tmpvec, vec->len, vec->nnz + src->nnz);
+    if (vec->nnz + src->nnz > vec->alloc)
+        sparse_vec_realloc(vec, vec->nnz + src->nnz);
 
-    ulong ptr1 = 0;
-    ulong ptr2 = 0;
-    while (ptr1 < vec->nnz && ptr2 < src->nnz) {
-        if (vec->indices[ptr1] == src->indices[ptr2]) {
-            scalar_mul(entry, na, src->entries + ptr2);
-            scalar_add(entry, vec->entries + ptr1, entry);
-            if (entry != 0)
-                _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], entry);
-            ptr1++;
-            ptr2++;
+    ulong ptr1 = vec->nnz;
+    ulong ptr2 = src->nnz;
+    ulong ptr = vec->nnz + src->nnz;
+    while (ptr1 > 0 && ptr2 > 0) {
+        if (vec->indices[ptr1 - 1] == src->indices[ptr2 - 1]) {
+            scalar_mul(entry, na, src->entries + ptr2 - 1);
+            scalar_add(entry, vec->entries + ptr1 - 1, entry);
+            if (!scalar_is_zero(entry)) {
+                vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
+                fmpq_set(vec->entries + ptr - 1, entry);
+                ptr--;
+            }
+            ptr1--;
+            ptr2--;
         }
-        else if (vec->indices[ptr1] < src->indices[ptr2]) {
-            _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], vec->entries + ptr1);
-            ptr1++;
+        else if (vec->indices[ptr1 - 1] < src->indices[ptr2 - 1]) {
+            scalar_mul(entry, na, src->entries + ptr2 - 1);
+            vec->indices[ptr - 1] = src->indices[ptr2 - 1];
+            fmpq_set(vec->entries + ptr - 1, entry);
+            ptr2--;
+            ptr--;
         }
         else {
-            scalar_mul(entry, na, src->entries + ptr2);
-            _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
-            ptr2++;
+            vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
+            fmpq_set(vec->entries + ptr - 1, vec->entries + ptr1 - 1);
+            ptr1--;
+            ptr--;
         }
     }
-    while (ptr1 < vec->nnz) {
-        _sparse_vec_set_entry(tmpvec, vec->indices[ptr1], vec->entries + ptr1);
-        ptr1++;
-    }
-    while (ptr2 < src->nnz) {
-        scalar_mul(entry, na, src->entries + ptr2);
-        _sparse_vec_set_entry(tmpvec, src->indices[ptr2], entry);
-        ptr2++;
+    while (ptr2 > 0) {
+        scalar_mul(entry, na, src->entries + ptr2 - 1);
+        vec->indices[ptr - 1] = src->indices[ptr2 - 1];
+        fmpq_set(vec->entries + ptr - 1, entry);
+        ptr2--;
+        ptr--;
     }
 
-    sparse_vec_swap(vec, tmpvec);
-    sparse_vec_clear(tmpvec);
+    // if ptr1 > 0, and ptr > 0
+    for (size_t i = ptr1; i < ptr; i++) {
+        fmpq_zero(vec->entries + i);
+    }
+
+    vec->nnz += src->nnz;
+    sparse_vec_canonicalize(vec);
+    if (vec->alloc > 4 * vec->nnz)
+        sparse_vec_realloc(vec, 2 * vec->nnz);
+
     fmpq_clear(na);
     fmpq_clear(entry);
     return 0;

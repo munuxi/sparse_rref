@@ -15,7 +15,12 @@ typedef sparse_mat_t<ulong> snmod_mat_t;
 typedef sparse_mat_t<fmpq> sfmpq_mat_t;
 
 template <typename T>
-static inline void _sparse_mat_init(sparse_mat_t<T> mat, ulong nrow, ulong ncol,
+inline sparse_vec_struct<T>* sparse_mat_row(sparse_mat_t<T> mat, slong i) {
+    return mat->rows + i;
+}
+
+template <typename T>
+inline void _sparse_mat_init(sparse_mat_t<T> mat, ulong nrow, ulong ncol,
                                     ulong alloc) {
     mat->nrow = nrow;
     mat->ncol = ncol;
@@ -26,12 +31,13 @@ static inline void _sparse_mat_init(sparse_mat_t<T> mat, ulong nrow, ulong ncol,
 }
 
 template <typename T>
-static inline void sparse_mat_init(sparse_mat_t<T> mat, ulong nrow,
+inline void sparse_mat_init(sparse_mat_t<T> mat, ulong nrow,
                                    ulong ncol) {
     _sparse_mat_init(mat, nrow, ncol, 1ULL);
 }
 
-template <typename T> static inline void sparse_mat_clear(sparse_mat_t<T> mat) {
+template <typename T> 
+inline void sparse_mat_clear(sparse_mat_t<T> mat) {
     for (size_t i = 0; i < mat->nrow; i++)
         sparse_vec_clear(mat->rows + i);
     free(mat->rows);
@@ -40,7 +46,8 @@ template <typename T> static inline void sparse_mat_clear(sparse_mat_t<T> mat) {
     mat->rows = NULL;
 }
 
-template <typename T> static inline ulong sparse_mat_nnz(sparse_mat_t<T> mat) {
+template <typename T> 
+inline ulong sparse_mat_nnz(sparse_mat_t<T> mat) {
     ulong nnz = 0;
     for (size_t i = 0; i < mat->nrow; i++)
         nnz += mat->rows[i].nnz;
@@ -48,7 +55,7 @@ template <typename T> static inline ulong sparse_mat_nnz(sparse_mat_t<T> mat) {
 }
 
 template <typename T>
-static inline ulong sparse_mat_alloc(sparse_mat_t<T> mat) {
+inline ulong sparse_mat_alloc(sparse_mat_t<T> mat) {
     ulong alloc = 0;
     for (size_t i = 0; i < mat->nrow; i++)
         alloc += mat->rows[i].alloc;
@@ -56,14 +63,13 @@ static inline ulong sparse_mat_alloc(sparse_mat_t<T> mat) {
 }
 
 template <typename T>
-static inline void sparse_mat_compress(sparse_mat_t<T> mat) {
+inline void sparse_mat_compress(sparse_mat_t<T> mat) {
     for (size_t i = 0; i < mat->nrow; i++)
         sparse_vec_realloc(mat->rows + i, mat->rows[i].nnz);
 }
 
 template <typename T>
-static inline T *sparse_mat_entry(sparse_mat_t<T> mat, slong row, slong col,
-                                  bool isbinary = false) {
+inline T *sparse_mat_entry(sparse_mat_t<T> mat, slong row, slong col, bool isbinary = false) {
     if (row < 0 || col < 0 || (ulong)row >= mat->nrow ||
         (ulong)col >= mat->ncol)
         return NULL;
@@ -71,8 +77,7 @@ static inline T *sparse_mat_entry(sparse_mat_t<T> mat, slong row, slong col,
 }
 
 template <typename T, typename S>
-static inline void _sparse_mat_set_entry(sparse_mat_t<T> mat, slong row,
-                                         slong col, S val) {
+inline void _sparse_mat_set_entry(sparse_mat_t<T> mat, slong row, slong col, S val) {
     if (row < 0 || col < 0 || (ulong)row >= mat->nrow ||
         (ulong)col >= mat->ncol)
         return;
@@ -80,7 +85,7 @@ static inline void _sparse_mat_set_entry(sparse_mat_t<T> mat, slong row,
 }
 
 template <typename T>
-static inline void sparse_mat_clear_zero_row(sparse_mat_t<T> mat) {
+inline void sparse_mat_clear_zero_row(sparse_mat_t<T> mat) {
     ulong newnrow = 0;
     for (size_t i = 0; i < mat->nrow; i++) {
         if (mat->rows[i].nnz != 0) {
@@ -94,8 +99,7 @@ static inline void sparse_mat_clear_zero_row(sparse_mat_t<T> mat) {
 }
 
 template <typename T>
-static inline void sparse_mat_transpose_pointer(sparse_mat_t<T *> mat2,
-                                                sparse_mat_t<T> mat) {
+inline void sparse_mat_transpose_pointer(sparse_mat_t<T *> mat2, const sparse_mat_t<T> mat) {
     for (size_t i = 0; i < mat2->nrow; i++)
         mat2->rows[i].nnz = 0;
 
@@ -111,8 +115,7 @@ static inline void sparse_mat_transpose_pointer(sparse_mat_t<T *> mat2,
 }
 
 template <typename T>
-static inline void sparse_mat_transpose(sparse_mat_t<T> mat2,
-                                        sparse_mat_t<T> mat) {
+inline void sparse_mat_transpose(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat) {
     for (size_t i = 0; i < mat2->nrow; i++)
         mat2->rows[i].nnz = 0;
 
@@ -127,13 +130,30 @@ static inline void sparse_mat_transpose(sparse_mat_t<T> mat2,
     }
 }
 
+// tranpose only part of the rows
+template <typename T>
+inline void sparse_mat_transpose_part(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat, const std::vector<slong>& rows) {
+    for (size_t i = 0; i < mat2->nrow; i++)
+        mat2->rows[i].nnz = 0;
+
+    for (size_t i = 0; i < rows.size(); i++) {
+        auto row = rows[i];
+        auto therow = mat->rows + row;
+        for (size_t j = 0; j < therow->nnz; j++) {
+            if (scalar_is_zero(therow->entries + j))
+                continue;
+            auto col = therow->indices[j];
+            _sparse_vec_set_entry(mat2->rows + col, row, therow->entries + j);
+        }
+    }
+}
+
 // rref 
-slong *sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool &pool, rref_option_t opt);
+std::vector<std::pair<slong, slong>> sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt);
+std::vector<std::pair<slong, slong>> snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool, rref_option_t opt);
 
-slong *snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool &pool,
-                      rref_option_t opt);
-
-static inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src,
+// convert
+inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src,
                                         nmod_t p) {
     for (size_t i = 0; i < src->nrow; i++) {
         auto row = src->rows + i;

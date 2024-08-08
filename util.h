@@ -6,6 +6,7 @@
 #include "thread_pool.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <execution>
 #include <iostream>
@@ -23,7 +24,8 @@
 
 struct rref_option {
     bool verbose = false;
-    int printlen = 100;
+    bool pivot_dir = true; // true: row, false: col
+    int print_step = 100;
     int sort_step = 0;
     int search_min = 200;
     ulong search_depth = ULLONG_MAX;
@@ -46,19 +48,19 @@ struct sindex_mat_struct {
 typedef struct sindex_mat_struct sindex_mat_t[1];
 
 // init and clear
-static inline void _sindex_vec_init(sindex_vec_t vec, ulong len, ulong alloc) {
+inline void _sindex_vec_init(sindex_vec_t vec, ulong len, ulong alloc) {
     vec->len = len;
     vec->nnz = 0;
     vec->alloc = std::min(alloc, len);
     vec->indices = (slong *)malloc(vec->alloc * sizeof(slong));
 }
 
-static inline void sindex_vec_init(sindex_vec_t vec, ulong len) {
+inline void sindex_vec_init(sindex_vec_t vec, ulong len) {
     // alloc at least 1 to make sure that indices and entries are not NULL
     _sindex_vec_init(vec, len, 1ULL);
 }
 
-static inline void sindex_vec_clear(sindex_vec_t vec) {
+inline void sindex_vec_clear(sindex_vec_t vec) {
     free(vec->indices);
     vec->nnz = 0;
     vec->alloc = 0;
@@ -68,7 +70,7 @@ static inline void sindex_vec_clear(sindex_vec_t vec) {
 void sindex_vec_realloc(sindex_vec_t vec, ulong alloc);
 void _sindex_vec_set_entry(sindex_vec_t vec, slong index);
 
-static inline void _sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol,
+inline void _sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol,
                                     ulong alloc) {
     mat->nrow = nrow;
     mat->ncol = ncol;
@@ -77,11 +79,11 @@ static inline void _sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol,
         _sindex_vec_init(mat->rows + i, ncol, alloc);
 }
 
-static inline void sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol) {
+inline void sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol) {
     _sindex_mat_init(mat, nrow, ncol, 1ULL);
 }
 
-static inline void sindex_mat_clear(sindex_mat_t mat) {
+inline void sindex_mat_clear(sindex_mat_t mat) {
     for (size_t i = 0; i < mat->nrow; i++)
         sindex_vec_clear(mat->rows + i);
     free(mat->rows);
@@ -90,7 +92,7 @@ static inline void sindex_mat_clear(sindex_mat_t mat) {
     mat->rows = NULL;
 }
 
-template <typename T> static inline T *binarysearch(T *begin, T *end, T val) {
+template <typename T> inline T *binarysearch(T *begin, T *end, T val) {
     auto ptr = std::lower_bound(begin, end, val);
     if (ptr == end || *ptr == val)
         return ptr;
@@ -99,7 +101,7 @@ template <typename T> static inline T *binarysearch(T *begin, T *end, T val) {
 }
 
 // string
-static inline void DeleteSpaces(std::string &str) {
+inline void DeleteSpaces(std::string &str) {
     str.erase(std::remove_if(str.begin(), str.end(),
                              [](unsigned char x) { return std::isspace(x); }),
               str.end());
@@ -107,16 +109,16 @@ static inline void DeleteSpaces(std::string &str) {
 std::vector<std::string> SplitString(const std::string &s, std::string delim);
 
 // time
-static inline std::chrono::system_clock::time_point clocknow() {
+inline std::chrono::system_clock::time_point clocknow() {
     return std::chrono::system_clock::now();
 }
 
-static inline double usedtime(std::chrono::system_clock::time_point start,
+inline double usedtime(std::chrono::system_clock::time_point start,
                               std::chrono::system_clock::time_point end) {
     auto duration =
         std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    return double(duration.count()) * std::chrono::microseconds::period::num /
-           std::chrono::microseconds::period::den;
+    return ((double)duration.count() * std::chrono::microseconds::period::num /
+           std::chrono::microseconds::period::den);
 }
 
 // vector
