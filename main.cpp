@@ -213,6 +213,14 @@ int main(int argc, char **argv) {
     }
     file2.close();
 
+    // sfmpq_mat_t K;
+    // file2.open(outname + ".kernel");
+    // if (prime == 0) {
+    //     sfmpq_mat_rref_kernel(K, mat_Q, pivots, pool);
+    //     sfmpq_mat_write(K, file2);
+    // }
+    // file2.close();
+
     if (program["--output-pivots"] == true) {
         outname_add = ".piv";
         file2.open(outname + outname_add);

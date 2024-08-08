@@ -16,6 +16,8 @@
 #include <unordered_set>
 #include <vector>
 
+#define NULL nullptr
+
 // get the bit at position bit
 #define GET_BIT(x, bit) (((x) >> (bit)) & 1ULL)
 // set the bit at position bit

@@ -980,3 +980,58 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref(snmod_mat_t mat, nmod_t p, B
     else
         return snmod_mat_rref_c(mat, p, pool, opt);
 }
+
+int snmod_mat_rref_kernel(snmod_mat_t K, const snmod_mat_t M, const std::vector<std::pair<slong, slong>>& pivots, nmod_t p, BS::thread_pool& pool) {
+    auto rank = pivots.size();
+    if (rank == M->ncol)
+        return 0; // full rank, no kernel
+
+    ulong m1 = 1;
+
+    if (rank == 0) {
+        sparse_mat_init(K, M->ncol, M->ncol);
+        for (size_t i = 0; i < M->ncol; i++)
+            _sparse_vec_set_entry(sparse_mat_row(K, i), i, m1);
+        return M->ncol;
+    }
+    m1 = nmod_neg(m1, p);
+
+    snmod_mat_t rows, trows;
+    sparse_mat_init(rows, rank, M->ncol);
+    sparse_mat_init(trows, M->ncol, rank);
+    for (size_t i = 0; i < rank; i++) {
+        sparse_vec_set(sparse_mat_row(rows, i), sparse_mat_row(M, pivots[i].first));
+    }
+    sparse_mat_transpose(trows, rows);
+    sparse_mat_clear(rows);
+
+    sparse_mat_init(K, M->ncol - rank, M->ncol);
+    for (size_t i = 0; i < K->nrow; i++)
+        sparse_mat_row(K, i)->nnz = 0;
+
+    std::vector<slong> colpivs(M->ncol, -1);
+    std::vector<slong> nonpivs;
+    for (size_t i = 0; i < rank; i++)
+        colpivs[pivots[i].second] = pivots[i].first;
+
+    for (auto i = 0; i < M->ncol; i++)
+        if (colpivs[i] == -1)
+            nonpivs.push_back(i);
+
+    pool.detach_loop<size_t>(0, nonpivs.size(), [&](size_t i) {
+        auto thecol = sparse_mat_row(trows, nonpivs[i]);
+        auto k_vec = sparse_mat_row(K, i);
+        sparse_vec_realloc(k_vec, thecol->nnz + 1);
+        for (size_t j = 0; j < thecol->nnz; j++) {
+            _sparse_vec_set_entry(k_vec,
+                pivots[thecol->indices[j]].second,
+                thecol->entries + j);
+        }
+        _sparse_vec_set_entry(k_vec, nonpivs[i], m1);
+        sparse_vec_sort_indices(k_vec); // sort the indices
+        });
+    pool.wait();
+
+    sparse_mat_clear(trows);
+    return M->ncol - rank;
+}

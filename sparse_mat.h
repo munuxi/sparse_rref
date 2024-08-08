@@ -15,7 +15,7 @@ typedef sparse_mat_t<ulong> snmod_mat_t;
 typedef sparse_mat_t<fmpq> sfmpq_mat_t;
 
 template <typename T>
-inline sparse_vec_struct<T>* sparse_mat_row(sparse_mat_t<T> mat, slong i) {
+inline sparse_vec_struct<T>* sparse_mat_row(const sparse_mat_t<T> mat, const slong i) {
     return mat->rows + i;
 }
 
@@ -150,7 +150,9 @@ inline void sparse_mat_transpose_part(sparse_mat_t<T> mat2, const sparse_mat_t<T
 
 // rref 
 std::vector<std::pair<slong, slong>> sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt);
+int sfmpq_mat_rref_kernel(sfmpq_mat_t K, const sfmpq_mat_t mat, const std::vector<std::pair<slong, slong>>& pivots, BS::thread_pool& pool);
 std::vector<std::pair<slong, slong>> snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool, rref_option_t opt);
+int snmod_mat_rref_kernel(snmod_mat_t K, snmod_mat_t mat, const std::vector<std::pair<slong, slong>>& pivots, nmod_t p, BS::thread_pool& pool);
 
 // convert
 inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src,

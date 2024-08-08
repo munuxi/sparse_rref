@@ -26,26 +26,58 @@ typedef sparse_vec_t<fmpq> sfmpq_vec_t;
 
 // sparse_vec
 
+// memory management
+// realloc is ok to apply to NULL pointer
+template <typename T>
+inline void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
+    if (alloc == vec->alloc)
+        return;
+    // so sparse_vec_realloc(vec,vec->alloc) is useless
+    ulong old_alloc = vec->alloc;
+    vec->alloc = std::min(alloc, vec->len);
+    if (vec->alloc > old_alloc) {
+        // enlarge: init later
+        vec->indices =
+            (slong*)realloc(vec->indices, vec->alloc * sizeof(slong));
+        vec->entries = (T*)realloc(vec->entries, vec->alloc * sizeof(T));
+        if constexpr (std::is_same_v<T, fmpq>) {
+            for (ulong i = old_alloc; i < vec->alloc; i++)
+                fmpq_init((fmpq*)(vec->entries) + i);
+        }
+    }
+    else {
+        // shrink: clear first
+        if constexpr (std::is_same_v<T, fmpq>) {
+            for (ulong i = vec->alloc; i < old_alloc; i++)
+                fmpq_clear((fmpq*)(vec->entries) + i);
+        }
+        vec->indices =
+            (slong*)realloc(vec->indices, vec->alloc * sizeof(slong));
+        vec->entries = (T*)realloc(vec->entries, vec->alloc * sizeof(T));
+    }
+}
+
+
 template <typename T>
 inline void _sparse_vec_init(sparse_vec_t<T> vec, ulong len,
                                     ulong alloc) {
     vec->len = len;
     vec->nnz = 0;
-    vec->alloc = std::min(alloc, len);
-    vec->indices = (slong *)malloc(vec->alloc * sizeof(slong));
-    vec->entries = (T *)malloc(vec->alloc * sizeof(T));
-    if constexpr (std::is_same_v<T, fmpq>) {
-        for (auto i = 0; i < vec->alloc; i++)
-            fmpq_init(vec->entries + i);
-    }
+    sparse_vec_realloc(vec, alloc);
 }
 
+// alloc at least 1 to make sure that indices and entries are not NULL
 template <typename T>
 inline void sparse_vec_init(sparse_vec_t<T> vec, ulong len) {
-    // alloc at least 1 to make sure that indices and entries are not NULL
     _sparse_vec_init(vec, len, 1ULL);
 }
 
+// just set vec to zero vector
+template <typename T> inline void sparse_vec_zero(sparse_vec_t<T> vec) {
+    vec->nnz = 0;
+}
+
+// set zero and clear memory
 template <typename T> inline void sparse_vec_clear(sparse_vec_t<T> vec) {
     free(vec->indices);
     if constexpr (std::is_same_v<T, fmpq>) {
@@ -91,34 +123,6 @@ inline bool sparse_vec_is_same(const sparse_vec_t<T> vec,
         }
     }
     return true;
-}
-
-// never use sparse_vec_realloc(vec,vec->alloc)
-template <typename T>
-inline void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
-    if (alloc == vec->alloc)
-        return;
-    ulong old_alloc = vec->alloc;
-    vec->alloc = std::min(alloc, vec->len);
-    if (vec->alloc > old_alloc) {
-        // enlarge: init later
-        vec->indices =
-            (slong *)realloc(vec->indices, vec->alloc * sizeof(slong));
-        vec->entries = (T *)realloc(vec->entries, vec->alloc * sizeof(T));
-        if constexpr (std::is_same_v<T, fmpq>) {
-            for (ulong i = old_alloc; i < vec->alloc; i++)
-                fmpq_init((fmpq *)(vec->entries) + i);
-        }
-    } else {
-        // shrink: clear first
-        if constexpr (std::is_same_v<T, fmpq>) {
-            for (ulong i = vec->alloc; i < old_alloc; i++)
-                fmpq_clear((fmpq *)(vec->entries) + i);
-        }
-        vec->indices =
-            (slong *)realloc(vec->indices, vec->alloc * sizeof(slong));
-        vec->entries = (T *)realloc(vec->entries, vec->alloc * sizeof(T));
-    }
 }
 
 // constructors
@@ -205,15 +209,20 @@ inline void sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, S val,
 
 // TODO: Implement a better sorting algorithm (sort only once)
 template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
-    slong *perm = _perm_init(vec->nnz);
-    T *entries;
-    if constexpr (std::is_same_v<T, fmpq>) {
-        entries = (T *)_fmpq_vec_init(vec->nnz);
-    } else {
-        entries = (T *)malloc(vec->nnz * sizeof(T));
-    }
+    if (vec->nnz <= 1)
+        return;
 
-    std::sort(perm, perm + vec->nnz, [&vec](slong a, slong b) {
+    std::vector<slong> perm(vec->nnz);
+    for (size_t i = 0; i < vec->nnz; i++)
+        perm[i] = i;
+
+    T* entries = (T*)malloc(vec->nnz * sizeof(T));
+    if constexpr (std::is_same_v<T, fmpq>) {
+        for (size_t i = 0; i < vec->nnz; i++)
+            fmpq_init(entries + i);
+    } 
+
+    std::sort(perm.begin(), perm.end(), [&vec](slong a, slong b) {
         return vec->indices[a] < vec->indices[b];
     });
 
@@ -224,7 +233,6 @@ template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
         scalar_set(vec->entries + i, entries + i);
 
     std::sort(vec->indices, vec->indices + vec->nnz);
-    _perm_clear(perm);
     if constexpr (std::is_same_v<T, fmpq>) {
         _fmpq_vec_clear(entries, vec->nnz);
     } else {
