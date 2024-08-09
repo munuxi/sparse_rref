@@ -39,7 +39,9 @@ inline void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
         // enlarge: init later
         vec->indices =
             (slong*)realloc(vec->indices, vec->alloc * sizeof(slong));
-        vec->entries = (T*)realloc(vec->entries, vec->alloc * sizeof(T));
+        if constexpr (!std::is_same_v<T, bool>) {
+            vec->entries = (T*)realloc(vec->entries, vec->alloc * sizeof(T));
+        }
         if constexpr (std::is_same_v<T, fmpq>) {
             for (ulong i = old_alloc; i < vec->alloc; i++)
                 fmpq_init((fmpq*)(vec->entries) + i);
@@ -53,7 +55,9 @@ inline void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
         }
         vec->indices =
             (slong*)realloc(vec->indices, vec->alloc * sizeof(slong));
-        vec->entries = (T*)realloc(vec->entries, vec->alloc * sizeof(T));
+        if constexpr (!std::is_same_v<T, bool>) {
+            vec->entries = (T*)realloc(vec->entries, vec->alloc * sizeof(T));
+        }
     }
 }
 
@@ -114,11 +118,8 @@ inline bool sparse_vec_is_same(const sparse_vec_t<T> vec,
     for (size_t i = 0; i < src->nnz; i++) {
         if (vec->indices[i] != src->indices[i])
             return false;
-        if constexpr (std::is_same_v<T, fmpq>) {
-            if (!fmpq_equal(vec->entries + i, src->entries + i))
-                return false;
-        } else {
-            if (vec->entries[i] != src->entries[i])
+        if constexpr (!std::is_same_v<T, bool>) {
+            if (!scalar_equal(vec->entries + i, src->entries + i))
                 return false;
         }
     }
@@ -136,7 +137,9 @@ inline void sparse_vec_set(sparse_vec_t<T> vec,
     vec->nnz = src->nnz;
     for (ulong i = 0; i < src->nnz; i++) {
         vec->indices[i] = src->indices[i];
-        scalar_set(vec->entries + i, src->entries + i);
+        if constexpr (!std::is_same_v<T, bool>) {
+            scalar_set(vec->entries + i, src->entries + i);
+        }
     }
 }
 
@@ -181,31 +184,34 @@ inline void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index,
         sparse_vec_realloc(vec, new_alloc);
     }
     vec->indices[vec->nnz] = index;
-    if constexpr (std::is_same_v<T, fmpq>) {
-        fmpq_set(vec->entries + vec->nnz, val);
-    } else {
-        vec->entries[vec->nnz] = (T)val;
+    if constexpr (!std::is_same_v<T, bool>) {
+        if constexpr (std::is_same_v<T, fmpq>) {
+            fmpq_set(vec->entries + vec->nnz, val);
+        }
+        else {
+            vec->entries[vec->nnz] = (T)val;
+        }
     }
     vec->nnz++;
 }
 
-template <typename T, typename S>
-inline void sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, S val,
-                                        bool isbinary = false) {
-    if (index < 0 || (ulong)index >= vec->len)
-        return;
-
-    // if val = 0, here we only set it as zero, but not remove it
-    T *entry = sparse_vec_entry(vec, index, isbinary);
-    if (entry != NULL) {
-        if constexpr (std::is_same_v<T, fmpq>)
-            fmpq_set((fmpq *)entry, val);
-        else
-            *entry = (T)val;
-        return;
-    }
-    _sparse_vec_set_entry(vec, index, val);
-}
+// template <typename T, typename S>
+// inline void sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, S val,
+//                                         bool isbinary = false) {
+//     if (index < 0 || (ulong)index >= vec->len)
+//         return;
+// 
+//     // if val = 0, here we only set it as zero, but not remove it
+//     T *entry = sparse_vec_entry(vec, index, isbinary);
+//     if (entry != NULL) {
+//         if constexpr (std::is_same_v<T, fmpq>)
+//             fmpq_set((fmpq *)entry, val);
+//         else
+//             *entry = (T)val;
+//         return;
+//     }
+//     _sparse_vec_set_entry(vec, index, val);
+// }
 
 // TODO: Implement a better sorting algorithm (sort only once)
 template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {

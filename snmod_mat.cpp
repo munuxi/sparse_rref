@@ -918,7 +918,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
         rank += ps.size();
 
         auto end = clocknow();
-        int oldcount = 0;
+        double oldstatus = 0;
         std::atomic<int> count(0);
         pool.detach_loop<slong>(kk, mat->nrow, [&](slong i) {
             if (rowpivs[rowperm[i]] != -1)
@@ -930,19 +930,19 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
             });
         while(count < mat->nrow - kk) {
             auto status = (kk - ps.size() + 1) + ((double)count / (mat->nrow - kk)) * ps.size();
-            if (verbose && count % opt->print_step == 0) {
+            if (verbose && count % printstep == 0) {
                 end = clocknow();
                 now_nnz = sparse_mat_nnz(mat);
                 std::cout << "\r-- Row: " << (int)std::floor(status) << "/" << mat->nrow
                     << "  rank: " << rank
                     << "  nnz: " << now_nnz << "  " << "density: "
                     << (double)100 * now_nnz / (mat->nrow * mat->ncol) << "%"
-                    << "  speed: " << (count - oldcount) / usedtime(start, end)
+                    << "  speed: " << (status - oldstatus) / usedtime(start, end)
                     << "  row/s" << std::flush;
                 start = clocknow();
-                oldcount = count;
+                oldstatus = status;
             }
-            // std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            //std::this_thread::sleep_for(std::chrono::milliseconds(50));
 		}
         pool.wait();
 

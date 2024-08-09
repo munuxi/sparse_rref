@@ -34,6 +34,21 @@ struct rref_option {
 };
 typedef struct rref_option rref_option_t[1];
 
+enum RING {
+    FIELD_F2,    // bool
+    FIELD_QQ,    // fmpq
+    FIELD_Fp,    // ulong
+    RING_MulitFp // not implemented now
+};
+
+struct field_struct {
+    enum RING type;
+    ulong len; // the length of the product ring
+    nmod_t p;
+    // nmod_t* pvec;
+};
+typedef struct field_struct field_t[1];
+
 struct sindex_vec_struct {
     ulong len;
     ulong nnz;
