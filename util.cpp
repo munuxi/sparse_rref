@@ -1,26 +1,6 @@
 #include "util.h"
 #include <stack>
 
-void sindex_vec_realloc(sindex_vec_t vec, ulong alloc) {
-    if (alloc == vec->alloc)
-        return;
-    ulong old_alloc = vec->alloc;
-    vec->alloc = std::min(alloc, vec->len);
-    vec->indices = (slong *)realloc(vec->indices, vec->alloc * sizeof(slong));
-}
-
-void _sindex_vec_set_entry(sindex_vec_t vec, slong index) {
-    if (index < 0 || (ulong)index >= vec->len)
-        return;
-
-    if (vec->nnz == vec->alloc) {
-        ulong new_alloc = std::min(2 * (vec->alloc + 1), vec->len);
-        sindex_vec_realloc(vec, new_alloc);
-    }
-    vec->indices[vec->nnz] = index;
-    vec->nnz++;
-}
-
 std::vector<std::string> SplitString(const std::string &s, std::string delim) {
     auto start = 0ULL;
     auto end = s.find(delim);

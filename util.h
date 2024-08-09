@@ -49,66 +49,6 @@ struct field_struct {
 };
 typedef struct field_struct field_t[1];
 
-struct sindex_vec_struct {
-    ulong len;
-    ulong nnz;
-    ulong alloc;
-    slong *indices;
-};
-typedef struct sindex_vec_struct sindex_vec_t[1];
-
-struct sindex_mat_struct {
-    ulong nrow;
-    ulong ncol;
-    sindex_vec_struct *rows;
-};
-typedef struct sindex_mat_struct sindex_mat_t[1];
-
-// init and clear
-inline void _sindex_vec_init(sindex_vec_t vec, ulong len, ulong alloc) {
-    vec->len = len;
-    vec->nnz = 0;
-    vec->alloc = std::min(alloc, len);
-    vec->indices = (slong *)malloc(vec->alloc * sizeof(slong));
-}
-
-inline void sindex_vec_init(sindex_vec_t vec, ulong len) {
-    // alloc at least 1 to make sure that indices and entries are not NULL
-    _sindex_vec_init(vec, len, 1ULL);
-}
-
-inline void sindex_vec_clear(sindex_vec_t vec) {
-    free(vec->indices);
-    vec->nnz = 0;
-    vec->alloc = 0;
-    vec->indices = NULL;
-}
-
-void sindex_vec_realloc(sindex_vec_t vec, ulong alloc);
-void _sindex_vec_set_entry(sindex_vec_t vec, slong index);
-
-inline void _sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol,
-                                    ulong alloc) {
-    mat->nrow = nrow;
-    mat->ncol = ncol;
-    mat->rows = (sindex_vec_struct *)malloc(nrow * sizeof(sindex_vec_struct));
-    for (size_t i = 0; i < nrow; i++)
-        _sindex_vec_init(mat->rows + i, ncol, alloc);
-}
-
-inline void sindex_mat_init(sindex_mat_t mat, ulong nrow, ulong ncol) {
-    _sindex_mat_init(mat, nrow, ncol, 1ULL);
-}
-
-inline void sindex_mat_clear(sindex_mat_t mat) {
-    for (size_t i = 0; i < mat->nrow; i++)
-        sindex_vec_clear(mat->rows + i);
-    free(mat->rows);
-    mat->nrow = 0;
-    mat->ncol = 0;
-    mat->rows = NULL;
-}
-
 template <typename T> inline T *binarysearch(T *begin, T *end, T val) {
     auto ptr = std::lower_bound(begin, end, val);
     if (ptr == end || *ptr == val)

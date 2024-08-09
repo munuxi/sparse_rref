@@ -99,7 +99,7 @@ inline void sparse_mat_clear_zero_row(sparse_mat_t<T> mat) {
 }
 
 template <typename T>
-inline void sparse_mat_transpose_pointer(sparse_mat_t<T *> mat2, const sparse_mat_t<T> mat) {
+inline void sparse_mat_transpose_pointer(sparse_mat_t<T*> mat2, const sparse_mat_t<T> mat) {
     for (size_t i = 0; i < mat2->nrow; i++)
         mat2->rows[i].nnz = 0;
 
@@ -163,16 +163,17 @@ inline int sparse_vec_dot_sparse_vec(T* result, const sparse_vec_t<T> v1, const 
         return 0;
     }
     slong ptr1 = 0, ptr2 = 0;
-    while(ptr1 < v1->nnz && ptr2 < v2->nnz) {
-		if (v1->indices[ptr1] == v2->indices[ptr2]) {
-			scalar_add(result, result, scalar_mul(v1->entries + ptr1, v2->entries + ptr2));
-			ptr1++;
-			ptr2++;
-		} else if (v1->indices[ptr1] < v2->indices[ptr2]) 
-			ptr1++;
-        else 
-			ptr2++;
-	}
+    while (ptr1 < v1->nnz && ptr2 < v2->nnz) {
+        if (v1->indices[ptr1] == v2->indices[ptr2]) {
+            scalar_add(result, result, scalar_mul(v1->entries + ptr1, v2->entries + ptr2));
+            ptr1++;
+            ptr2++;
+        }
+        else if (v1->indices[ptr1] < v2->indices[ptr2])
+            ptr1++;
+        else
+            ptr2++;
+    }
     if (scalar_is_zero(result))
         return 0;
     return 1;

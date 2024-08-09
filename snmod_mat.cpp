@@ -9,21 +9,6 @@ inline void snmod_mat_xmay(snmod_mat_t mat, slong x, slong y, ulong a,
     snmod_vec_sub_mul(mat->rows + x, mat->rows + y, a, p);
 }
 
-void snmod_mat_transpose_index(sindex_mat_t mat2, snmod_mat_t mat) {
-    for (size_t i = 0; i < mat2->nrow; i++)
-        mat2->rows[i].nnz = 0;
-
-    for (size_t i = 0; i < mat->nrow; i++) {
-        auto therow = mat->rows + i;
-        for (size_t j = 0; j < therow->nnz; j++) {
-            if (scalar_is_zero(therow->entries + j))
-                continue;
-            auto col = therow->indices[j];
-            _sindex_vec_set_entry(mat2->rows + col, i);
-        }
-    }
-}
-
 // first look for rows with only one nonzero value and eliminate them
 // we assume that mat is canonical, i.e. each index is sorted
 // and the result is also canonical

@@ -145,8 +145,7 @@ inline void sparse_vec_set(sparse_vec_t<T> vec,
 
 // be careful to use it
 template <typename T>
-inline void sparse_vec_move(sparse_vec_t<T> vec,
-                                   const sparse_vec_t<T> src) {
+inline void sparse_vec_move(sparse_vec_t<T> vec, const sparse_vec_t<T> src) {
     sparse_vec_clear(vec);
     vec->indices = src->indices;
     vec->entries = src->entries;
@@ -170,14 +169,6 @@ inline void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index,
                                          S val) {
     if (index < 0 || (ulong)index >= vec->len)
         return;
-
-    if (std::is_same_v<T, fmpq>) {
-        if (fmpq_is_zero((fmpq *)val))
-            return;
-    } else {
-        if (val == 0)
-            return;
-    }
 
     if (vec->nnz == vec->alloc) {
         ulong new_alloc = std::min(vec->alloc + (vec->alloc + 1) / 2, vec->len);
@@ -218,6 +209,11 @@ template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
     if (vec->nnz <= 1)
         return;
 
+    if constexpr (std::is_same_v<T, bool>) {
+        std::sort(vec->indices, vec->indices + vec->nnz);
+        return;
+    }
+
     std::vector<slong> perm(vec->nnz);
     for (size_t i = 0; i < vec->nnz; i++)
         perm[i] = i;
@@ -240,14 +236,18 @@ template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
 
     std::sort(vec->indices, vec->indices + vec->nnz);
     if constexpr (std::is_same_v<T, fmpq>) {
-        _fmpq_vec_clear(entries, vec->nnz);
-    } else {
-        free(entries);
+        for (size_t i = 0; i < vec->nnz; i++)
+            fmpq_clear(entries + i);
     }
+    free(entries);
 }
 
 template <typename T>
 inline void sparse_vec_canonicalize(sparse_vec_t<T> vec) {
+    if constexpr (std::is_same_v<T, bool>) {
+        return;
+    }
+
     // sparse_vec_sort_indices(vec);
     ulong new_nnz = 0;
     for (size_t i = 0; i < vec->nnz; i++) {
