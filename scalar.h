@@ -21,24 +21,24 @@ inline void scalar_zero(ulong* a) { *a = 0; }
 // arithmetic
 
 inline void scalar_add(fmpq_t a, const fmpq_t b, const fmpq_t c) {
-    fmpq_add(a, b, c);
+	fmpq_add(a, b, c);
 }
 inline void scalar_add(ulong* a, const ulong* b, const ulong* c) {
-    *a = (*b) + (*c);
+	*a = (*b) + (*c);
 }
 
 inline void scalar_sub(fmpq_t a, const fmpq_t b, const fmpq_t c) {
-    fmpq_sub(a, b, c);
+	fmpq_sub(a, b, c);
 }
 inline void scalar_sub(ulong* a, const ulong* b, const ulong* c) {
-    *a = (*b) - (*c);
+	*a = (*b) - (*c);
 }
 
 inline void scalar_mul(fmpq_t a, const fmpq_t b, const fmpq_t c) {
-    fmpq_mul(a, b, c);
+	fmpq_mul(a, b, c);
 }
 inline void scalar_mul(ulong* a, const ulong* b, const ulong* c) {
-    *a = (*b) * (*c);
+	*a = (*b) * (*c);
 }
 
 #endif
