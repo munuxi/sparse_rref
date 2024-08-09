@@ -84,6 +84,7 @@ inline double usedtime(std::chrono::system_clock::time_point start,
 // vector
 template <typename T>
 void remove_indices(std::vector<T>& vec, std::vector<slong>& indices) {
+	std::sort(indices.begin(), indices.end());
 	auto it = indices.rbegin();
 	for (; it != indices.rend(); ++it) {
 		if (*it >= 0 && *it < vec.size()) {

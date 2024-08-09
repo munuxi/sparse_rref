@@ -67,7 +67,16 @@ inline void _sparse_vec_init(sparse_vec_t<T> vec, ulong len,
 	ulong alloc) {
 	vec->len = len;
 	vec->nnz = 0;
-	sparse_vec_realloc(vec, alloc);
+	vec->alloc = alloc;
+	vec->indices = (slong*)malloc(vec->alloc * sizeof(slong));
+	if constexpr (std::is_same_v<T, bool>) {
+		return;
+	}
+	vec->entries = (T*)malloc(vec->alloc * sizeof(T));
+	if constexpr (std::is_same_v<T, fmpq>) {
+		for (ulong i = 0; i < vec->alloc; i++)
+			fmpq_init(vec->entries + i);
+	}
 }
 
 // alloc at least 1 to make sure that indices and entries are not NULL

@@ -214,9 +214,13 @@ auto findmanypivots_r(sfmpq_mat_t mat, sparse_mat_t<T> tranmat,
 	std::vector<slong>::iterator start,
 	size_t max_depth = ULLONG_MAX) {
 
+	auto end = rowperm.end();
+
 	std::vector<std::pair<slong, std::vector<slong>::iterator>> pivots;
 	std::unordered_set<slong> pcols;
 	pcols.reserve(std::min((size_t)4096, max_depth));
+
+	// rightlook first
 	for (auto row = start; row != rowperm.end(); row++) {
 		if (row - start > max_depth)
 			break;
@@ -248,7 +252,53 @@ auto findmanypivots_r(sfmpq_mat_t mat, sparse_mat_t<T> tranmat,
 			pcols.insert(col);
 		}
 	}
-	return pivots;
+
+	// leftlook then
+	// now pcols will be used as prows to store the rows that have been used
+	pcols.clear();
+	std::vector<std::pair<slong, std::vector<slong>::iterator>> invpivots;
+	// make a table to help to look for row pointers
+	std::vector<std::vector<slong>::iterator> rowptrs(mat->nrow, end);
+	for (auto it = start; it != end; it++)
+		rowptrs[*it] = it;
+
+	for (auto p : pivots) {
+		pcols.insert(*(p.second));
+	}
+	for (size_t i = 0; i < mat->ncol; i++) {
+		auto col = mat->ncol - i - 1; // reverse ordering
+		if (colpivs[col] != -1)
+			continue;
+		bool flag = true;
+		auto tc = tranmat->rows + col;
+		slong row = 0;
+		ulong mnnz = ULLONG_MAX;
+		for (size_t j = 0; j < tc->nnz; j++) {
+			flag = (pcols.find(tc->indices[j]) == pcols.end());
+			if (!flag)
+				break;
+			if (rowptrs[tc->indices[j]] != end) {
+				if (mat->rows[tc->indices[j]].nnz < mnnz) {
+					mnnz = mat->rows[tc->indices[j]].nnz;
+					row = tc->indices[j];
+				}
+			}
+		}
+		if (!flag)
+			continue;
+		if (mnnz != ULLONG_MAX) {
+			invpivots.push_back(std::make_pair(col, rowptrs[row]));
+			pcols.insert(row);
+		}
+	}
+	// std::cout << "\npivots size: " << pivots.size() << std::endl;
+	// std::cout << "invpivots size: " << invpivots.size() << std::endl;
+
+	// then join the two pivots, we need to reverse the order of invpivots
+	std::reverse(invpivots.begin(), invpivots.end());
+	invpivots.insert(invpivots.end(), pivots.begin(), pivots.end());
+
+	return invpivots;
 }
 
 // first write a stupid one
@@ -259,6 +309,39 @@ void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slo
 
 	if (therow->nnz == 0)
 		return;
+
+	// if pivots size is small, we can use the sparse vector
+	// to save to cost of converting between sparse and dense
+	// vectors, otherwise we use dense vector
+	if (pivots.size() < 100) {
+		sfmpq_vec_t tmpsvec;
+		sparse_vec_init(tmpsvec, mat->ncol);
+		sparse_vec_set(tmpsvec, therow);
+
+		if (ordering == 1) {
+			for (auto& [r, c] : pivots) {
+				auto entry = sparse_vec_entry(tmpsvec, c);
+				if (entry == NULL)
+					continue;
+				auto row = mat->rows + r;
+				sfmpq_vec_sub_mul(tmpsvec, row, entry);
+			}
+		}
+		else if (ordering == -1) {
+			for (auto ii = pivots.rbegin(); ii != pivots.rend(); ii++) {
+				auto& [r, c] = *ii;
+				auto entry = sparse_vec_entry(tmpsvec, c);
+				if (entry == NULL)
+					continue;
+				auto row = mat->rows + r;
+				sfmpq_vec_sub_mul(tmpsvec, row, entry);
+			}
+		}
+
+		sparse_vec_swap(therow, tmpsvec);
+		sparse_vec_clear(tmpsvec);
+		return;
+	}
 
 	for (size_t i = 0; i < mat->ncol; i++)
 		fmpq_zero(tmpvec + i);
