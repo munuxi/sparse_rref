@@ -1,6 +1,4 @@
 #include "sparse_mat.h"
-#include <cstring>
-#include "thread_pool.hpp"
 
 // Row x - a*Row y
 
@@ -152,6 +150,8 @@ auto findmanypivots_c(snmod_mat_t mat, sparse_mat_t<ulong*> tranmat,
 	std::vector<slong>::iterator start,
 	size_t max_depth = ULLONG_MAX) {
 
+	auto end = colperm.end();
+
 	std::vector<std::pair<slong, std::vector<slong>::iterator>> pivots;
 	std::unordered_set<slong> prows;
 	prows.reserve(std::min((size_t)4096, max_depth));
@@ -189,7 +189,7 @@ auto findmanypivots_c(snmod_mat_t mat, sparse_mat_t<ulong*> tranmat,
 	return pivots;
 }
 
-
+// TODO: add a DFS algorithm to find a maximal compatible set
 // //     |    a2 b2 |    |    a2 b2 |    |    a2 b2|    |    a2 b2 |   
 // //  11 | a1  *  * | 10 | a1  *  0 | 01 | a1  *  *| 00 | a1  *  0 |   
 // //     | b1  *  * |    | b1  *  * |    | b1  0  *|    | b1  0  * |   
@@ -212,98 +212,6 @@ auto findmanypivots_c(snmod_mat_t mat, sparse_mat_t<ulong*> tranmat,
 // 	return 3;
 // }
 
-template <typename T>
-auto findmanypivots_r(snmod_mat_t mat, sparse_mat_t<T> tranmat,
-	slong* colpivs, std::vector<slong>& rowperm,
-	std::vector<slong>::iterator start,
-	size_t max_depth = ULLONG_MAX) {
-
-	auto end = rowperm.end();
-
-	std::vector<std::pair<slong, std::vector<slong>::iterator>> pivots;
-	std::unordered_set<slong> pcols;
-	pcols.reserve(std::min((size_t)4096, max_depth));
-
-	// rightlook first
-	for (auto row = start; row != end; row++) {
-		if (row - start > max_depth)
-			break;
-
-		auto therow = mat->rows + *row;
-		if (therow->nnz == 0)
-			continue;
-		auto indices = therow->indices;
-
-		slong col;
-		ulong mnnz = ULLONG_MAX;
-		bool flag = true;
-
-		for (size_t i = 0; i < therow->nnz; i++) {
-			flag = (pcols.find(indices[i]) == pcols.end());
-			if (!flag)
-				break;
-			if (colpivs[indices[i]] != -1)
-				continue;
-			if (tranmat->rows[indices[i]].nnz < mnnz) {
-				col = indices[i];
-				mnnz = tranmat->rows[col].nnz;
-			}
-		}
-		if (!flag)
-			continue;
-		if (mnnz != ULLONG_MAX) {
-			pivots.push_back(std::make_pair(col, row));
-			pcols.insert(col);
-		}
-	}
-	// leftlook then
-	// now pcols will be used as prows to store the rows that have been used
-	pcols.clear();
-	std::vector<std::pair<slong, std::vector<slong>::iterator>> invpivots;
-	// make a table to help to look for row pointers
-	std::vector<std::vector<slong>::iterator> rowptrs(mat->nrow, end);
-	for (auto it = start; it != end; it++)
-		rowptrs[*it] = it;
-	
-	for (auto p : pivots){
-		pcols.insert(*(p.second));
-	}
-	for (size_t i = 0; i < mat->ncol; i++){
-		auto col = mat->ncol - i - 1; // reverse ordering
-		if (colpivs[col] != -1)
-			continue;
-		bool flag = true;
-		auto tc = tranmat->rows + col;
-		slong row = 0;
-		ulong mnnz = ULLONG_MAX;
-		for (size_t j = 0; j < tc->nnz; j++){
-			flag = (pcols.find(tc->indices[j]) == pcols.end());
-			if (!flag)
-				break;
-			if (rowptrs[tc->indices[j]] != end) {
-				if (mat->rows[tc->indices[j]].nnz < mnnz){
-					mnnz = mat->rows[tc->indices[j]].nnz;
-					row = tc->indices[j];
-				}
-			}
-		}
-		if (!flag)
-			continue;
-		if (mnnz != ULLONG_MAX) {
-			invpivots.push_back(std::make_pair(col, rowptrs[row]));
-			pcols.insert(row);
-		}
-	}
-	// std::cout << "\npivots size: " << pivots.size() << std::endl;
-	// std::cout << "invpivots size: " << invpivots.size() << std::endl;
-
-	// then join the two pivots, we need to reverse the order of invpivots
-	std::reverse(invpivots.begin(), invpivots.end());
-	invpivots.insert(invpivots.end(), pivots.begin(), pivots.end());
-
-	return invpivots;
-}
-
 // first write a stupid one
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
@@ -320,7 +228,9 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		snmod_vec_t tmpsvec;
 		sparse_vec_init(tmpsvec, mat->ncol);
 		sparse_vec_set(tmpsvec, therow);
-	
+
+		// auto& tmpsvec = therow;
+
 		if (ordering == 1) {
 			for (auto& [r, c] : pivots) {
 				auto entry = sparse_vec_entry(tmpsvec, c);
@@ -340,7 +250,7 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 				snmod_vec_sub_mul(tmpsvec, row, *entry, p);
 			}
 		}
-	
+
 		sparse_vec_swap(therow, tmpsvec);
 		sparse_vec_clear(tmpsvec);
 		return;
@@ -350,7 +260,7 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 	for (size_t i = 0; i < therow->nnz; i++)
 		tmpvec[therow->indices[i]] = therow->entries[i];
 
-	if (ordering == 1) {
+	if (ordering > 0) {
 		for (auto& [r, c] : pivots) {
 			auto entry = tmpvec[c];
 			if (entry == 0)
@@ -362,10 +272,9 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 				tmpvec[row->indices[i]] = nmod_sub(tmpvec[row->indices[i]],
 					n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
 			}
-			// snmod_vec_sub_mul(tmpvec, mat->rows + r, *entry, p);
 		}
 	}
-	else if (ordering == -1) {
+	else {
 		for (auto ii = pivots.rbegin(); ii != pivots.rend(); ii++) {
 			auto& [r, c] = *ii;
 			auto entry = tmpvec[c];
@@ -378,19 +287,38 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 				tmpvec[row->indices[i]] = nmod_sub(tmpvec[row->indices[i]],
 					n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
 			}
-			// snmod_vec_sub_mul(tmpvec, mat->rows + r, *entry, p);
+
+			//if (row->nnz < 4) {
+			//	for (size_t i = 0; i < row->nnz; i++) {
+			//		tmpvec[row->indices[i]] = nmod_sub(tmpvec[row->indices[i]],
+			//			n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
+			//	}
+			//}
+			//else {
+			//	for (size_t i = 0; i < (row->nnz) / 4; i++) {
+			//		tmpvec[row->indices[4 * i]] = nmod_sub(tmpvec[row->indices[4 * i]],
+			//			n_mulmod_shoup(entry, row->entries[4 * i], e_pr, p.n), p);
+			//		tmpvec[row->indices[4 * i + 1]] = nmod_sub(tmpvec[row->indices[4 * i + 1]],
+			//			n_mulmod_shoup(entry, row->entries[4 * i + 1], e_pr, p.n), p);
+			//		tmpvec[row->indices[4 * i + 2]] = nmod_sub(tmpvec[row->indices[4 * i + 2]],
+			//			n_mulmod_shoup(entry, row->entries[4 * i + 2], e_pr, p.n), p);
+			//		tmpvec[row->indices[4 * i + 3]] = nmod_sub(tmpvec[row->indices[4 * i + 3]],
+			//			n_mulmod_shoup(entry, row->entries[4 * i + 3], e_pr, p.n), p);
+			//	}
+			//	int left = row->nnz % 4;
+			//	for (size_t i = 0; i < left; i++) {
+			//		auto index = row->nnz - left + i;
+			//		tmpvec[row->indices[index]] = nmod_sub(tmpvec[row->indices[index]],
+			//			n_mulmod_shoup(entry, row->entries[index], e_pr, p.n), p);
+			//	}
+			//}
 		}
 	}
-
-	// sparse_vec_swap(therow, tmpvec);
-	// sparse_vec_clear(tmpvec);
-
 	therow->nnz = 0;
 	for (size_t i = 0; i < mat->ncol; i++) {
 		if (tmpvec[i] != 0)
 			_sparse_vec_set_entry(therow, i, tmpvec[i]);
 	}
-	// free(tmpvec);
 }
 
 // upper solver : ordering = -1
@@ -439,15 +367,13 @@ void triangular_solver(snmod_mat_t mat, std::vector<std::pair<slong, slong>>& pi
 		auto end = clocknow();
 
 		if ((i % printstep == 0 || i == pivots.size() - 1) && verbose) {
-			end = clocknow();
 			auto now_nnz = sparse_mat_nnz(mat);
 			std::cout << "\r-- Row: " << (i + 1) << "/" << pivots.size()
 				<< "  " << "row to eliminate: " << thecol.size() - 1
 				<< "  " << "nnz: " << now_nnz << "  " << "density: "
 				<< (double)100 * now_nnz / (mat->nrow * mat->ncol)
-				<< "%  " << "speed: " << printstep / usedtime(start, end)
+				<< "%  " << "speed: " << 1 / usedtime(start, end)
 				<< " row/s" << std::flush;
-			start = clocknow();
 		}
 	}
 }
@@ -601,7 +527,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		[&colparts](slong a, slong b) { return colparts[a] < colparts[b]; });
 
 	// upper triangle (with respect to row and col perm)
-
+	ulong* cachedensedmat = (ulong*)malloc(mat->ncol * pool.get_thread_count() * sizeof(ulong));
 	sparse_mat_transpose_pointer(tranmat, mat);
 
 	// upper triangle (with respect to row and col perm)
@@ -618,29 +544,30 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		if (ps.size() == 0)
 			break;
 
-		// std::vector<std::pair<slong, slong>> n_pivots;
-		// for (auto& [r, cp] : ps) 
-		//     n_pivots.push_back(std::make_pair(r, *cp));
+		std::vector<std::pair<slong, slong>> n_pivots;
+		for (auto& [r, cp] : ps)
+			n_pivots.push_back(std::make_pair(r, *cp));
 
 		for (auto kk = 0; kk < ps.size(); kk++) {
-			auto start = clocknow();
-
 			auto pp = ps[kk];
 			auto row = pp.first;
 			auto col = *pp.second;
 			rowpivs[row] = col;
 			rank++;
-			scalar = nmod_inv(*sparse_mat_entry(mat, row, col, true), p);
+			scalar = nmod_inv(*sparse_mat_entry(mat, row, col), p);
 			snmod_vec_rescale(mat->rows + row, scalar, p);
+		}
+
+		for (auto kk = 0; kk < ps.size(); kk++) {
+			auto start = clocknow();
+			auto pp = ps[kk];
+			auto row = pp.first;
+			auto col = *pp.second;
 			auto thecol = tranmat->rows + col;
 			pool.detach_loop<slong>(0, thecol->nnz, [&](slong i) {
 				if (thecol->indices[i] == row)
 					return;
-				auto entry =
-					sparse_mat_entry(mat, thecol->indices[i], col, true);
-				// auto this_id = BS::this_thread::get_index().value();
-				// snmod_mat_xmay_cached(mat, thecol->indices[i], row,
-				// cachemat->rows + this_id, *entry, p);
+				auto entry = sparse_mat_entry(mat, thecol->indices[i], col);
 				snmod_mat_xmay(mat, thecol->indices[i], row, *entry, p);
 				});
 			pool.wait();
@@ -778,9 +705,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 	if (verbose) {
 		std::cout << "\n** Rank: " << rank << " nnz: " << sparse_mat_nnz(mat)
 			<< "  " << std::endl;
-	}
-
-	if (verbose) {
 		std::cout << "\n>> Reverse solving: " << std::endl;
 	}
 
@@ -814,6 +738,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 	free(entrylist);
 	free(dolist);
 	free(rowpivs);
+	free(cachedensedmat);
 
 	if (verbose) {
 		std::cout << std::endl;
@@ -881,7 +806,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 
 	std::vector<std::pair<slong, slong>> pivots;
 
-	sparse_mat_t<ulong> tranmat;
+	sparse_mat_t<bool> tranmat;
 	sparse_mat_init(tranmat, mat->ncol, mat->nrow);
 
 	ulong* cachedensedmat = (ulong*)malloc(mat->ncol * pool.get_thread_count() * sizeof(ulong));
@@ -904,86 +829,31 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 			break;
 	}
 
-	//if (verbose)
-	//    std::cout << "-- computing connected components" << std::endl;
-
-	//Graph adjgraph((mat->nrow) + (mat->ncol));
-
-	//for (size_t i = kk; i < mat->nrow; i++) {
-	//    auto therow = mat->rows + rowperm[i];
-	//    for (size_t j = 0; j < therow->nnz; j++) {
-	//        adjgraph.addEdge(rowperm[i], mat->nrow + therow->indices[j]);
-	//    }
-	//}
-
-	//auto connected_components = adjgraph.findMaximalConnectedComponents();
-	//std::sort(connected_components.begin(), connected_components.end(),
-	//    [](std::vector<slong>& a, std::vector<slong>& b) {
-	//        return a.size() < b.size();
-	//    });
-	//for (auto& g : connected_components)
-	//    std::sort(g.begin(), g.end());
-
-	//// use rowparts to label components
-	//std::vector<slong> rowparts(mat->nrow);
-	//std::vector<slong> kkparts(connected_components.size());
-	//for (size_t i = 0; i < mat->nrow; i++)
-	//    rowparts[i] = -1;
-	//for (auto mm = 0; mm < connected_components.size(); mm++) {
-	//    auto g = connected_components[mm];
-	//    kkparts[mm] = rowcolpart(g, mat->nrow);
-	//    for (size_t i = 0; i < kkparts[mm]; i++)
-	//        rowparts[g[i]] = mm;
-	//}
-	//adjgraph.clear();
-
-	//if (verbose) {
-	//    std::cout << "** found " << connected_components.size() << " components"
-	//        << std::endl;
-	//}
-
-	//// sort rows by connected_components and nnz
-	//std::stable_sort(rowperm.begin() + kk, rowperm.end(),
-	//    [&mat,&rowparts](slong a, slong b) {
-	//        if (rowparts[a] < rowparts[b])
-	//            return true;
-	//        else if (mat->rows[a].nnz < mat->rows[b].nnz) 
-	//            return true;
-	//        else if (mat->rows[a].nnz == mat->rows[b].nnz) {
-	//            auto ri1 = mat->rows[a].indices;
-	//            auto ri2 = mat->rows[b].indices;
-	//            auto nnz = mat->rows[a].nnz;
-	//            return std::lexicographical_compare(ri1, ri1 + nnz, ri2, ri2 + nnz);
-	//        }
-	//        else
-	//            return false;
-	//    });
-
 	while (kk < mat->nrow) {
 		auto start = clocknow();
 		auto row = rowperm[kk];
+		std::vector<std::pair<slong, slong>> n_pivots;
 
 		if (mat->rows[row].nnz == 0) {
 			kk++;
 			continue;
 		}
 
+		std::vector<std::pair<slong, std::vector<slong>::iterator>> ps;
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
 		sparse_mat_transpose_part(tranmat, mat, leftrows);
-		auto ps = findmanypivots_r(mat, tranmat, colpivs,
+		ps = findmanypivots_r(mat, tranmat, colpivs,
 			rowperm, rowperm.begin() + kk, opt->search_depth);
 
 		if (ps.size() == 0)
 			break;
-
-		std::vector<std::pair<slong, slong>> n_pivots;
 
 		for (auto& [c, rp] : ps) {
 			pivots.push_back(std::make_pair(*rp, c));
 			n_pivots.push_back(std::make_pair(*rp, c));
 			colpivs[c] = *rp;
 			rowpivs[*rp] = c;
-			ulong scalar = nmod_inv(*sparse_mat_entry(mat, *rp, c, true), p);
+			ulong scalar = nmod_inv(*sparse_mat_entry(mat, *rp, c), p);
 			snmod_vec_rescale(mat->rows + *rp, scalar, p);
 		}
 
@@ -1000,6 +870,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 
 		kk += ps.size();
 		rank += ps.size();
+		slong newpiv = ps.size();
 
 		auto end = clocknow();
 		double oldstatus = 0;
@@ -1013,7 +884,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 			count++;
 			});
 		while (count < mat->nrow - kk) {
-			auto status = (kk - ps.size() + 1) + ((double)count / (mat->nrow - kk)) * ps.size();
+			auto status = (kk - newpiv + 1) + ((double)count / (mat->nrow - kk)) * newpiv;
 			if (verbose && count % printstep == 0) {
 				end = clocknow();
 				now_nnz = sparse_mat_nnz(mat);
@@ -1029,10 +900,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 			//std::this_thread::sleep_for(std::chrono::milliseconds(50));
 		}
 		pool.wait();
-
-		if (ps.size() < 0) {
-			break;
-		}
 	}
 
 	free(cachedensedmat);

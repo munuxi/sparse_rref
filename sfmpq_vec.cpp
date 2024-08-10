@@ -1,5 +1,4 @@
 #include "sparse_vec.h"
-#include <iostream>
 
 void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar) {
 	for (ulong i = 0; i < vec->nnz; i++)

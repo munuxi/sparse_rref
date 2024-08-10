@@ -69,7 +69,7 @@ inline void sparse_mat_compress(sparse_mat_t<T> mat) {
 }
 
 template <typename T>
-inline T* sparse_mat_entry(sparse_mat_t<T> mat, slong row, slong col, bool isbinary = false) {
+inline T* sparse_mat_entry(sparse_mat_t<T> mat, slong row, slong col, bool isbinary = true) {
 	if (row < 0 || col < 0 || (ulong)row >= mat->nrow ||
 		(ulong)col >= mat->ncol)
 		return NULL;
@@ -132,8 +132,8 @@ inline void sparse_mat_transpose(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat
 }
 
 // tranpose only part of the rows
-template <typename T>
-inline void sparse_mat_transpose_part(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat, const std::vector<slong>& rows) {
+template <typename T, typename S>
+inline void sparse_mat_transpose_part(sparse_mat_t<S> mat2, const sparse_mat_t<T> mat, const std::vector<slong>& rows) {
 	for (size_t i = 0; i < mat2->nrow; i++)
 		mat2->rows[i].nnz = 0;
 
@@ -141,8 +141,6 @@ inline void sparse_mat_transpose_part(sparse_mat_t<T> mat2, const sparse_mat_t<T
 		auto row = rows[i];
 		auto therow = mat->rows + row;
 		for (size_t j = 0; j < therow->nnz; j++) {
-			if (scalar_is_zero(therow->entries + j))
-				continue;
 			auto col = therow->indices[j];
 			_sparse_vec_set_entry(mat2->rows + col, row, therow->entries + j);
 		}
@@ -205,6 +203,103 @@ inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<
 }
 
 // rref 
+
+template <typename T, typename S>
+auto findmanypivots_r(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
+	slong* colpivs, std::vector<slong>& rowperm,
+	std::vector<slong>::iterator start,
+	size_t max_depth = ULLONG_MAX) {
+
+	auto end = rowperm.end();
+
+	std::vector<std::pair<slong, std::vector<slong>::iterator>> pivots;
+	std::unordered_set<slong> pcols;
+	pcols.reserve(std::min((size_t)4096, max_depth));
+
+	// rightlook first
+	for (auto row = start; row != end; row++) {
+		if (pivots.size() > max_depth)
+			break;
+
+		auto therow = mat->rows + *row;
+		if (therow->nnz == 0)
+			continue;
+		auto indices = therow->indices;
+
+		slong col;
+		ulong mnnz = ULLONG_MAX;
+		bool flag = true;
+
+		for (size_t i = 0; i < therow->nnz; i++) {
+			flag = (pcols.find(indices[i]) == pcols.end());
+			if (!flag)
+				break;
+			if (colpivs[indices[i]] != -1)
+				continue;
+			if (tranmat->rows[indices[i]].nnz < mnnz) {
+				col = indices[i];
+				mnnz = tranmat->rows[col].nnz;
+			}
+		}
+		if (!flag)
+			continue;
+		if (mnnz != ULLONG_MAX) {
+			pivots.push_back(std::make_pair(col, row));
+			pcols.insert(col);
+		}
+	}
+	// leftlook then
+	// now pcols will be used as prows to store the rows that have been used
+	pcols.clear();
+	std::vector<std::pair<slong, std::vector<slong>::iterator>> invpivots;
+	// make a table to help to look for row pointers
+	std::vector<std::vector<slong>::iterator> rowptrs(mat->nrow, end);
+	for (auto it = start; it != end; it++)
+		rowptrs[*it] = it;
+
+	for (auto p : pivots) {
+		pcols.insert(*(p.second));
+	}
+
+	for (size_t i = 0; i < mat->ncol; i++) {
+		if (invpivots.size() > max_depth)
+			break;
+		auto col = mat->ncol - i - 1; // reverse ordering
+		if (colpivs[col] != -1)
+			continue;
+		bool flag = true;
+		auto tc = tranmat->rows + col;
+		slong row = 0;
+		ulong mnnz = ULLONG_MAX;
+		for (size_t j = 0; j < tc->nnz; j++) {
+			flag = (pcols.find(tc->indices[j]) == pcols.end());
+			if (!flag)
+				break;
+			if (rowptrs[tc->indices[j]] != end) {
+				if (mat->rows[tc->indices[j]].nnz < mnnz) {
+					mnnz = mat->rows[tc->indices[j]].nnz;
+					row = tc->indices[j];
+				}
+			}
+		}
+		if (!flag)
+			continue;
+		if (mnnz != ULLONG_MAX) {
+			invpivots.push_back(std::make_pair(col, rowptrs[row]));
+			pcols.insert(row);
+		}
+	}
+	// std::cout << "\npivots size: " << pivots.size() << std::endl;
+	// std::cout << "invpivots size: " << invpivots.size() << std::endl;
+
+	// then join the two pivots, we need to reverse the order of invpivots
+	std::reverse(invpivots.begin(), invpivots.end());
+	invpivots.insert(invpivots.end(), pivots.begin(), pivots.end());
+
+	return invpivots;
+}
+
+
 std::vector<std::pair<slong, slong>> sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt);
 ulong sfmpq_mat_rref_kernel(sfmpq_mat_t K, const sfmpq_mat_t mat, const std::vector<std::pair<slong, slong>>& pivots, BS::thread_pool& pool);
 std::vector<std::pair<slong, slong>> snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool, rref_option_t opt);

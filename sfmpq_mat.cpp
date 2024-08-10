@@ -208,99 +208,6 @@ slong findrowpivot(sfmpq_mat_t mat, slong col, slong* rowpivs,
 	return rowi;
 }
 
-template <typename T>
-auto findmanypivots_r(sfmpq_mat_t mat, sparse_mat_t<T> tranmat,
-	slong* colpivs, std::vector<slong>& rowperm,
-	std::vector<slong>::iterator start,
-	size_t max_depth = ULLONG_MAX) {
-
-	auto end = rowperm.end();
-
-	std::vector<std::pair<slong, std::vector<slong>::iterator>> pivots;
-	std::unordered_set<slong> pcols;
-	pcols.reserve(std::min((size_t)4096, max_depth));
-
-	// rightlook first
-	for (auto row = start; row != rowperm.end(); row++) {
-		if (row - start > max_depth)
-			break;
-
-		auto therow = mat->rows + *row;
-		if (therow->nnz == 0)
-			continue;
-		auto indices = therow->indices;
-
-		slong col;
-		ulong mnnz = ULLONG_MAX;
-		bool flag = true;
-
-		for (size_t i = 0; i < therow->nnz; i++) {
-			flag = (pcols.find(indices[i]) == pcols.end());
-			if (!flag)
-				break;
-			if (colpivs[indices[i]] != -1)
-				continue;
-			if (tranmat->rows[indices[i]].nnz < mnnz) {
-				col = indices[i];
-				mnnz = tranmat->rows[col].nnz;
-			}
-		}
-		if (!flag)
-			continue;
-		if (mnnz != ULLONG_MAX) {
-			pivots.push_back(std::make_pair(col, row));
-			pcols.insert(col);
-		}
-	}
-
-	// leftlook then
-	// now pcols will be used as prows to store the rows that have been used
-	pcols.clear();
-	std::vector<std::pair<slong, std::vector<slong>::iterator>> invpivots;
-	// make a table to help to look for row pointers
-	std::vector<std::vector<slong>::iterator> rowptrs(mat->nrow, end);
-	for (auto it = start; it != end; it++)
-		rowptrs[*it] = it;
-
-	for (auto p : pivots) {
-		pcols.insert(*(p.second));
-	}
-	for (size_t i = 0; i < mat->ncol; i++) {
-		auto col = mat->ncol - i - 1; // reverse ordering
-		if (colpivs[col] != -1)
-			continue;
-		bool flag = true;
-		auto tc = tranmat->rows + col;
-		slong row = 0;
-		ulong mnnz = ULLONG_MAX;
-		for (size_t j = 0; j < tc->nnz; j++) {
-			flag = (pcols.find(tc->indices[j]) == pcols.end());
-			if (!flag)
-				break;
-			if (rowptrs[tc->indices[j]] != end) {
-				if (mat->rows[tc->indices[j]].nnz < mnnz) {
-					mnnz = mat->rows[tc->indices[j]].nnz;
-					row = tc->indices[j];
-				}
-			}
-		}
-		if (!flag)
-			continue;
-		if (mnnz != ULLONG_MAX) {
-			invpivots.push_back(std::make_pair(col, rowptrs[row]));
-			pcols.insert(row);
-		}
-	}
-	// std::cout << "\npivots size: " << pivots.size() << std::endl;
-	// std::cout << "invpivots size: " << invpivots.size() << std::endl;
-
-	// then join the two pivots, we need to reverse the order of invpivots
-	std::reverse(invpivots.begin(), invpivots.end());
-	invpivots.insert(invpivots.end(), pivots.begin(), pivots.end());
-
-	return invpivots;
-}
-
 // first write a stupid one
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
@@ -724,15 +631,10 @@ auto sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::thread_pool& pool,
 			if (dolist[i] == rowi)
 				return;
 			sfmpq_mat_xmay(mat, dolist[i], rowi, entrylist[i]);
-			// auto this_id = BS::this_thread::get_index().value();
-			// sfmpq_mat_xmay_cached(mat, dolist[i], rowi, cachemat->rows +
-			// this_id, entrylist[i]);
 			});
 		pool.wait();
 
 		if (kk % opt->sort_step == 0 || kk == mat->ncol - 1) {
-			// auto oldalloc = sparse_mat_alloc(mat);
-
 			if (verbose)
 				std::cout << std::endl;
 			count =
@@ -877,10 +779,12 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 
 	std::vector<std::pair<slong, slong>> pivots;
 
-	sfmpq_mat_t tranmat;
+	sparse_mat_t<bool> tranmat;
 	sparse_mat_init(tranmat, mat->ncol, mat->nrow);
 
-	fmpq* cachedensedmat = _fmpq_vec_init(mat->ncol * pool.get_thread_count());
+	fmpq* cachedensedmat = (fmpq*)malloc(mat->ncol * pool.get_thread_count() * sizeof(fmpq));
+	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++)
+		fmpq_init(cachedensedmat + i);
 
 	// skip the rows with only one/zero nonzero element
 	slong kk;
@@ -980,7 +884,9 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 		}
 	}
 
-	_fmpq_vec_clear(cachedensedmat, mat->ncol * pool.get_thread_count());
+	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++)
+		fmpq_clear(cachedensedmat + i);
+	free(cachedensedmat);
 
 	if (verbose) {
 		std::cout << "\n** Rank: " << rank

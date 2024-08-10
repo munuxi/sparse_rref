@@ -15,7 +15,7 @@ Some algorithms are inspired by [Spasm](https://github.com/cbouilla/spasm), but 
 
 We only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime, but It is possible to generalize to other fields/rings by some small modification.
 
-It is recommended to use [mimalloc](https://github.com/microsoft/mimalloc) (or other similar library) to dynamically override the standard malloc, especially on Windows.
+It is highly recommended to use [mimalloc](https://github.com/microsoft/mimalloc) (or other similar library) to dynamically override the standard malloc, especially on Windows.
 
 Build it, e.g.
 

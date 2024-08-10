@@ -97,7 +97,9 @@ template <typename T> inline void sparse_vec_clear(sparse_vec_t<T> vec) {
 		for (auto i = 0; i < vec->alloc; i++)
 			fmpq_clear(vec->entries + i);
 	}
-	free(vec->entries);
+	if constexpr (!std::is_same_v<T, bool>) {
+		free(vec->entries);
+	}
 	vec->nnz = 0;
 	vec->alloc = 0;
 	vec->indices = NULL;
@@ -106,7 +108,7 @@ template <typename T> inline void sparse_vec_clear(sparse_vec_t<T> vec) {
 
 template <typename T>
 inline T* sparse_vec_entry(sparse_vec_t<T> vec, slong index,
-	bool isbinary = false) {
+	bool isbinary = true) {
 	if (vec->nnz == 0 || index < 0 || (ulong)index >= vec->len)
 		return NULL;
 	slong* ptr;
@@ -174,8 +176,7 @@ inline void sparse_vec_swap(sparse_vec_t<T> vec, sparse_vec_t<T> src) {
 
 // this raw version assumes that the vec[index] = 0
 template <typename T, typename S>
-inline void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index,
-	S val) {
+inline void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, S val) {
 	if (index < 0 || (ulong)index >= vec->len)
 		return;
 
