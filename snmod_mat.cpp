@@ -586,17 +586,21 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			}
 		}
 
-		std::vector<slong> tempcolperm(colperm.begin() + countone,
-			colperm.end());
-		std::vector<slong> diffs(ps.size());
-		for (size_t i = 0; i < diffs.size(); i++)
-			diffs[i] = ps[i].second - (colperm.begin() + countone);
-		remove_indices(tempcolperm, diffs);
-
-		for (auto i = 0; i < ps.size(); i++)
-			colperm[countone + i] = *ps[i].second;
-		for (auto i = 0; i < tempcolperm.size(); i++)
-			colperm[countone + ps.size() + i] = tempcolperm[i];
+		// reorder the cols, move ps to the front
+		std::unordered_set<slong> indices(ps.size());
+		for (size_t i = 0; i < ps.size(); i++)
+			indices.insert(ps[i].second - colperm.begin());
+		std::vector<slong> result(colperm.begin(), colperm.begin() + countone);
+		result.reserve(colperm.size());
+		for (auto ind : ps) {
+			result.push_back(*ind.second);
+		}
+		for (auto it = countone; it < mat->ncol; it++) {
+			if (indices.find(it) == indices.end()) {
+				result.push_back(colperm[it]);
+			}
+		}
+		colperm = std::move(result);
 
 		count = eliminate_row_with_one_nnz_rec(mat, tranmat, rowpivs, false, 3);
 		rank += count;
@@ -857,16 +861,21 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 			snmod_vec_rescale(mat->rows + *rp, scalar, p);
 		}
 
-		std::vector<slong> temprowperm(rowperm.begin() + kk, rowperm.end());
-		std::vector<slong> diffs(ps.size());
-		for (size_t i = 0; i < diffs.size(); i++)
-			diffs[i] = ps[i].second - (rowperm.begin() + kk);
-		remove_indices(temprowperm, diffs);
-
-		for (auto i = 0; i < ps.size(); i++)
-			rowperm[kk + i] = *ps[i].second;
-		for (auto i = 0; i < temprowperm.size(); i++)
-			rowperm[kk + ps.size() + i] = temprowperm[i];
+		// reorder the rows, move ps to the front
+		std::unordered_set<slong> indices(ps.size());
+		for (size_t i = 0; i < ps.size(); i++)
+			indices.insert(ps[i].second - rowperm.begin());
+		std::vector<slong> result(rowperm.begin(), rowperm.begin() + kk);
+		result.reserve(rowperm.size());
+		for (auto ind : ps){
+			result.push_back(*ind.second);
+		}
+		for (auto it = kk; it < mat->nrow; it++) {
+			if (indices.find(it) == indices.end()){
+				result.push_back(rowperm[it]);
+			}
+		}
+		rowperm = std::move(result);
 
 		kk += ps.size();
 		rank += ps.size();
