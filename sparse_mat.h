@@ -126,7 +126,12 @@ inline void sparse_mat_transpose(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat
 			if (scalar_is_zero(therow->entries + j))
 				continue;
 			auto col = therow->indices[j];
-			_sparse_vec_set_entry(mat2->rows + col, i, therow->entries + j);
+			if constexpr (std::is_same_v<T, fmpq>) {
+				_sparse_vec_set_entry(mat2->rows + col, i, therow->entries + j);
+			}
+			else {
+				_sparse_vec_set_entry(mat2->rows + col, i, therow->entries[j]);
+			}
 		}
 	}
 }
@@ -329,9 +334,9 @@ auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_v
 
 
 std::vector<std::pair<slong, slong>> sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt);
-ulong sfmpq_mat_rref_kernel(sfmpq_mat_t K, const sfmpq_mat_t mat, const std::vector<std::pair<slong, slong>>& pivots, BS::thread_pool& pool);
+ulong sfmpq_mat_rref_kernel(sfmpq_mat_t K, const sfmpq_mat_t M, const std::vector<std::pair<slong, slong>>& pivots, BS::thread_pool& pool);
 std::vector<std::pair<slong, slong>> snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool, rref_option_t opt);
-ulong snmod_mat_rref_kernel(snmod_mat_t K, snmod_mat_t mat, const std::vector<std::pair<slong, slong>>& pivots, nmod_t p, BS::thread_pool& pool);
+ulong snmod_mat_rref_kernel(snmod_mat_t K, const snmod_mat_t M, const std::vector<std::pair<slong, slong>>& pivots, nmod_t p, BS::thread_pool& pool);
 
 // convert
 inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src,

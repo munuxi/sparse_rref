@@ -1017,7 +1017,7 @@ ulong snmod_mat_rref_kernel(snmod_mat_t K, const snmod_mat_t M, const std::vecto
 		for (size_t j = 0; j < thecol->nnz; j++) {
 			_sparse_vec_set_entry(k_vec,
 				pivots[thecol->indices[j]].second,
-				thecol->entries + j);
+				thecol->entries[j]);
 		}
 		_sparse_vec_set_entry(k_vec, nonpivs[i], m1);
 		sparse_vec_sort_indices(k_vec); // sort the indices

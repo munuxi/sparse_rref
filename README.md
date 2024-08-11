@@ -17,6 +17,8 @@ We only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, w
 
 It is highly recommended to use [mimalloc](https://github.com/microsoft/mimalloc) (or other similar library) to dynamically override the standard malloc, especially on Windows.
 
+We also provide an example, see `mma_link.cpp`, by using the LibraryLink api of Mathematica to compile a library which can used by Mathematica.
+
 Build it, e.g.
 
 ```bash

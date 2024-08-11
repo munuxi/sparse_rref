@@ -1,4 +1,7 @@
-#include <algorithm>
+// // use mimalloc to replace the default malloc
+// #include "mimalloc-override.h"
+// #include "mimalloc-new-delete.h"
+
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
