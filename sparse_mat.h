@@ -147,6 +147,31 @@ inline void sparse_mat_transpose_part(sparse_mat_t<S> mat2, const sparse_mat_t<T
 	}
 }
 
+// tranpose only part of the rows
+template <typename T, typename S>
+inline void sparse_mat_transpose_part_parallel(sparse_mat_struct<S>* mat_vec, const sparse_mat_t<T> mat, const std::vector<slong>& rows, 
+	BS::thread_pool& pool) {
+
+	pool.detach_loop<size_t>(0, pool.get_thread_count(), [&](size_t it) {
+		auto mat2 = mat_vec + it;
+		for (size_t i = 0; i < mat2->nrow; i++)
+			mat2->rows[i].nnz = 0;
+		});
+	pool.wait();
+
+	pool.detach_loop<size_t>(0, rows.size(), [&](size_t i) {
+		auto row = rows[i];
+		auto therow = mat->rows + row;
+		auto id = BS::this_thread::get_index().value();
+		auto mat2 = mat_vec + id;
+		for (size_t j = 0; j < therow->nnz; j++) {
+			auto col = therow->indices[j];
+			_sparse_vec_set_entry(mat2->rows + col, row, therow->entries + j);
+		}
+		});
+	pool.wait();
+}
+
 // dot product
 // -1: dimension mismatch
 // 0: result is zero
@@ -205,14 +230,15 @@ inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<
 // rref 
 
 template <typename T, typename S>
-auto findmanypivots_r(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
+auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_vec,
 	slong* colpivs, std::vector<slong>& rowperm,
 	std::vector<slong>::iterator start,
-	size_t max_depth = ULLONG_MAX) {
+	size_t max_depth = ULLONG_MAX, int vec_len = 1) {
 
 	auto end = rowperm.end();
+	using iter = std::vector<slong>::iterator;
 
-	std::vector<std::pair<slong, std::vector<slong>::iterator>> pivots;
+	std::list<std::pair<slong, iter>> pivots;
 	std::unordered_set<slong> pcols;
 	pcols.reserve(std::min((size_t)4096, max_depth));
 
@@ -236,9 +262,12 @@ auto findmanypivots_r(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
 				break;
 			if (colpivs[indices[i]] != -1)
 				continue;
-			if (tranmat->rows[indices[i]].nnz < mnnz) {
+			ulong newnnz = 0;
+			for (size_t j = 0; j < vec_len; j++)
+				newnnz += tranmat_vec[j].rows[indices[i]].nnz;
+			if (newnnz < mnnz) {
 				col = indices[i];
-				mnnz = tranmat->rows[col].nnz;
+				mnnz = newnnz;
 			}
 		}
 		if (!flag)
@@ -251,9 +280,8 @@ auto findmanypivots_r(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
 	// leftlook then
 	// now pcols will be used as prows to store the rows that have been used
 	pcols.clear();
-	std::vector<std::pair<slong, std::vector<slong>::iterator>> invpivots;
 	// make a table to help to look for row pointers
-	std::vector<std::vector<slong>::iterator> rowptrs(mat->nrow, end);
+	std::vector<iter> rowptrs(mat->nrow, end);
 	for (auto it = start; it != end; it++)
 		rowptrs[*it] = it;
 
@@ -262,41 +290,41 @@ auto findmanypivots_r(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
 	}
 
 	for (size_t i = 0; i < mat->ncol; i++) {
-		if (invpivots.size() > max_depth)
+		if (pivots.size() > max_depth)
 			break;
 		auto col = mat->ncol - i - 1; // reverse ordering
 		if (colpivs[col] != -1)
 			continue;
 		bool flag = true;
-		auto tc = tranmat->rows + col;
 		slong row = 0;
 		ulong mnnz = ULLONG_MAX;
-		for (size_t j = 0; j < tc->nnz; j++) {
-			flag = (pcols.find(tc->indices[j]) == pcols.end());
-			if (!flag)
-				break;
-			if (rowptrs[tc->indices[j]] != end) {
+		for (auto it = 0; it < vec_len; it++) {
+			auto tc = tranmat_vec[it].rows + col;
+			for (size_t j = 0; j < tc->nnz; j++) {
+				if (rowptrs[tc->indices[j]] == end)
+					continue;
+				flag = (pcols.find(tc->indices[j]) == pcols.end());
+				if (!flag)
+					break;
 				if (mat->rows[tc->indices[j]].nnz < mnnz) {
 					mnnz = mat->rows[tc->indices[j]].nnz;
 					row = tc->indices[j];
 				}
 			}
+			if (!flag)
+				break;
 		}
 		if (!flag)
 			continue;
 		if (mnnz != ULLONG_MAX) {
-			invpivots.push_back(std::make_pair(col, rowptrs[row]));
+			pivots.push_front(std::make_pair(col, rowptrs[row]));
 			pcols.insert(row);
 		}
 	}
-	// std::cout << "\npivots size: " << pivots.size() << std::endl;
-	// std::cout << "invpivots size: " << invpivots.size() << std::endl;
 
-	// then join the two pivots, we need to reverse the order of invpivots
-	std::reverse(invpivots.begin(), invpivots.end());
-	invpivots.insert(invpivots.end(), pivots.begin(), pivots.end());
+	std::vector<std::pair<slong, iter>> result(pivots.begin(), pivots.end());
 
-	return invpivots;
+	return result;
 }
 
 
