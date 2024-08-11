@@ -10,6 +10,7 @@
 #include <cstring>
 #include <execution>
 #include <iostream>
+#include <list>
 #include <queue>
 #include <string>
 #include <unordered_map>
