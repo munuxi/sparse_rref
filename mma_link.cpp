@@ -11,13 +11,13 @@
  *    rreflib = LibraryFunctionLoad[
  *        "rreflib.dll", "modrref",
  *        {{LibraryDataType[SparseArray],
- *          "Constant"}, {Integer}, {Integer}}, {LibraryDataType[SparseArray],
+ *          "Constant"}, {Integer}, {Integer}, {Integer}}, {LibraryDataType[SparseArray],
  *          "Shared"}
  *    ];
  *    
  *    (* the first matrix is the result of rref, and the second is its kernel *)
- *    modprref[mat_SparseArray, p_Integer, nthread_ : 1] := 
- *        With[{joinedmat = rreflib[mat, p, nthread]},
+ *    modprref[mat_SparseArray, p_Integer, nthread_ : 1, method_ : 1] := 
+ *        With[{joinedmat = rreflib[mat, p, nthread, method]},
  *         {joinedmat[[;; Length@mat]], joinedmat[[Length@mat + 1 ;;]]}];
  *
  *    ```
@@ -32,6 +32,7 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     auto mat = MArgument_getMSparseArray(Args[0]);
     auto p = MArgument_getInteger(Args[1]);
     auto nthreads = MArgument_getInteger(Args[2]);
+    auto method = MArgument_getInteger(Args[3]);
 
     auto sf = ld->sparseLibraryFunctions;
 
@@ -54,8 +55,14 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     mint* colptr = ld->MTensor_getIntegerData(*m_colptr);
 
     auto nnz = rowptr[nrows];
-    BS::thread_pool pool(nthreads);
+    BS::thread_pool pool((int)nthreads);
     rref_option_t opt;
+    if (method == 0) 
+		opt->pivot_dir = true;
+	else 
+		opt->pivot_dir = false;
+    if (opt->sort_step == 0)
+        opt->sort_step = std::max(1000, (int)ncols / 100);
 
     // init a sparse matrix
     nmod_t pp;
@@ -64,9 +71,9 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     nmod_init(&pp, (ulong)p);
     sparse_mat_t<ulong> A, K;
     sparse_mat_init(A, nrows, ncols);
-    for (int i = 0; i < nrows; i++) {
+    for (auto i = 0; i < nrows; i++) {
         auto therow = A->rows + i;
-        for (int k = rowptr[i]; k < rowptr[i + 1]; k++) {
+        for (auto k = rowptr[i]; k < rowptr[i + 1]; k++) {
             fmpz_set_si(tmp, valptr[k]);
             fmpz_mod_ui(tmp, tmp, p);
             ulong entry = fmpz_get_ui(tmp);

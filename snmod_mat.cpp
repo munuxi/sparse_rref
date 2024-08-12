@@ -150,9 +150,10 @@ auto findmanypivots_c(snmod_mat_t mat, sparse_mat_t<ulong*> tranmat,
 	std::vector<slong>::iterator start,
 	size_t max_depth = ULLONG_MAX) {
 
+	using iter = std::vector<slong>::iterator;
 	auto end = colperm.end();
 
-	std::vector<std::pair<slong, std::vector<slong>::iterator>> pivots;
+	std::list<std::pair<slong, iter>> pivots;
 	std::unordered_set<slong> prows;
 	prows.reserve(std::min((size_t)4096, max_depth));
 	for (auto col = start; col < colperm.end(); col++) {
@@ -186,7 +187,49 @@ auto findmanypivots_c(snmod_mat_t mat, sparse_mat_t<ulong*> tranmat,
 			prows.insert(row);
 		}
 	}
-	return pivots;
+
+	// leftlook then
+	// now prows will be used as pcols to store the cols that have been used
+	prows.clear();
+	// make a table to help to look for row pointers
+	std::vector<iter> colptrs(mat->ncol, end);
+	for (auto it = start; it != end; it++)
+		colptrs[*it] = it;
+
+	for (auto p : pivots) 
+		prows.insert(*(p.second));
+
+	for (size_t i = 0; i < mat->nrow; i++) {
+		if (pivots.size() > max_depth)
+			break;
+		auto row = i; 
+		if (rowpivs[row] != -1)
+			continue;
+		bool flag = true;
+		slong col = 0;
+		ulong mnnz = ULLONG_MAX;
+		auto tc = mat->rows + row;
+		for (size_t j = 0; j < tc->nnz; j++) {
+			if (colptrs[tc->indices[j]] == end)
+				continue;
+			flag = (prows.find(tc->indices[j]) == prows.end());
+			if (!flag)
+				break;
+			if (tranmat->rows[tc->indices[j]].nnz < mnnz) {
+				mnnz = tranmat->rows[tc->indices[j]].nnz;
+				col = tc->indices[j];
+			}
+		}
+		if (!flag)
+			continue;
+		if (mnnz != ULLONG_MAX) {
+			pivots.push_front(std::make_pair(row, colptrs[col]));
+			prows.insert(col);
+		}
+	}
+
+	std::vector<std::pair<slong, iter>> result(pivots.begin(), pivots.end());
+	return result;
 }
 
 // TODO: add a DFS algorithm to find a maximal compatible set
@@ -664,16 +707,10 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		pool.wait();
 
 		if (kk % opt->sort_step == 0 || kk == mat->ncol - 1) {
-			// auto oldalloc = sparse_mat_alloc(mat);
-
 			count =
 				eliminate_row_with_one_nnz_rec(mat, tranmat, rowpivs, false);
 			rank += count;
 			now_nnz = sparse_mat_nnz(mat);
-			// if (verbose) {
-			//     std::cout << "\n** eliminated " << count << " rows, and nnz is "
-			//         << now_nnz << std::endl;
-			// }
 
 			// sort pivots by nnz, it will be faster
 			std::stable_sort(colperm.begin() + kk + 1, colperm.end(),
