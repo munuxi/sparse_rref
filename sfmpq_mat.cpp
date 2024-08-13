@@ -819,6 +819,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 			continue;
 		}
 
+		pool.wait();
 		auto ps = findmanypivots_r(mat, tranmat, colpivs,
 			rowperm, rowperm.begin() + kk, opt->search_depth);
 
@@ -913,6 +914,9 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 		}
 		// wait for the completion of the computation
 		pool.wait();
+		pool.detach_loop<slong>(0, mat->ncol, [&](slong i) {
+			sparse_vec_sort_indices(tranmat->rows + i);
+			});
 	}
 
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++)

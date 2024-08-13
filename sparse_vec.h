@@ -223,33 +223,34 @@ template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
 		std::sort(vec->indices, vec->indices + vec->nnz);
 		return;
 	}
-
-	std::vector<slong> perm(vec->nnz);
-	for (size_t i = 0; i < vec->nnz; i++)
-		perm[i] = i;
-
-	T* entries = (T*)malloc(vec->nnz * sizeof(T));
-	if constexpr (std::is_same_v<T, fmpq>) {
+	else {
+		std::vector<slong> perm(vec->nnz);
 		for (size_t i = 0; i < vec->nnz; i++)
-			fmpq_init(entries + i);
-	}
+			perm[i] = i;
 
-	std::sort(perm.begin(), perm.end(), [&vec](slong a, slong b) {
-		return vec->indices[a] < vec->indices[b];
-		});
+		T* entries = (T*)malloc(vec->nnz * sizeof(T));
+		if constexpr (std::is_same_v<T, fmpq>) {
+			for (size_t i = 0; i < vec->nnz; i++)
+				fmpq_init(entries + i);
+		}
 
-	// apply permutation
-	for (size_t i = 0; i < vec->nnz; i++)
-		scalar_set(entries + i, vec->entries + perm[i]);
-	for (size_t i = 0; i < vec->nnz; i++)
-		scalar_set(vec->entries + i, entries + i);
+		std::sort(perm.begin(), perm.end(), [&vec](slong a, slong b) {
+			return vec->indices[a] < vec->indices[b];
+			});
 
-	std::sort(vec->indices, vec->indices + vec->nnz);
-	if constexpr (std::is_same_v<T, fmpq>) {
+		// apply permutation
 		for (size_t i = 0; i < vec->nnz; i++)
-			fmpq_clear(entries + i);
+			scalar_set(entries + i, vec->entries + perm[i]);
+		for (size_t i = 0; i < vec->nnz; i++)
+			scalar_set(vec->entries + i, entries + i);
+
+		std::sort(vec->indices, vec->indices + vec->nnz);
+		if constexpr (std::is_same_v<T, fmpq>) {
+			for (size_t i = 0; i < vec->nnz; i++)
+				fmpq_clear(entries + i);
+		}
+		free(entries);
 	}
-	free(entries);
 }
 
 template <typename T>

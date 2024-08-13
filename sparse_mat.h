@@ -412,48 +412,49 @@ template <typename T> void sfmpq_mat_dense_write(sfmpq_mat_t mat, T& st) {
 	}
 }
 
-template <typename T> void snmod_mat_read(snmod_mat_t mat, nmod_t p, T& st) {
-	if (!st.is_open())
-		return;
-	std::string strLine;
-
-	bool is_size = true;
-	ulong val;
-
-	fmpq_t val;
-	fmpq_init(val);
-
-	int totalprint = 0;
-
-	while (getline(st, strLine)) {
-		if (strLine[0] == '%')
-			continue;
-
-		auto tokens = SplitString(strLine, " ");
-		if (is_size) {
-			ulong nrow = std::stoul(tokens[0]);
-			ulong ncol = std::stoul(tokens[1]);
-			ulong nnz = std::stoul(tokens[2]);
-			// here we alloc 1, or alloc nnz/ncol ?
-			sparse_mat_init(mat, nrow, ncol);
-			is_size = false;
-		}
-		else {
-			ulong row = std::stoul(tokens[0]) - 1;
-			ulong col = std::stoul(tokens[1]) - 1;
-			DeleteSpaces(tokens[2]);
-			fmpq_set_str(val, tokens[2].c_str(), 10);
-			fmpz_mod_ui(fmpq_numref(val), fmpq_numref(val), p.n);
-			fmpz_mod_ui(fmpq_denref(val), fmpq_denref(val), p.n);
-			ulong num = fmpz_get_ui(fmpq_numref(val));
-			ulong den = fmpz_get_ui(fmpq_denref(val));
-			ulong val = nmod_div(num, den, p);
-			_sparse_vec_set_entry(mat->rows + row, col, val);
-		}
-	}
-
-	fmpq_clear(val);
-}
+// BUGS on some compilers....
+//template <typename T> void snmod_mat_read(snmod_mat_t mat, nmod_t p, T& st) {
+//	if (!st.is_open())
+//		return;
+//	std::string strLine;
+//
+//	bool is_size = true;
+//	ulong val;
+//
+//	fmpq_t val;
+//	fmpq_init(val);
+//
+//	int totalprint = 0;
+//
+//	while (getline(st, strLine)) {
+//		if (strLine[0] == '%')
+//			continue;
+//
+//		auto tokens = SplitString(strLine, " ");
+//		if (is_size) {
+//			ulong nrow = std::stoul(tokens[0]);
+//			ulong ncol = std::stoul(tokens[1]);
+//			ulong nnz = std::stoul(tokens[2]);
+//			// here we alloc 1, or alloc nnz/ncol ?
+//			sparse_mat_init(mat, nrow, ncol);
+//			is_size = false;
+//		}
+//		else {
+//			ulong row = std::stoul(tokens[0]) - 1;
+//			ulong col = std::stoul(tokens[1]) - 1;
+//			DeleteSpaces(tokens[2]);
+//			fmpq_set_str(val, tokens[2].c_str(), 10);
+//			fmpz_mod_ui(fmpq_numref(val), fmpq_numref(val), p.n);
+//			fmpz_mod_ui(fmpq_denref(val), fmpq_denref(val), p.n);
+//			ulong num = fmpz_get_ui(fmpq_numref(val));
+//			ulong den = fmpz_get_ui(fmpq_denref(val));
+//			ulong val = nmod_div(num, den, p);
+//			_sparse_vec_set_entry(mat->rows + row, col, val);
+//		}
+//	}
+//
+//	fmpq_clear(val);
+//}
 
 template <typename T> void snmod_mat_write(snmod_mat_t mat, T& st) {
 	// snmod_mat_compress(mat);

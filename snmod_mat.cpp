@@ -887,6 +887,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 			continue;
 		}
 
+		pool.wait();
 		std::vector<std::pair<slong, std::vector<slong>::iterator>> ps;
 		ps = findmanypivots_r(mat, tranmat, colpivs,
 			rowperm, rowperm.begin() + kk, opt->search_depth);
@@ -973,6 +974,9 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		}
 		// wait for the completion of the computation
 		pool.wait();
+		pool.detach_loop<slong>(0, mat->ncol, [&](slong i) {
+			sparse_vec_sort_indices(tranmat->rows + i);
+			});
 	}
 
 	free(cachedensedmat);
