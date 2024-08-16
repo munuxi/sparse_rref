@@ -236,7 +236,7 @@ int main(int argc, char** argv) {
 	if (program["--output-pivots"] == true) {
 		outname_add = ".piv";
 		file2.open(outname + outname_add);
-		for (size_t i = 0; i < n_row; i++)
+		for (size_t i = 0; i < pivots.size(); i++)
 			file2 << pivots[i].first + 1 << " " << pivots[i].second + 1 << '\n';
 		file2.close();
 	}
