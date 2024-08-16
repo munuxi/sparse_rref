@@ -50,7 +50,7 @@ template <typename T>
 inline ulong sparse_mat_nnz(sparse_mat_t<T> mat) {
 	ulong nnz = 0;
 	for (size_t i = 0; i < mat->nrow; i++)
-		nnz += mat->rows[i].nnz;
+		nnz += sparse_mat_row(mat, i)->nnz;
 	return nnz;
 }
 
@@ -58,21 +58,18 @@ template <typename T>
 inline ulong sparse_mat_alloc(sparse_mat_t<T> mat) {
 	ulong alloc = 0;
 	for (size_t i = 0; i < mat->nrow; i++)
-		alloc += mat->rows[i].alloc;
+		alloc += sparse_mat_row(mat, i)->alloc;
 	return alloc;
 }
 
 template <typename T>
 inline void sparse_mat_compress(sparse_mat_t<T> mat) {
 	for (size_t i = 0; i < mat->nrow; i++)
-		sparse_vec_realloc(mat->rows + i, mat->rows[i].nnz);
+		sparse_vec_realloc(sparse_mat_row(mat, i), sparse_mat_row(mat, i)->nnz);
 }
 
 template <typename T>
 inline T* sparse_mat_entry(sparse_mat_t<T> mat, slong row, slong col, bool isbinary = true) {
-	if (row < 0 || col < 0 || (ulong)row >= mat->nrow ||
-		(ulong)col >= mat->ncol)
-		return NULL;
 	return sparse_vec_entry(mat->rows + row, col, isbinary);
 }
 
@@ -93,7 +90,7 @@ inline void sparse_mat_clear_zero_row(sparse_mat_t<T> mat) {
 			newnrow++;
 		}
 		else {
-			sparse_vec_clear(mat->rows + i);
+			sparse_vec_clear(sparse_mat_row(mat, i));
 		}
 	}
 	mat->nrow = newnrow;
@@ -105,7 +102,7 @@ inline void sparse_mat_transpose_pointer(sparse_mat_t<T*> mat2, const sparse_mat
 		mat2->rows[i].nnz = 0;
 
 	for (size_t i = 0; i < mat->nrow; i++) {
-		auto therow = mat->rows + i;
+		auto therow = sparse_mat_row(mat, i);
 		for (size_t j = 0; j < therow->nnz; j++) {
 			// if (scalar_is_zero(therow->entries + j))
 			// 	continue;
@@ -118,10 +115,10 @@ inline void sparse_mat_transpose_pointer(sparse_mat_t<T*> mat2, const sparse_mat
 template <typename T>
 inline void sparse_mat_transpose(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat) {
 	for (size_t i = 0; i < mat2->nrow; i++)
-		mat2->rows[i].nnz = 0;
+		sparse_mat_row(mat, i)->nnz = 0;
 
 	for (size_t i = 0; i < mat->nrow; i++) {
-		auto therow = mat->rows + i;
+		auto therow = sparse_mat_row(mat, i);
 		for (size_t j = 0; j < therow->nnz; j++) {
 			if (scalar_is_zero(therow->entries + j))
 				continue;
@@ -140,7 +137,7 @@ inline void sparse_mat_transpose(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat
 template <typename T, typename S>
 inline void sparse_mat_transpose_part(sparse_mat_t<S> mat2, const sparse_mat_t<T> mat, const std::vector<slong>& rows) {
 	for (size_t i = 0; i < mat2->nrow; i++)
-		mat2->rows[i].nnz = 0;
+		sparse_mat_row(mat2, i)->nnz = 0;
 
 	for (size_t i = 0; i < rows.size(); i++) {
 		auto row = rows[i];

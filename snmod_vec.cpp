@@ -11,20 +11,6 @@ void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p) {
 		scalar, p);
 }
 
-// src is densed vector
-int snmod_vec_add_densed(snmod_vec_t vec, ulong* src, nmod_t p) {
-	for (size_t i = 0; i < vec->nnz; i++) {
-		src[vec->indices[i]] =
-			nmod_add(src[vec->indices[i]], vec->entries[i], p);
-	}
-	vec->nnz = 0;
-	for (size_t i = 0; i < vec->len; i++) {
-		if (src[i] != 0)
-			_sparse_vec_set_entry(vec, i, src[i]);
-	}
-	return 0;
-}
-
 // c.f. the relization of _nmod_vec_scalar_mul_nmod_shoup from FLINT
 // void _nmod_vec_scalar_mul_nmod_shoup(nn_ptr res, nn_srcptr vec,
 // 	slong len, ulong c, nmod_t mod)
@@ -118,21 +104,6 @@ int snmod_vec_add(snmod_vec_t vec, const snmod_vec_t src, nmod_t p) {
 
 int snmod_vec_sub(snmod_vec_t vec, const snmod_vec_t src, nmod_t p) {
 	return snmod_vec_sub_mul(vec, src, (ulong)1, p);
-}
-
-// src is densed vector
-int snmod_vec_sub_densed(snmod_vec_t vec, ulong* src, nmod_t p) {
-	_nmod_vec_neg(src, src, vec->len, p);
-	for (size_t i = 0; i < vec->nnz; i++) {
-		src[vec->indices[i]] =
-			nmod_add(src[vec->indices[i]], vec->entries[i], p);
-	}
-	vec->nnz = 0;
-	for (size_t i = 0; i < vec->len; i++) {
-		if (src[i] != 0)
-			_sparse_vec_set_entry(vec, i, src[i]);
-	}
-	return 0;
 }
 
 void print_dense_vec(snmod_vec_t vec) {
