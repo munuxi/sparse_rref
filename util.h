@@ -46,10 +46,9 @@ enum RING {
 };
 
 struct field_struct {
-	enum RING type;
-	ulong len; // the length of the product ring
-	nmod_t p;
-	// nmod_t* pvec;
+	enum RING ring;
+	ulong rank = 1; // the rank of the product ring
+	nmod_t* pvec = NULL;
 };
 typedef struct field_struct field_t[1];
 

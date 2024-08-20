@@ -87,54 +87,6 @@ inline slong rowcolpart(std::vector<slong> conp, slong nrow) {
 	return i;
 }
 
-slong findrowpivot(snmod_mat_t mat, slong col, slong* rowpivs,
-	std::vector<slong>& colparts, std::vector<slong>& kkparts,
-	std::vector<std::vector<slong>>& rowparts, slong* dolist,
-	ulong** entrylist, slong& dolist_len,
-	BS::thread_pool& pool) {
-
-	auto mm = colparts[col];
-	auto rowlist = rowparts[mm];
-	// parallelize this loop
-
-	auto loop = [&](slong i) {
-		if (rowlist[i] == -1)
-			return;
-		auto entry = sparse_mat_entry(mat, rowlist[i], col, true);
-		if (entry == NULL || scalar_is_zero(entry))
-			return;
-		// add one to make it nonzero
-		entrylist[i] = entry;
-		dolist[i] = 1;
-		};
-
-	pool.detach_loop<slong>(0, kkparts[mm], loop);
-	pool.wait();
-
-	slong rowi = -1; // choose the row with the minimal nnz
-	ulong mininnz = ULLONG_MAX;
-	for (size_t i = 0; i < kkparts[mm]; i++) {
-		if (dolist[i] == -1)
-			continue;
-
-		auto row = rowparts[mm][i];
-
-		// do not choose rows that have been used to eliminate
-		if (rowpivs[row] != -1)
-			continue;
-
-		dolist[dolist_len] = row;
-		entrylist[dolist_len] = entrylist[i];
-		dolist_len++;
-
-		if (mat->rows[row].nnz < mininnz) { // check the nnz of the row
-			rowi = row;
-			mininnz = mat->rows[row].nnz;
-		}
-	}
-	return rowi;
-}
-
 auto findmanypivots_c(snmod_mat_t mat, sparse_mat_t<ulong*> tranmat,
 	slong* rowpivs, std::vector<slong>& colperm,
 	std::vector<slong>::iterator start,

@@ -2,7 +2,7 @@
 
 void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar) {
 	for (ulong i = 0; i < vec->nnz; i++)
-		scalar_mul(vec->entries + i, vec->entries + i, scalar);
+		fmpq_mul(vec->entries + i, vec->entries + i, scalar);
 }
 
 void sfmpq_vec_neg(sfmpq_vec_t vec) {
@@ -32,8 +32,8 @@ int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 	ulong ptr = vec->nnz + src->nnz;
 	while (ptr1 > 0 && ptr2 > 0) {
 		if (vec->indices[ptr1 - 1] == src->indices[ptr2 - 1]) {
-			scalar_mul(entry, na, src->entries + ptr2 - 1);
-			scalar_add(entry, vec->entries + ptr1 - 1, entry);
+			fmpq_mul(entry, na, src->entries + ptr2 - 1);
+			fmpq_add(entry, vec->entries + ptr1 - 1, entry);
 			if (!scalar_is_zero(entry)) {
 				vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
 				fmpq_set(vec->entries + ptr - 1, entry);
@@ -43,7 +43,7 @@ int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 			ptr2--;
 		}
 		else if (vec->indices[ptr1 - 1] < src->indices[ptr2 - 1]) {
-			scalar_mul(entry, na, src->entries + ptr2 - 1);
+			fmpq_mul(entry, na, src->entries + ptr2 - 1);
 			vec->indices[ptr - 1] = src->indices[ptr2 - 1];
 			fmpq_set(vec->entries + ptr - 1, entry);
 			ptr2--;
@@ -57,7 +57,7 @@ int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 		}
 	}
 	while (ptr2 > 0) {
-		scalar_mul(entry, na, src->entries + ptr2 - 1);
+		fmpq_mul(entry, na, src->entries + ptr2 - 1);
 		vec->indices[ptr - 1] = src->indices[ptr2 - 1];
 		fmpq_set(vec->entries + ptr - 1, entry);
 		ptr2--;
@@ -103,8 +103,8 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 	ulong ptr = vec->nnz + src->nnz;
 	while (ptr1 > 0 && ptr2 > 0) {
 		if (vec->indices[ptr1 - 1] == src->indices[ptr2 - 1]) {
-			scalar_mul(entry, na, src->entries + ptr2 - 1);
-			scalar_add(entry, vec->entries + ptr1 - 1, entry);
+			fmpq_mul(entry, na, src->entries + ptr2 - 1);
+			fmpq_add(entry, vec->entries + ptr1 - 1, entry);
 			if (!scalar_is_zero(entry)) {
 				vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
 				fmpq_set(vec->entries + ptr - 1, entry);
@@ -114,7 +114,7 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 			ptr2--;
 		}
 		else if (vec->indices[ptr1 - 1] < src->indices[ptr2 - 1]) {
-			scalar_mul(entry, na, src->entries + ptr2 - 1);
+			fmpq_mul(entry, na, src->entries + ptr2 - 1);
 			vec->indices[ptr - 1] = src->indices[ptr2 - 1];
 			fmpq_set(vec->entries + ptr - 1, entry);
 			ptr2--;
@@ -128,7 +128,7 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 		}
 	}
 	while (ptr2 > 0) {
-		scalar_mul(entry, na, src->entries + ptr2 - 1);
+		fmpq_mul(entry, na, src->entries + ptr2 - 1);
 		vec->indices[ptr - 1] = src->indices[ptr2 - 1];
 		fmpq_set(vec->entries + ptr - 1, entry);
 		ptr2--;
