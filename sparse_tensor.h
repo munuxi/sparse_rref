@@ -19,7 +19,7 @@ template <typename T> struct sparse_tensor_t {
 		data->nnz = 0;
 		data->dims = dims;
 		ulong max_len = 1;
-		sparse_vec_init(data->vec, ULLONG_MAX);
+		sparse_vec_init(data->vec);
 	}
 	void clear() {
 		data->nnz = 0;

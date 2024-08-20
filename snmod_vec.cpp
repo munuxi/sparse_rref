@@ -25,10 +25,6 @@ void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p) {
 // we assume that vec and src are sorted, and the result is also sorted
 int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 	const ulong a, nmod_t p) {
-	// -1 : Different lengths
-	if (vec->len != src->len)
-		return -1;
-
 	if (src->nnz == 0)
 		return 0;
 
@@ -104,16 +100,4 @@ int snmod_vec_add(snmod_vec_t vec, const snmod_vec_t src, nmod_t p) {
 
 int snmod_vec_sub(snmod_vec_t vec, const snmod_vec_t src, nmod_t p) {
 	return snmod_vec_sub_mul(vec, src, (ulong)1, p);
-}
-
-void print_dense_vec(snmod_vec_t vec) {
-	for (size_t i = 0; i < vec->len; i++) {
-		auto entry = sparse_vec_entry(vec, i);
-		if (entry == NULL)
-			printf("0");
-		else
-			std::cout << entry;
-		printf(" ");
-	}
-	printf("\n");
 }

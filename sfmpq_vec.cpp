@@ -11,10 +11,6 @@ void sfmpq_vec_neg(sfmpq_vec_t vec) {
 }
 
 int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
-	// -1 : Different lengths
-	if (vec->len != src->len)
-		return -1;
-
 	if (src->nnz == 0)
 		return 0;
 
@@ -85,10 +81,6 @@ int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 
 // we assume that vec and src are sorted, and the result is also sorted
 int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
-	// -1 : Different lengths
-	if (vec->len != src->len)
-		return -1;
-
 	if (src->nnz == 0)
 		return 0;
 
@@ -156,18 +148,6 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 	fmpq_clear(na);
 	fmpq_clear(entry);
 	return 0;
-}
-
-void print_dense_vec(sfmpq_vec_t vec) {
-	for (size_t i = 0; i < vec->len; i++) {
-		auto entry = sparse_vec_entry(vec, i);
-		if (entry == NULL)
-			printf("0");
-		else
-			fmpq_print(entry);
-		printf(" ");
-	}
-	printf("\n");
 }
 
 void snmod_vec_from_sfmpq(snmod_vec_t vec, const sfmpq_vec_t src, nmod_t p) {

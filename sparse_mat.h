@@ -27,7 +27,7 @@ inline void _sparse_mat_init(sparse_mat_t<T> mat, ulong nrow, ulong ncol,
 	mat->rows =
 		(sparse_vec_struct<T> *)malloc(nrow * sizeof(sparse_vec_struct<T>));
 	for (size_t i = 0; i < nrow; i++)
-		_sparse_vec_init(mat->rows + i, ncol, alloc);
+		sparse_vec_init(mat->rows + i, alloc);
 }
 
 template <typename T>
@@ -210,7 +210,7 @@ inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<
 	if (mat->nrow != vec->len)
 		return -1;
 
-	sparse_vec_init(result, mat->nrow);
+	sparse_vec_init(result);
 	if (vec->nnz == 0 || sparse_mat_nnz(mat) == 0) {
 		sparse_vec_zero(result);
 		return 0;
