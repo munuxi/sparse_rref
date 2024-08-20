@@ -484,71 +484,13 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			break; // since it's sorted
 	}
 
-	// if (verbose) {
-	// 	std::cout << ">> there are " << kk
-	// 		<< " columns that has already been eliminated" << std::endl;
-	// }
-
 	init_nnz = sparse_mat_nnz(mat);
 
-	// we cut the matrix as
-	// (*********| A A A ... A A A )
-	// (*********| A A A ... A A A )
-	// (*********| A A A ... A A A )
-	//  countone |   submatrix B
-	// countone part is eliminated
-
-	if (verbose)
-		std::cout << "-- computing connected components" << std::endl;
-
-	Graph adjgraph((mat->ncol) + (mat->nrow));
-
-	for (size_t i = kk; i < mat->ncol; i++) {
-		auto thecol = tranmat->rows + colperm[i];
-		for (size_t j = 0; j < thecol->nnz; j++) {
-			adjgraph.addEdge(thecol->indices[j], mat->nrow + colperm[i]);
-		}
-	}
-
-	auto connected_components = adjgraph.findMaximalConnectedComponents();
-	std::sort(connected_components.begin(), connected_components.end(),
-		[](std::vector<slong>& a, std::vector<slong>& b) {
-			return a.size() < b.size();
-		});
-	for (auto& g : connected_components)
-		std::sort(g.begin(), g.end());
-
-	// use colparts to label components
-	std::vector<slong> colparts(mat->ncol);
-	std::vector<slong> kkparts(connected_components.size());
-	std::vector<std::vector<slong>> rowparts(connected_components.size());
-	for (size_t i = 0; i < mat->ncol; i++)
-		colparts[i] = -1;
-	for (auto mm = 0; mm < connected_components.size(); mm++) {
-		auto g = connected_components[mm];
-		kkparts[mm] = rowcolpart(g, mat->nrow);
-		rowparts[mm] = std::vector<slong>(g.begin(), g.begin() + kkparts[mm]);
-		for (size_t i = kkparts[mm]; i < g.size(); i++)
-			colparts[g[i] - mat->nrow] = mm;
-	}
-	adjgraph.clear();
-
-	if (verbose) {
-		std::cout << "** found " << connected_components.size() << " components"
-			<< std::endl;
-	}
-
-	std::stable_sort(
-		colperm.begin() + kk, colperm.end(),
-		[&colparts](slong a, slong b) { return colparts[a] < colparts[b]; });
-
-	// upper triangle (with respect to row and col perm)
 	ulong* cachedensedmat = (ulong*)malloc(mat->ncol * pool.get_thread_count() * sizeof(ulong));
 	slong* donelist = (slong*)malloc(mat->nrow * sizeof(slong));
 	sparse_mat_transpose_pointer(tranmat, mat);
 
 	// upper triangle (with respect to row and col perm)
-	auto aaa = 0;
 	while (kk < mat->ncol) {
 		auto start = clocknow();
 
@@ -606,25 +548,15 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			<< " col/s" << std::flush;
 		
 		memcpy(donelist, rowpivs, mat->nrow * sizeof(slong));
-		
 		count = eliminate_row_with_one_nnz_rec(mat, tranmat, donelist, false, 0);
 		rank += count;
-
 		kk += ps.size();
 
 		sparse_mat_transpose_pointer(tranmat, mat);
 		// sort pivots by nnz, it will be faster
 		std::stable_sort(colperm.begin() + kk, colperm.end(),
-			[&tranmat, &colparts](slong a, slong b) {
-				if (colparts[a] < colparts[b]) {
-					return true;
-				}
-				else if (colparts[a] == colparts[b]) {
-					return tranmat->rows[a].nnz <
-						tranmat->rows[b].nnz;
-				}
-				else
-					return false;
+			[&tranmat](slong a, slong b) {
+				return tranmat->rows[a].nnz < tranmat->rows[b].nnz;
 			});
 	}
 
@@ -856,10 +788,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		std::cout << std::endl;
 	}
 
-	// for (size_t i = 0; i < pool.get_thread_count(); i++){
-	// 	sparse_mat_clear(tranmat_vec + i);
-	// }
-	// free(tranmat_vec);
 	sparse_mat_clear(tranmat);
 	
 	free(colpivs);

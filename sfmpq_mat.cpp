@@ -1,5 +1,4 @@
 #include "sparse_mat.h"
-#include <cstring>
 
 using namespace std::chrono_literals;
 
