@@ -890,7 +890,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 					auto therow = mat->rows + row;
 					for (size_t j = 0; j < therow->nnz; j++) {
 						auto col = therow->indices[j];
-						_sparse_vec_set_entry(tranmat->rows + col, row, therow->entries + j);
+						_sparse_vec_set_entry(tranmat->rows + col, row, (bool*)nullptr);
 					}
 					tran_count++;
 					flags[i] = false;

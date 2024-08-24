@@ -52,6 +52,26 @@ struct field_struct {
 };
 typedef struct field_struct field_t[1];
 
+inline void field_init(field_t field, enum RING ring, ulong rank, const ulong* pvec) {
+	field->ring = ring;
+	field->rank = rank;
+	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
+		field->pvec = (nmod_t*)malloc(rank * sizeof(nmod_t));
+		for (ulong i = 0; i < rank; i++)
+			nmod_init(field->pvec + i, pvec[i]);
+	}
+}
+
+inline void field_set(field_t field, const field_t ff) {
+	field->ring = ff->ring;
+	field->rank = ff->rank;
+	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
+		field->pvec = (nmod_t*)realloc(field->pvec, field->rank * sizeof(nmod_t));
+		for (ulong i = 0; i < field->rank; i++)
+			nmod_init(field->pvec + i, ff->pvec[i].n);
+	}
+}
+
 template <typename T> inline T* binarysearch(T* begin, T* end, T val) {
 	auto ptr = std::lower_bound(begin, end, val);
 	if (ptr == end || *ptr == val)

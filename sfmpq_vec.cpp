@@ -158,6 +158,6 @@ void snmod_vec_from_sfmpq(snmod_vec_t vec, const sfmpq_vec_t src, nmod_t p) {
 		ulong num = fmpz_get_nmod(fmpq_numref(src->entries + i), p);
 		ulong den = fmpz_get_nmod(fmpq_denref(src->entries + i), p);
 		ulong val = nmod_div(num, den, p);
-		_sparse_vec_set_entry(vec, src->indices[i], val);
+		_sparse_vec_set_entry(vec, src->indices[i], &val);
 	}
 }

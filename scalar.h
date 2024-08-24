@@ -3,20 +3,54 @@
 
 #include "util.h"
 
-inline bool scalar_is_zero(fmpq_t a) { return fmpq_is_zero(a); }
-inline bool scalar_is_zero(ulong* a) { return (*a) == 0; }
+inline bool scalar_is_zero(const fmpq_t a) { return fmpq_is_zero(a); }
+inline bool scalar_is_zero(const ulong* a) { return (*a) == 0; }
 
-inline bool scalar_equal(fmpq_t a, fmpq_t b) { return fmpq_equal(a, b); }
-inline bool scalar_equal(ulong* a, ulong* b) { return (*a) == (*b); }
+template <typename T>
+inline bool scalar_is_zero(const T* a, const ulong rank) {
+	for (ulong i = 0; i < rank; i++)
+		if (!scalar_is_zero(a + i))
+			return false;
+	return true;
+}
+
+inline bool scalar_equal(const fmpq_t a, const fmpq_t b) { return fmpq_equal(a, b); }
+inline bool scalar_equal(const ulong* a, const ulong* b) { return (*a) == (*b); }
+
+template <typename T>
+inline bool scalar_equal(const T* a, const T* b, const ulong rank) {
+	for (ulong i = 0; i < rank; i++)
+		if (!scalar_equal(a + i, b + i))
+			return false;
+	return true;
+}
 
 inline void scalar_set(fmpq_t a, const fmpq_t b) { fmpq_set(a, b); }
 inline void scalar_set(ulong* a, const ulong* b) { *a = *b; }
 
-inline void scalar_one(fmpq_t a) { fmpq_one(a); }
-inline void scalar_one(ulong* a) { *a = 1; }
+template <typename T>
+inline bool scalar_set(T* a, const T* b, const ulong rank) {
+	for (ulong i = 0; i < rank; i++)
+		scalar_set(a + i, b + i);
+}
 
 inline void scalar_zero(fmpq_t a) { fmpq_zero(a); }
 inline void scalar_zero(ulong* a) { *a = 0; }
+
+template <typename T>
+inline bool scalar_zero(T* a, const ulong rank) {
+	for (ulong i = 0; i < rank; i++)
+		scalar_zero(a + i);
+}
+
+inline void scalar_one(fmpq_t a) { fmpq_one(a); }
+inline void scalar_one(ulong* a) { *a = 1; }
+
+template <typename T>
+inline bool scalar_one(T* a, const ulong rank) {
+	for (ulong i = 0; i < rank; i++)
+		scalar_one(a + i);
+}
 
 // arithmetic
 
