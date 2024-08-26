@@ -12,7 +12,7 @@
 #include "util.h"
 
 template <typename T> struct sparse_vec_struct {
-	ulong s_rank = 1; // scalar rank
+	ulong s_rank = 1; // scalar rank, for product of rings
 	ulong nnz = 0;
 	ulong alloc = 0;
 	slong* indices = NULL;
@@ -61,6 +61,16 @@ inline void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
 	}
 }
 
+template <typename T>
+inline T* sparse_vec_entry_pointer(sparse_vec_t<T> vec, const slong index) {
+	return vec->entries + vec->s_rank * index;
+}
+
+template <typename T>
+inline const T* sparse_vec_entry_pointer(const sparse_vec_t<T> vec, const slong index) {
+	return vec->entries + vec->s_rank * index;
+}
+
 // alloc at least 1 to make sure that indices and entries are not NULL
 template <typename T>
 inline void sparse_vec_init(sparse_vec_t<T> vec, ulong alloc = 1, ulong rank = 1) {
@@ -85,24 +95,24 @@ template <typename T> inline void sparse_vec_zero(sparse_vec_t<T> vec) {
 
 // set zero and clear memory
 template <typename T> inline void sparse_vec_clear(sparse_vec_t<T> vec) {
+	vec->nnz = 0;
+	vec->alloc = 0;
+	vec->s_rank = 1;
 	free(vec->indices);
+	vec->indices = NULL;
 	if constexpr (std::is_same_v<T, fmpq>) {
 		for (auto i = 0; i < vec->s_rank * vec->alloc; i++)
 			fmpq_clear(vec->entries + i);
 	}
 	if constexpr (!std::is_same_v<T, bool>) {
 		free(vec->entries);
+		vec->entries = NULL;
 	}
-	vec->nnz = 0;
-	vec->alloc = 0;
-	vec->s_rank = 1;
-	vec->indices = NULL;
-	vec->entries = NULL;
 }
 
 template <typename T>
 inline T* sparse_vec_entry(sparse_vec_t<T> vec, slong index,
-	bool isbinary = true) {
+	const bool isbinary = true) {
 	if (vec->nnz == 0 || index < vec->indices[0] || index > vec->indices[vec->nnz - 1])
 		return NULL;
 	slong* ptr;
@@ -112,24 +122,27 @@ inline T* sparse_vec_entry(sparse_vec_t<T> vec, slong index,
 		ptr = std::find(vec->indices, vec->indices + vec->nnz, index);
 	if (ptr == vec->indices + vec->nnz)
 		return NULL;
-	return vec->entries + vec->s_rank * (ptr - vec->indices);
+	return sparse_vec_entry_pointer(vec, ptr - vec->indices);
 }
 
 // constructors
 template <typename T>
 inline void sparse_vec_set(sparse_vec_t<T> vec,
 	const sparse_vec_t<T> src) {
-	if (vec->alloc < src->nnz)
+
+	auto old_s_rank = vec->s_rank;
+	vec->nnz = src->nnz;
+	vec->s_rank = src->s_rank;
+	if (vec->alloc * old_s_rank < src->nnz * vec->s_rank)
 		sparse_vec_realloc(vec, src->nnz);
 
-	vec->nnz = src->nnz;
-	for (ulong i = 0; i < src->nnz; i++) {
+	for (slong i = 0; i < src->nnz; i++) {
 		vec->indices[i] = src->indices[i];
 		if constexpr (!std::is_same_v<T, bool>) {
-			for (ulong j = 0; j < vec->s_rank; j++) {
-				scalar_set(vec->entries + vec->s_rank * i + j,
-					src->entries + vec->s_rank * i + j);
-			}
+			scalar_set(
+				sparse_vec_entry_pointer(vec, i),
+				sparse_vec_entry_pointer(src, i),
+				vec->s_rank);
 		}
 	}
 }
@@ -168,11 +181,11 @@ inline void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, const T* val
 	if constexpr (!std::is_same_v<T, bool>) {
 		for (size_t j = 0; j < vec->s_rank; j++) {
 			if constexpr (std::is_same_v<T, fmpq>) {
-				fmpq_set(vec->entries + vec->s_rank * vec->nnz + j, val + j);
+				fmpq_set(sparse_vec_entry_pointer(vec, vec->nnz) + j, val + j);
 			}
 			else {
 				// use scalar_set ? 
-				vec->entries[vec->s_rank * vec->nnz + j] = val[j];
+				sparse_vec_entry_pointer(vec, vec->nnz)[j] = val[j];
 			}
 		}
 	}
@@ -211,25 +224,36 @@ template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
 		for (size_t i = 0; i < vec->nnz; i++)
 			perm[i] = i;
 
-		T* entries = (T*)malloc(vec->nnz * sizeof(T));
-		if constexpr (std::is_same_v<T, fmpq>) {
-			for (size_t i = 0; i < vec->nnz; i++)
-				fmpq_init(entries + i);
-		}
-
 		std::sort(perm.begin(), perm.end(), [&vec](slong a, slong b) {
 			return vec->indices[a] < vec->indices[b];
 			});
 
+		bool is_sorted = true;
+		for (size_t i = 0; i < vec->nnz; i++){
+			if (perm[i] != i) {
+				is_sorted = false;
+				break;
+			}
+		}
+		if (is_sorted)
+			return;
+
+		T* entries = (T*)malloc(vec->s_rank * vec->nnz * sizeof(T));
+		if constexpr (std::is_same_v<T, fmpq>) {
+			for (size_t i = 0; i < vec->s_rank * vec->nnz; i++)
+				fmpq_init(entries + i);
+		}
+
 		// apply permutation
-		for (size_t i = 0; i < vec->nnz; i++)
-			scalar_set(entries + i, vec->entries + perm[i]);
-		for (size_t i = 0; i < vec->nnz; i++)
-			scalar_set(vec->entries + i, entries + i);
+		for (size_t i = 0; i < vec->nnz; i++) {
+			scalar_set(entries + vec->s_rank * i,
+				sparse_vec_entry_pointer(vec, perm[i]), vec->s_rank);
+		}
+		scalar_set(vec->entries, entries, vec->s_rank * vec->nnz);
 
 		std::sort(vec->indices, vec->indices + vec->nnz);
 		if constexpr (std::is_same_v<T, fmpq>) {
-			for (size_t i = 0; i < vec->nnz; i++)
+			for (size_t i = 0; i < vec->s_rank * vec->nnz; i++)
 				fmpq_clear(entries + i);
 		}
 		free(entries);
@@ -245,10 +269,13 @@ inline void sparse_vec_canonicalize(sparse_vec_t<T> vec) {
 	// sparse_vec_sort_indices(vec);
 	ulong new_nnz = 0;
 	for (size_t i = 0; i < vec->nnz; i++) {
-		if (scalar_is_zero(vec->entries + i))
+		if (scalar_is_zero(sparse_vec_entry_pointer(vec, i), vec->s_rank))
 			continue;
 		vec->indices[new_nnz] = vec->indices[i];
-		scalar_set(vec->entries + new_nnz, vec->entries + i);
+		scalar_set(
+			sparse_vec_entry_pointer(vec, new_nnz),
+			sparse_vec_entry_pointer(vec, i),
+			vec->s_rank);
 
 		new_nnz++;
 	}
@@ -287,11 +314,11 @@ template <typename T> void print_vec_info(const sparse_vec_t<T> vec) {
 		std::cout << vec->indices[i] << " ";
 	std::cout << "\nentries: ";
 	if constexpr (std::is_same_v<fmpq, T>) {
-		for (size_t i = 0; i < vec->nnz; i++)
+		for (size_t i = 0; i < vec->s_rank * vec->nnz; i++)
 			std::cout << fmpq_get_str(NULL, 10, vec->entries + i) << " ";
 	}
 	else {
-		for (size_t i = 0; i < vec->nnz; i++)
+		for (size_t i = 0; i < vec->s_rank * vec->nnz; i++)
 			std::cout << vec->entries[i] << " ";
 	}
 	std::cout << std::endl;

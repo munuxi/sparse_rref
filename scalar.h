@@ -3,6 +3,15 @@
 
 #include "util.h"
 
+inline void scalar_init(fmpq_t a) { fmpq_init(a); }
+inline void scalar_init(ulong* a) { return; } // do nothing
+
+template <typename T>
+inline void scalar_init(T* a, const ulong rank) {
+	for (ulong i = 0; i < rank; i++)
+		scalar_init(a + i);
+}
+
 inline bool scalar_is_zero(const fmpq_t a) { return fmpq_is_zero(a); }
 inline bool scalar_is_zero(const ulong* a) { return (*a) == 0; }
 
@@ -29,7 +38,7 @@ inline void scalar_set(fmpq_t a, const fmpq_t b) { fmpq_set(a, b); }
 inline void scalar_set(ulong* a, const ulong* b) { *a = *b; }
 
 template <typename T>
-inline bool scalar_set(T* a, const T* b, const ulong rank) {
+inline void scalar_set(T* a, const T* b, const ulong rank) {
 	for (ulong i = 0; i < rank; i++)
 		scalar_set(a + i, b + i);
 }

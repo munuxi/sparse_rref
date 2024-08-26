@@ -77,7 +77,7 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
             fmpz_set_si(tmp, valptr[k]);
             fmpz_mod_ui(tmp, tmp, p);
             ulong entry = fmpz_get_ui(tmp);
-            _sparse_vec_set_entry(therow, colptr[k] - 1, entry);
+            _sparse_vec_set_entry(therow, colptr[k] - 1, &entry);
         }
     }
     fmpz_clear(tmp);
