@@ -356,8 +356,8 @@ auto sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::thread_pool& pool,
 	// first canonicalize, sort and compress the matrix
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
+		sparse_vec_canonicalize(mat->rows + i);
 	}
-	sparse_mat_compress(mat);
 
 	auto printstep = opt->print_step;
 	bool verbose = opt->verbose;
@@ -730,8 +730,8 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
+		sparse_vec_canonicalize(mat->rows + i);
 	}
-	sparse_mat_compress(mat);
 
 	std::vector<slong> rowperm(mat->nrow);
 	for (size_t i = 0; i < mat->nrow; i++)

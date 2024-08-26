@@ -367,14 +367,17 @@ template <typename T> void sfmpq_mat_read(sfmpq_mat_t mat, T& st) {
 		if (is_size) {
 			ulong nrow = std::stoul(tokens[0]);
 			ulong ncol = std::stoul(tokens[1]);
-			ulong nnz = std::stoul(tokens[2]);
+			// ulong nnz = std::stoul(tokens[2]);
 			// here we alloc 1, or alloc nnz/ncol ?
 			sparse_mat_init(mat, nrow, ncol);
 			is_size = false;
 		}
 		else {
-			ulong row = std::stoul(tokens[0]) - 1;
-			ulong col = std::stoul(tokens[1]) - 1;
+			slong row = std::stoll(tokens[0]) - 1;
+			slong col = std::stoll(tokens[1]) - 1;
+			// SMS stop at 0 0 0
+			if (row < 0 || col < 0)
+				break;
 			DeleteSpaces(tokens[2]);
 			fmpq_set_str(val, tokens[2].c_str(), 10);
 			_sparse_vec_set_entry(mat->rows + row, col, val);

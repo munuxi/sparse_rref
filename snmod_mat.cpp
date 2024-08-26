@@ -424,9 +424,9 @@ void triangular_solver(snmod_mat_t mat, std::vector<std::pair<slong, slong>>& pi
 std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool,
 	rref_option_t opt) {
 	// first canonicalize, sort and compress the matrix
-	sparse_mat_compress(mat);
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
+		sparse_vec_canonicalize(mat->rows + i);
 	}
 
 	ulong rank = 0;
@@ -794,6 +794,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
+		sparse_vec_canonicalize(mat->rows + i);
 	}
 	// sparse_mat_compress(mat);
 
