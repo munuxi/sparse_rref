@@ -431,14 +431,11 @@ void triangular_solver(sfmpq_mat_t mat, std::vector<std::pair<slong, slong>>& pi
 std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::thread_pool& pool,
 	rref_option_t opt) {
 	// first canonicalize, sort and compress the matrix
-	sparse_mat_compress(mat);
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
 		sparse_vec_canonicalize(mat->rows + i);
 	}
-
-	auto printstep = opt->print_step;
-	bool verbose = opt->verbose;
+	// sparse_mat_compress(mat);
 
 	ulong rank = 0;
 
