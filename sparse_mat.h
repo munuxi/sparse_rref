@@ -3,24 +3,49 @@
 
 #include "sparse_vec.h"
 
-// template <typename T>
-// struct sparse_mat_s {
-// 	field_t field;
-// 	ulong nrow = 0;
-// 	ulong ncol = 0;
-// 	sparse_vec_struct<T>* rows = NULL;
-// 
-// 	operator sparse_vec_struct<T>* [](ulong i) { return rows + i; }
-// 
-// 	sparse_mat_s(ulong r, ulong c, field_t f) {
-// 		nrow = r;
-// 		ncol = c;
-// 		field_set(field, f);
-// 		rows = (sparse_vec_struct<T>*)malloc(nrow * sizeof(sparse_vec_struct<T>));
-// 		for (size_t i = 0; i < nrow; i++)
-// 			sparse_vec_init(rows + i, 1ULL);
-// 	}
-// };
+//template <typename T>
+//struct sparse_mat_s {
+//	field_t field;
+//	ulong nrow = 0;
+//	ulong ncol = 0;
+//	sparse_vec_struct<T>* rows = NULL;
+//
+//	sparse_vec_struct<T>* operator[](ulong i) { return rows + i; }
+//
+//	sparse_mat_s(ulong r, ulong c, field_t f) {
+//		nrow = r;
+//		ncol = c;
+//		field_set(field, f);
+//		rows = (sparse_vec_struct<T>*)malloc(nrow * sizeof(sparse_vec_struct<T>));
+//		for (size_t i = 0; i < nrow; i++)
+//			sparse_vec_init(rows + i, 1ULL, field->rank);
+//	}
+//
+//	~sparse_mat_s() {
+//		for (size_t i = 0; i < nrow; i++)
+//			sparse_vec_clear(rows + i);
+//		free(rows);
+//		rows = NULL;
+//		if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
+//			free(field->pvec);
+//			field->pvec = NULL;
+//		}
+//	}
+//
+//	ulong nnz() {
+//		ulong nnz = 0;
+//		for (size_t i = 0; i < nrow; i++)
+//			nnz += rows[i].nnz;
+//		return nnz;
+//	}
+//
+//	ulong alloc() {
+//		ulong alloc = 0;
+//		for (size_t i = 0; i < nrow; i++)
+//			alloc += rows[i].alloc;
+//		return alloc;
+//	}
+//};
 
 template <typename T> struct sparse_mat_struct {
 	ulong nrow;
@@ -89,7 +114,7 @@ inline void sparse_mat_compress(sparse_mat_t<T> mat) {
 
 template <typename T>
 inline T* sparse_mat_entry(sparse_mat_t<T> mat, slong row, slong col, bool isbinary = true) {
-	return sparse_vec_entry(mat->rows + row, col, isbinary);
+	return sparse_vec_entry(sparse_mat_row(mat, row), col, isbinary);
 }
 
 template <typename T, typename S>
@@ -97,7 +122,7 @@ inline void _sparse_mat_set_entry(sparse_mat_t<T> mat, slong row, slong col, S v
 	if (row < 0 || col < 0 || (ulong)row >= mat->nrow ||
 		(ulong)col >= mat->ncol)
 		return;
-	_sparse_vec_set_entry(mat->rows + row, col, val);
+	_sparse_vec_set_entry(sparse_mat_row(mat, row), col, val);
 }
 
 template <typename T>
@@ -267,7 +292,7 @@ inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<
 
 template <typename T, typename S>
 auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_vec,
-	slong* colpivs, std::vector<slong>& rowperm,
+	std::vector<slong>& colpivs, std::vector<slong>& rowperm,
 	std::vector<slong>::iterator start,
 	size_t max_depth = ULLONG_MAX, int vec_len = 1) {
 
