@@ -434,7 +434,11 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 	sparse_mat_compress(mat);
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
+		sparse_vec_canonicalize(mat->rows + i);
 	}
+
+	auto printstep = opt->print_step;
+	bool verbose = opt->verbose;
 
 	ulong rank = 0;
 
@@ -608,8 +612,8 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
+		sparse_vec_canonicalize(mat->rows + i);
 	}
-	sparse_mat_compress(mat);
 
 	std::vector<slong> rowperm(mat->nrow);
 	for (size_t i = 0; i < mat->nrow; i++)
