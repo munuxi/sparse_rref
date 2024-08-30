@@ -73,7 +73,8 @@ inline void scalar_add(T a, const T b, const T c, const field_t field) {
 			*a = nmod_add(*b, *c, field->pvec[0]);
 			break;
 		case RING_MulitFp:
-			// not implemented now
+			for (size_t i = 0; i < field->rank; i++)
+				a[i] = nmod_add(b[i], c[i], field->pvec[i]);
 			break;
 		case FIELD_F2:
 			break;
@@ -90,7 +91,8 @@ inline void scalar_sub(T a, const T b, const T c, const field_t field) {
 			*a = nmod_sub(*b, *c, field->pvec[0]);
 			break;
 		case RING_MulitFp:
-			// not implemented now
+			for (size_t i = 0; i < field->rank; i++)
+				a[i] = nmod_sub(b[i], c[i], field->pvec[i]);
 			break;
 		case FIELD_F2:
 			break;
@@ -107,7 +109,8 @@ inline void scalar_mul(T a, const T b, const T c, const field_t field) {
 			*a = nmod_mul(*b, *c, field->pvec[0]);
 			break;
 		case RING_MulitFp:
-			// not implemented now
+			for (size_t i = 0; i < field->rank; i++)
+				a[i] = nmod_mul(b[i], c[i], field->pvec[i]);
 			break;
 		case FIELD_F2:
 			break;
@@ -124,7 +127,8 @@ inline void scalar_div(T a, const T b, const T c, const field_t field) {
 			*a = nmod_div(*b, *c, field->pvec[0]);
 			break;
 		case RING_MulitFp:
-			// not implemented now
+			for (size_t i = 0; i < field->rank; i++)
+				a[i] = nmod_div(b[i], c[i], field->pvec[i]);
 			break;
 		case FIELD_F2:
 			break;

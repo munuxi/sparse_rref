@@ -207,41 +207,6 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 	if (therow->nnz == 0)
 		return;
 
-	// if pivots size is small, we can use the sparse vector
-	// to save to cost of converting between sparse and dense
-	// vectors, otherwise we use dense vector
-	if (pivots.size() < 100) {
-		snmod_vec_t tmpsvec;
-		sparse_vec_init(tmpsvec, mat->ncol);
-		sparse_vec_set(tmpsvec, therow);
-
-		// auto& tmpsvec = therow;
-
-		if (ordering == 1) {
-			for (auto& [r, c] : pivots) {
-				auto entry = sparse_vec_entry(tmpsvec, c);
-				if (entry == NULL)
-					continue;
-				auto row = sparse_mat_row(mat, r);
-				snmod_vec_sub_mul(tmpsvec, row, *entry, p);
-			}
-		}
-		else if (ordering == -1) {
-			for (auto ii = pivots.rbegin(); ii != pivots.rend(); ii++) {
-				auto& [r, c] = *ii;
-				auto entry = sparse_vec_entry(tmpsvec, c);
-				if (entry == NULL)
-					continue;
-				auto row = sparse_mat_row(mat, r);
-				snmod_vec_sub_mul(tmpsvec, row, *entry, p);
-			}
-		}
-
-		sparse_vec_swap(therow, tmpsvec);
-		sparse_vec_clear(tmpsvec);
-		return;
-	}
-
 	memset(tmpvec, 0, mat->ncol * sizeof(ulong));
 	for (size_t i = 0; i < therow->nnz; i++)
 		tmpvec[therow->indices[i]] = therow->entries[i];
@@ -273,31 +238,6 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 				tmpvec[row->indices[i]] = nmod_sub(tmpvec[row->indices[i]],
 					n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
 			}
-
-			//if (row->nnz < 4) {
-			//	for (size_t i = 0; i < row->nnz; i++) {
-			//		tmpvec[row->indices[i]] = nmod_sub(tmpvec[row->indices[i]],
-			//			n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
-			//	}
-			//}
-			//else {
-			//	for (size_t i = 0; i < (row->nnz) / 4; i++) {
-			//		tmpvec[row->indices[4 * i]] = nmod_sub(tmpvec[row->indices[4 * i]],
-			//			n_mulmod_shoup(entry, row->entries[4 * i], e_pr, p.n), p);
-			//		tmpvec[row->indices[4 * i + 1]] = nmod_sub(tmpvec[row->indices[4 * i + 1]],
-			//			n_mulmod_shoup(entry, row->entries[4 * i + 1], e_pr, p.n), p);
-			//		tmpvec[row->indices[4 * i + 2]] = nmod_sub(tmpvec[row->indices[4 * i + 2]],
-			//			n_mulmod_shoup(entry, row->entries[4 * i + 2], e_pr, p.n), p);
-			//		tmpvec[row->indices[4 * i + 3]] = nmod_sub(tmpvec[row->indices[4 * i + 3]],
-			//			n_mulmod_shoup(entry, row->entries[4 * i + 3], e_pr, p.n), p);
-			//	}
-			//	int left = row->nnz % 4;
-			//	for (size_t i = 0; i < left; i++) {
-			//		auto index = row->nnz - left + i;
-			//		tmpvec[row->indices[index]] = nmod_sub(tmpvec[row->indices[index]],
-			//			n_mulmod_shoup(entry, row->entries[index], e_pr, p.n), p);
-			//	}
-			//}
 		}
 	}
 	therow->nnz = 0;
@@ -451,17 +391,21 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			break;
 
 		std::vector<std::pair<slong, slong>> n_pivots;
+		pool.detach_loop<slong>(0, ps.size(), [&mat, &p, &ps](slong i) {
+			auto [r, cp] = ps[i];
+			ulong scalar = nmod_inv(*sparse_mat_entry(mat, r, *cp), p);
+			snmod_vec_rescale(mat->rows + r, scalar, p);
+			});
 		for (auto i = ps.rbegin(); i != ps.rend(); i++){
 			auto [r, cp] = *i;
 			rowpivs[r] = *cp;
 			colpivs[*cp] = r;
-			scalar = nmod_inv(*sparse_mat_entry(mat, r, *cp), p);
-			snmod_vec_rescale(mat->rows + r, scalar, p);
 			n_pivots.push_back(std::make_pair(r, *cp));
 			pivots.push_back(std::make_pair(r, *cp));
 		}
 		rank += ps.size();
 
+		pool.wait();
 		pool.detach_loop<slong>(0, mat->nrow, [&](slong i) {
 			if (rowpivs[i] != -1)
 				return;

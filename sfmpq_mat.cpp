@@ -294,39 +294,6 @@ void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slo
 	if (therow->nnz == 0)
 		return;
 
-	// if pivots size is small, we can use the sparse vector
-	// to save to cost of converting between sparse and dense
-	// vectors, otherwise we use dense vector
-	if (pivots.size() < 100) {
-		sfmpq_vec_t tmpsvec;
-		sparse_vec_init(tmpsvec, mat->ncol);
-		sparse_vec_set(tmpsvec, therow);
-
-		if (ordering == 1) {
-			for (auto& [r, c] : pivots) {
-				auto entry = sparse_vec_entry(tmpsvec, c);
-				if (entry == NULL)
-					continue;
-				auto row = mat->rows + r;
-				sfmpq_vec_sub_mul(tmpsvec, row, entry);
-			}
-		}
-		else if (ordering == -1) {
-			for (auto ii = pivots.rbegin(); ii != pivots.rend(); ii++) {
-				auto& [r, c] = *ii;
-				auto entry = sparse_vec_entry(tmpsvec, c);
-				if (entry == NULL)
-					continue;
-				auto row = mat->rows + r;
-				sfmpq_vec_sub_mul(tmpsvec, row, entry);
-			}
-		}
-
-		sparse_vec_swap(therow, tmpsvec);
-		sparse_vec_clear(tmpsvec);
-		return;
-	}
-
 	for (size_t i = 0; i < mat->ncol; i++)
 		fmpq_zero(tmpvec + i);
 	for (size_t i = 0; i < therow->nnz; i++)

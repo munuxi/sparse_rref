@@ -243,6 +243,5 @@ int main(int argc, char** argv) {
 
 	// clean is very expansive
 	// sparse_mat_clear(mat);
-	// free(pivots);
 	return 0;
 }
