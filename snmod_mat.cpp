@@ -317,8 +317,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 	ulong init_nnz = sparse_mat_nnz(mat);
 	ulong now_nnz = init_nnz;
 
-	ulong scalar;
-
 	// store the pivots that have been used
 	// -1 is not used
 	std::vector<slong> rowpivs(mat->nrow, -1);
@@ -391,21 +389,17 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			break;
 
 		std::vector<std::pair<slong, slong>> n_pivots;
-		pool.detach_loop<slong>(0, ps.size(), [&mat, &p, &ps](slong i) {
-			auto [r, cp] = ps[i];
-			ulong scalar = nmod_inv(*sparse_mat_entry(mat, r, *cp), p);
-			snmod_vec_rescale(mat->rows + r, scalar, p);
-			});
 		for (auto i = ps.rbegin(); i != ps.rend(); i++){
 			auto [r, cp] = *i;
 			rowpivs[r] = *cp;
 			colpivs[*cp] = r;
 			n_pivots.push_back(std::make_pair(r, *cp));
 			pivots.push_back(std::make_pair(r, *cp));
+			ulong scalar = nmod_inv(*sparse_mat_entry(mat, r, *cp), p);
+			snmod_vec_rescale(mat->rows + r, scalar, p);
 		}
 		rank += ps.size();
 
-		pool.wait();
 		pool.detach_loop<slong>(0, mat->nrow, [&](slong i) {
 			if (rowpivs[i] != -1)
 				return;
@@ -535,11 +529,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 
 	sparse_mat_t<bool> tranmat;
 	sparse_mat_init(tranmat, mat->ncol, mat->nrow);
-
-	//sparse_mat_struct<bool>* tranmat_vec = (sparse_mat_struct<bool>*)
-	//	malloc(pool.get_thread_count() * sizeof(sparse_mat_struct<bool>));
-	//for (size_t i = 0; i < pool.get_thread_count(); i++)
-	//	sparse_mat_init(tranmat_vec + i, mat->ncol, mat->nrow);
 
 	ulong* cachedensedmat = (ulong*)malloc(mat->ncol * pool.get_thread_count() * sizeof(ulong));
 
