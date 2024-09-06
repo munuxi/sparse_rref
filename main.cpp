@@ -20,7 +20,7 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	argparse::ArgumentParser program("sparserref", "v0.1.0");
+	argparse::ArgumentParser program("sparserref", "v0.1.3");
 	program.add_argument("input_file")
 		.help("input file in matrix market format");
 	program.add_argument("-o", "--output")
@@ -69,6 +69,11 @@ int main(int argc, char** argv) {
 	program.add_argument("-V", "--verbose")
 		.default_value(false)
 		.help("prints information of calculation")
+		.implicit_value(true)
+		.nargs(0);
+	program.add_argument("-k", "--kernel")
+		.default_value(false)
+		.help("output the kernel")
 		.implicit_value(true)
 		.nargs(0);
 	program.add_argument("-ps", "--print_step")
@@ -218,20 +223,12 @@ int main(int argc, char** argv) {
 
 	file2.open(outname + outname_add);
 	if (prime == 0) {
-		sfmpq_mat_write(mat_Q, file2);
+		sparse_mat_write(mat_Q, file2);
 	}
 	else {
-		snmod_mat_write(mat_Zp, file2);
+		sparse_mat_write(mat_Zp, file2);
 	}
 	file2.close();
-
-	// sfmpq_mat_t K;
-	// file2.open(outname + ".kernel");
-	// if (prime == 0) {
-	//     sfmpq_mat_rref_kernel(K, mat_Q, pivots, pool);
-	//     sfmpq_mat_write(K, file2);
-	// }
-	// file2.close();
 
 	if (program["--output-pivots"] == true) {
 		outname_add = ".piv";
@@ -241,7 +238,26 @@ int main(int argc, char** argv) {
 		file2.close();
 	}
 
+	if (program["--kernel"] == true) {
+		outname_add = ".kernel";
+		file2.open(outname + outname_add);
+		if (prime == 0) {
+			sfmpq_mat_t K;
+			sfmpq_mat_rref_kernel(K, mat_Q, pivots, pool);
+			sparse_mat_write(K, file2);
+			// sparse_mat_clear(K);
+		}
+		else {
+			snmod_mat_t K;
+			snmod_mat_rref_kernel(K, mat_Zp, pivots, p, pool);
+			sparse_mat_write(K, file2);
+			// sparse_mat_clear(K);
+		}
+		file2.close();
+	}
+
 	// clean is very expansive
-	// sparse_mat_clear(mat);
+	// sparse_mat_clear(mat_Q);
+	// sparse_mat_clear(mat_Zp);
 	return 0;
 }

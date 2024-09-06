@@ -280,14 +280,14 @@ void triangular_solver(snmod_mat_t mat, std::vector<std::pair<slong, slong>>& pi
 		auto pp = pivots[index];
 		auto thecol = tranmat[pp.second];
 		auto start = clocknow();
-		auto loop = [&](slong j) {
-			auto r = thecol[j];
-			if (r == pp.first)
-				return;
-			auto entry = sparse_mat_entry(mat, r, pp.second, true);
-			snmod_mat_xmay(mat, r, pp.first, *entry, p);
-			};
 		if (thecol.size() > 1) {
+			auto loop = [&](slong j) {
+				auto r = thecol[j];
+				if (r == pp.first)
+					return;
+				auto entry = sparse_mat_entry(mat, r, pp.second, true);
+				snmod_mat_xmay(mat, r, pp.first, *entry, p);
+				};
 			pool.detach_loop<slong>(0, thecol.size(), loop);
 			pool.wait();
 		}

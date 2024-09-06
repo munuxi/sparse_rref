@@ -127,9 +127,7 @@ inline T* sparse_vec_entry(sparse_vec_t<T> vec, slong index,
 
 // constructors
 template <typename T>
-inline void sparse_vec_set(sparse_vec_t<T> vec,
-	const sparse_vec_t<T> src) {
-
+inline void sparse_vec_set(sparse_vec_t<T> vec, const sparse_vec_t<T> src) {
 	auto old_s_rank = vec->s_rank;
 	vec->nnz = src->nnz;
 	vec->s_rank = src->s_rank;
@@ -266,17 +264,20 @@ inline void sparse_vec_canonicalize(sparse_vec_t<T> vec) {
 		return;
 	}
 
-	// sparse_vec_sort_indices(vec);
 	ulong new_nnz = 0;
+	bool is_changed = false;
 	for (size_t i = 0; i < vec->nnz; i++) {
-		if (scalar_is_zero(sparse_vec_entry_pointer(vec, i), vec->s_rank))
+		if (scalar_is_zero(sparse_vec_entry_pointer(vec, i), vec->s_rank)) {
+			is_changed = true;
 			continue;
-		vec->indices[new_nnz] = vec->indices[i];
-		scalar_set(
-			sparse_vec_entry_pointer(vec, new_nnz),
-			sparse_vec_entry_pointer(vec, i),
-			vec->s_rank);
-
+		}
+		if (is_changed) { // avoid copy to itself
+			vec->indices[new_nnz] = vec->indices[i];
+			scalar_set(
+				sparse_vec_entry_pointer(vec, new_nnz),
+				sparse_vec_entry_pointer(vec, i),
+				vec->s_rank);
+		}
 		new_nnz++;
 	}
 	vec->nnz = new_nnz;

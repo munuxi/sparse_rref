@@ -143,7 +143,7 @@ inline void sparse_mat_clear_zero_row(sparse_mat_t<T> mat) {
 template <typename T>
 inline void sparse_mat_transpose_pointer(sparse_mat_t<T*> mat2, const sparse_mat_t<T> mat) {
 	for (size_t i = 0; i < mat2->nrow; i++)
-		mat2->rows[i].nnz = 0;
+		sparse_mat_row(mat2, i)->nnz = 0;
 
 	for (size_t i = 0; i < mat->nrow; i++) {
 		auto therow = sparse_mat_row(mat, i);
@@ -160,7 +160,7 @@ inline void sparse_mat_transpose_pointer(sparse_mat_t<T*> mat2, const sparse_mat
 template <typename T>
 inline void sparse_mat_transpose(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat) {
 	for (size_t i = 0; i < mat2->nrow; i++)
-		sparse_mat_row(mat, i)->nnz = 0;
+		sparse_mat_row(mat2, i)->nnz = 0;
 
 	for (size_t i = 0; i < mat->nrow; i++) {
 		auto therow = sparse_mat_row(mat, i);
@@ -441,36 +441,6 @@ template <typename T> void sfmpq_mat_read(sfmpq_mat_t mat, T& st) {
 	}
 }
 
-template <typename T> void sfmpq_mat_write(sfmpq_mat_t mat, T& st) {
-	// sfmpq_mat_compress(mat);
-	st << "%%MatrixMarket matrix coordinate rational general" << '\n';
-	st << mat->nrow << " " << mat->ncol << " " << sparse_mat_nnz(mat) << '\n';
-	for (size_t i = 0; i < mat->nrow; i++) {
-		auto therow = mat->rows + i;
-		for (size_t j = 0; j < therow->nnz; j++) {
-			if (fmpq_is_zero(therow->entries + j))
-				continue;
-			auto thenum = fmpq_get_str(NULL, 10, therow->entries + j);
-			st << i + 1 << " " << therow->indices[j] + 1 << " " << thenum
-				<< '\n';
-		}
-	}
-}
-
-template <typename T> void sfmpq_mat_dense_write(sfmpq_mat_t mat, T& st) {
-	// sfmpq_mat_compress(mat);
-	for (size_t i = 0; i < mat->nrow; i++) {
-		for (size_t j = 0; j < mat->ncol; j++) {
-			auto entry = sparse_mat_entry(mat, i, j);
-			if (entry == NULL)
-				st << "0 ";
-			else
-				st << fmpq_get_str(NULL, 10, entry) << " ";
-		}
-		st << '\n';
-	}
-}
-
 // BUGS on some compilers....
 //template <typename T> void snmod_mat_read(snmod_mat_t mat, nmod_t p, T& st) {
 //	if (!st.is_open())
@@ -515,35 +485,30 @@ template <typename T> void sfmpq_mat_dense_write(sfmpq_mat_t mat, T& st) {
 //	fmpq_clear(val);
 //}
 
-template <typename T> void snmod_mat_write(snmod_mat_t mat, T& st) {
-	// snmod_mat_compress(mat);
-	st << "%%MatrixMarket matrix coordinate integer general" << '\n';
+template <typename T, typename S> void sparse_mat_write(sparse_mat_t<T> mat, S& st) {
+	if constexpr (std::is_same_v<T, fmpq>) {
+		st << "%%MatrixMarket matrix coordinate rational general" << '\n';
+	}
+	else {
+		st << "%%MatrixMarket matrix coordinate integer general" << '\n';
+	}
 	st << mat->nrow << " " << mat->ncol << " " << sparse_mat_nnz(mat) << '\n';
 	for (size_t i = 0; i < mat->nrow; i++) {
 		auto therow = mat->rows + i;
 		for (size_t j = 0; j < therow->nnz; j++) {
 			if (scalar_is_zero(therow->entries + j))
 				continue;
-			ulong thenum = therow->entries[j];
-			st << i + 1 << " " << therow->indices[j] + 1 << " " << thenum
-				<< '\n';
+			if constexpr (std::is_same_v<T, fmpq>) {
+				st << i + 1 << " "
+					<< therow->indices[j] + 1 << " "
+					<< fmpq_get_str(NULL, 10, therow->entries + j) << '\n';
+			}
+			else {
+				st << i + 1 << " "
+					<< therow->indices[j] + 1 << " "
+					<< therow->entries[j] << '\n';
+			}
 		}
-	}
-}
-
-// never use it somehow
-template <typename T> void snmod_mat_dense_write(snmod_mat_t mat, T& st) {
-	// snmod_mat_compress(mat);
-	slong shiftedentry = 0;
-	for (size_t i = 0; i < mat->nrow; i++) {
-		for (size_t j = 0; j < mat->ncol; j++) {
-			auto entry = sparse_mat_entry(mat, i, j);
-			if (entry == NULL)
-				st << "0 ";
-			else
-				st << *entry << " ";
-		}
-		st << '\n';
 	}
 }
 
