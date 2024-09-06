@@ -227,7 +227,7 @@ template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
 			});
 
 		bool is_sorted = true;
-		for (size_t i = 0; i < vec->nnz; i++){
+		for (size_t i = 0; i < vec->nnz; i++) {
 			if (perm[i] != i) {
 				is_sorted = false;
 				break;

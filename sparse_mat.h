@@ -141,23 +141,6 @@ inline void sparse_mat_clear_zero_row(sparse_mat_t<T> mat) {
 }
 
 template <typename T>
-inline void sparse_mat_transpose_pointer(sparse_mat_t<T*> mat2, const sparse_mat_t<T> mat) {
-	for (size_t i = 0; i < mat2->nrow; i++)
-		sparse_mat_row(mat2, i)->nnz = 0;
-
-	for (size_t i = 0; i < mat->nrow; i++) {
-		auto therow = sparse_mat_row(mat, i);
-		for (size_t j = 0; j < therow->nnz; j++) {
-			// if (scalar_is_zero(therow->entries + j))
-			// 	continue;
-			auto col = therow->indices[j];
-			auto entry = therow->entries + j;
-			_sparse_vec_set_entry(mat2->rows + col, i, &entry);
-		}
-	}
-}
-
-template <typename T>
 inline void sparse_mat_transpose(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat) {
 	for (size_t i = 0; i < mat2->nrow; i++)
 		sparse_mat_row(mat2, i)->nnz = 0;
@@ -165,15 +148,23 @@ inline void sparse_mat_transpose(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat
 	for (size_t i = 0; i < mat->nrow; i++) {
 		auto therow = sparse_mat_row(mat, i);
 		for (size_t j = 0; j < therow->nnz; j++) {
-			if (scalar_is_zero(therow->entries + j))
-				continue;
 			auto col = therow->indices[j];
-			if constexpr (std::is_same_v<T, fmpq>) {
-				_sparse_vec_set_entry(mat2->rows + col, i, therow->entries + j);
-			}
-			else {
-				_sparse_vec_set_entry(mat2->rows + col, i, therow->entries + j);
-			}
+			_sparse_vec_set_entry(mat2->rows + col, i, therow->entries + j);
+		}
+	}
+}
+
+template <typename T>
+inline void sparse_mat_transpose(sparse_mat_t<T*> mat2, const sparse_mat_t<T> mat) {
+	for (size_t i = 0; i < mat2->nrow; i++)
+		sparse_mat_row(mat2, i)->nnz = 0;
+
+	for (size_t i = 0; i < mat->nrow; i++) {
+		auto therow = sparse_mat_row(mat, i);
+		for (size_t j = 0; j < therow->nnz; j++) {
+			auto col = therow->indices[j];
+			auto entry = therow->entries + j;
+			_sparse_vec_set_entry(mat2->rows + col, i, &entry);
 		}
 	}
 }
@@ -204,6 +195,23 @@ inline void sparse_mat_transpose_part(sparse_mat_t<bool> mat2, const sparse_mat_
 		auto therow = mat->rows + row;
 		for (size_t j = 0; j < therow->nnz; j++) {
 			auto col = therow->indices[j];
+			_sparse_vec_set_entry(mat2->rows + col, row, (bool*)NULL);
+		}
+	}
+}
+
+template <typename T>
+inline void sparse_mat_transpose_part(sparse_mat_t<T*> mat2, const sparse_mat_t<T> mat, const std::vector<slong>& rows) {
+	for (size_t i = 0; i < mat2->nrow; i++)
+		sparse_mat_row(mat2, i)->nnz = 0;
+
+	for (size_t i = 0; i < rows.size(); i++) {
+		auto row = rows[i];
+		auto therow = mat->rows + row;
+		for (size_t j = 0; j < therow->nnz; j++) {
+			auto col = therow->indices[j];
+			auto ptr = therow->entries + j;
+			_sparse_vec_set_entry(mat2->rows + col, row, &ptr);
 		}
 	}
 }

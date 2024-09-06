@@ -32,7 +32,7 @@ ulong eliminate_row_with_one_nnz(sfmpq_mat_t mat,
 	if (localcounter == 0) 
 		return 0;
 
-	sparse_mat_transpose_pointer(tranmat, mat);
+	sparse_mat_transpose(tranmat, mat);
 	for (auto i = 0; i < mat->nrow; i++) {
 		if (pivlist[i] == -1)
 			continue;
@@ -363,13 +363,9 @@ void triangular_solver(sfmpq_mat_t mat, std::vector<std::pair<slong, slong>>& pi
 	}
 
 	for (size_t i = 0; i < pivots.size(); i++) {
-		size_t index;
-		if (ordering == 1)
-			index = i;
-		else if (ordering == -1)
+		size_t index = i;
+		if (ordering < 0)
 			index = pivots.size() - 1 - i;
-		else
-			break; // do nothing
 		auto pp = pivots[index];
 		auto thecol = tranmat[pp.second];
 		auto start = clocknow();
@@ -443,7 +439,7 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 			<< std::endl;
 	}
 
-	sparse_mat_transpose_pointer(tranmat, mat);
+	sparse_mat_transpose(tranmat, mat);
 
 	// sort pivots by nnz, it will be faster
 	std::stable_sort(colperm.begin(), colperm.end(),
@@ -480,18 +476,17 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++) {
 		fmpq_init(cachedensedmat + i);
 	}
-	sparse_mat_transpose_pointer(tranmat, mat);
+	sparse_mat_transpose(tranmat, mat);
 
 	std::vector<slong> leftrows;
-	ulong n_leftrows = 0;
 	leftrows.reserve(mat->nrow);
 	for (size_t i = 0; i < mat->nrow; i++) {
 		if (rowpivs[i] != -1 || mat->rows[i].nnz == 0)
 			continue;
 		leftrows.push_back(i);
 	}
-	n_leftrows = leftrows.size();
 
+	double oldpr = 0;
 	// upper triangle (with respect to row and col perm)
 	while (kk < mat->ncol) {
 		auto start = clocknow();
@@ -513,17 +508,20 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 		}
 		rank += ps.size();
 
-		ulong nn_leftrows = n_leftrows;
-		n_leftrows = 0;
-		for (size_t i = 0; i < nn_leftrows; i++) {
+		ulong n_leftrows = 0;
+		for (size_t i = 0; i < leftrows.size(); i++) {
 			auto row = leftrows[i];
 			if (rowpivs[row] != -1 || mat->rows[row].nnz == 0)
 				continue;
 			leftrows[n_leftrows] = row;
 			n_leftrows++;
 		}
+		leftrows.resize(n_leftrows);
 
-		pool.detach_loop<slong>(0, n_leftrows, [&](slong i) {
+		std::atomic<ulong> localcount(0);
+
+		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
+			localcount++;
 			auto id = BS::this_thread::get_index().value();
 			schur_complete(mat, leftrows[i], n_pivots, 1,
 				cachedensedmat + id * mat->ncol);
@@ -545,24 +543,37 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 		}
 		colperm = std::move(result);
 
-		pool.wait();
+		bool print_once = true; // print at least once
+		while (localcount < leftrows.size()) {
+			double pr = kk + (1.0 * ps.size() * localcount) / leftrows.size();
+
+			if (verbose && (print_once || pr - oldpr > opt->print_step)) {
+				auto end = clocknow();
+				now_nnz = sparse_mat_nnz(mat);
+				std::cout << "\r-- Col: " << (int)pr << "/"
+					<< mat->ncol
+					<< "  rank: " << rank << "  " << "nnz: " << now_nnz
+					<< "  " << "density: "
+					<< 100 * (double)now_nnz / (mat->nrow * mat->ncol)
+					<< "%  " << "speed: " <<
+					((pr - oldpr) / usedtime(start, end))
+					<< " col/s" << std::flush;
+				oldpr = pr;
+				start = end;
+				print_once = false;
+			}
+		}
 
 		kk += ps.size();
-		auto end = clocknow();
-		now_nnz = sparse_mat_nnz(mat);
-		std::cout << "\r-- Col: " << kk << "/"
-			<< mat->ncol
-			<< " rank: " << rank << "  " << "nnz: " << now_nnz
-			<< "  " << "density: "
-			<< 100 * (double)now_nnz / (mat->nrow * mat->ncol)
-			<< "%  " << "speed: " << ps.size() / usedtime(start, end)
-			<< " col/s" << std::flush;
-
 		std::vector<slong> donelist(rowpivs);
+		pool.wait();
+
 		count = eliminate_row_with_one_nnz_rec(mat, tranmat, donelist, false, 0);
 		
-		sparse_mat_transpose_pointer(tranmat, mat);
-		// sort pivots by nnz, it will be faster
+		// sparse_mat_transpose(tranmat, mat);
+		sparse_mat_transpose_part(tranmat, mat, leftrows);
+
+		// sort pivots by nnz, it may have less nnz in final result
 		std::stable_sort(colperm.begin() + kk, colperm.end(),
 			[&tranmat](slong a, slong b) {
 				return tranmat->rows[a].nnz < tranmat->rows[b].nnz;
@@ -676,6 +687,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 
 	sparse_mat_transpose_part(tranmat, mat, rowperm);
 
+	double oldstatus = 0;
 	while (kk < mat->nrow) {
 		auto start = clocknow();
 		auto row = rowperm[kk];
@@ -728,9 +740,6 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 		rank += ps.size();
 		slong newpiv = ps.size();
 
-		auto end = clocknow();
-		double oldstatus = 0;
-		int oldcout = 0;
 		std::atomic<int> count(0);
 		ulong tran_count = 0;
 		// flags[i] is true if the i-th row has been computed
@@ -763,19 +772,18 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 					flags[i] = false;
 				}
 			}
-			if (verbose && count - oldcout > printstep) {
-				auto status = (kk - newpiv + 1) + ((double)count / (mat->nrow - kk)) * newpiv;
-				end = clocknow();
+			auto status = (kk - newpiv + 1) + ((double)count / (mat->nrow - kk)) * newpiv;
+			if (verbose && status - oldstatus > printstep) {
+				auto end = clocknow();
 				now_nnz = sparse_mat_nnz(mat);
 				std::cout << "\r-- Row: " << (int)std::floor(status) << "/" << mat->nrow
 					<< "  rank: " << rank
 					<< "  nnz: " << now_nnz << "  " << "density: "
 					<< (double)100 * now_nnz / (mat->nrow * mat->ncol) << "%"
 					<< "  speed: " << (status - oldstatus) / usedtime(start, end)
-					<< "  row/s" << std::flush;
+					<< " row/s" << std::flush;
 				oldstatus = status;
-				oldcout = count;
-				start = clocknow();
+				start = end;
 			}
 		}
 		// wait for the completion of the computation
