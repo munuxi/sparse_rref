@@ -214,22 +214,13 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 	// to save to cost of converting between sparse and dense
 	// vectors, otherwise we use dense vector
 	if (pivots.size() < 100) {
-		snmod_vec_t tmpsvec;
-		sparse_vec_init(tmpsvec, mat->ncol);
-		sparse_vec_set(tmpsvec, therow);
-
-		// auto& tmpsvec = therow;
-
-		for (auto& [r, c] : pivots) {
-			auto entry = sparse_vec_entry(tmpsvec, c);
+		for (auto [r, c] : pivots) {
+			auto entry = sparse_vec_entry(therow, c);
 			if (entry == NULL)
 				continue;
 			auto row = mat->rows + r;
-			snmod_vec_sub_mul(tmpsvec, row, *entry, p);
+			snmod_vec_sub_mul(therow, row, *entry, p);
 		}
-
-		sparse_vec_swap(therow, tmpsvec);
-		sparse_vec_clear(tmpsvec);
 		return;
 	}
 
@@ -237,7 +228,7 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 	for (size_t i = 0; i < therow->nnz; i++)
 		tmpvec[therow->indices[i]] = therow->entries[i];
 
-	for (auto& [r, c] : pivots) {
+	for (auto [r, c] : pivots) {
 		auto entry = tmpvec[c];
 		if (entry == 0)
 			continue;
