@@ -70,11 +70,11 @@ inline void scalar_add(T a, const T b, const T c, const field_t field) {
 			fmpq_add(a, b, c);
 			break;
 		case FIELD_Fp:
-			*a = nmod_add(*b, *c, field->pvec[0]);
+			*a = _nmod_add(*b, *c, field->pvec[0]);
 			break;
 		case RING_MulitFp:
 			for (size_t i = 0; i < field->rank; i++)
-				a[i] = nmod_add(b[i], c[i], field->pvec[i]);
+				a[i] = _nmod_add(b[i], c[i], field->pvec[i]);
 			break;
 		case FIELD_F2:
 			break;
@@ -88,11 +88,11 @@ inline void scalar_sub(T a, const T b, const T c, const field_t field) {
 			fmpq_sub(a, b, c);
 			break;
 		case FIELD_Fp:
-			*a = nmod_sub(*b, *c, field->pvec[0]);
+			*a = _nmod_sub(*b, *c, field->pvec[0]);
 			break;
 		case RING_MulitFp:
 			for (size_t i = 0; i < field->rank; i++)
-				a[i] = nmod_sub(b[i], c[i], field->pvec[i]);
+				a[i] = _nmod_sub(b[i], c[i], field->pvec[i]);
 			break;
 		case FIELD_F2:
 			break;

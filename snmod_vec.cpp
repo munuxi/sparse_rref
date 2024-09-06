@@ -36,7 +36,7 @@ int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 	ulong na = a;
 	ulong na_pr = n_mulmod_precomp_shoup(na, p.n);
 
-	if (vec->nnz + src->nnz > vec->alloc)
+	if (vec->nnz + src->nnz > vec->s_rank * vec->alloc)
 		sparse_vec_realloc(vec, vec->nnz + src->nnz);
 
 	ulong ptr1 = vec->nnz;
@@ -45,7 +45,7 @@ int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 	while (ptr1 > 0 && ptr2 > 0) {
 		if (vec->indices[ptr1 - 1] == src->indices[ptr2 - 1]) {
 			ulong entry =
-				nmod_add(vec->entries[ptr1 - 1],
+				_nmod_add(vec->entries[ptr1 - 1],
 					n_mulmod_shoup(na, src->entries[ptr2 - 1], na_pr, p.n), p);
 			if (entry != 0) {
 				vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
@@ -56,9 +56,8 @@ int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 			ptr2--;
 		}
 		else if (vec->indices[ptr1 - 1] < src->indices[ptr2 - 1]) {
-			ulong entry = n_mulmod_shoup(na, src->entries[ptr2 - 1], na_pr, p.n);
 			vec->indices[ptr - 1] = src->indices[ptr2 - 1];
-			vec->entries[ptr - 1] = entry;
+			vec->entries[ptr - 1] = n_mulmod_shoup(na, src->entries[ptr2 - 1], na_pr, p.n);
 			ptr2--;
 			ptr--;
 		}
@@ -70,9 +69,8 @@ int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 		}
 	}
 	while (ptr2 > 0) {
-		ulong entry = n_mulmod_shoup(na, src->entries[ptr2 - 1], na_pr, p.n);
 		vec->indices[ptr - 1] = src->indices[ptr2 - 1];
-		vec->entries[ptr - 1] = entry;
+		vec->entries[ptr - 1] = n_mulmod_shoup(na, src->entries[ptr2 - 1], na_pr, p.n);
 		ptr2--;
 		ptr--;
 	}
@@ -84,7 +82,7 @@ int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 
 	vec->nnz += src->nnz;
 	sparse_vec_canonicalize(vec);
-	if (vec->alloc > 4 * vec->nnz)
+	if (vec->alloc > 4 * vec->s_rank * vec->nnz)
 		sparse_vec_realloc(vec, 2 * vec->nnz);
 
 	return 0;

@@ -38,10 +38,8 @@ ulong eliminate_row_with_one_nnz(snmod_mat_t mat,
 		if (pivlist[i] == -1)
 			continue;
 		auto thecol = tranmat->rows + pivlist[i];
-		ulong colone = 0;
 		for (size_t j = 0; j < thecol->nnz; j++) {
 			if (thecol->indices[j] == i) {
-				colone = j;
 				*(thecol->entries[j]) = 1;
 			}
 			else
@@ -202,42 +200,54 @@ auto findmanypivots_c(snmod_mat_t mat, sparse_mat_t<ulong*> tranmat,
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
 void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, int ordering, nmod_t p, ulong* tmpvec) {
+	if (ordering < 0) {
+		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
+		schur_complete(mat, row, npivots, -ordering, p, tmpvec);
+	}
+	
 	auto therow = sparse_mat_row(mat, row);
 
 	if (therow->nnz == 0)
 		return;
+	
+	// if pivots size is small, we can use the sparse vector
+	// to save to cost of converting between sparse and dense
+	// vectors, otherwise we use dense vector
+	if (pivots.size() < 100) {
+		snmod_vec_t tmpsvec;
+		sparse_vec_init(tmpsvec, mat->ncol);
+		sparse_vec_set(tmpsvec, therow);
+
+		// auto& tmpsvec = therow;
+
+		for (auto& [r, c] : pivots) {
+			auto entry = sparse_vec_entry(tmpsvec, c);
+			if (entry == NULL)
+				continue;
+			auto row = mat->rows + r;
+			snmod_vec_sub_mul(tmpsvec, row, *entry, p);
+		}
+
+		sparse_vec_swap(therow, tmpsvec);
+		sparse_vec_clear(tmpsvec);
+		return;
+	}
 
 	memset(tmpvec, 0, mat->ncol * sizeof(ulong));
 	for (size_t i = 0; i < therow->nnz; i++)
 		tmpvec[therow->indices[i]] = therow->entries[i];
 
-	if (ordering > 0) {
-		for (auto& [r, c] : pivots) {
-			auto entry = tmpvec[c];
-			if (entry == 0)
-				continue;
-			auto row = sparse_mat_row(mat, r);
-			ulong e_pr = n_mulmod_precomp_shoup(entry, p.n);
+	for (auto& [r, c] : pivots) {
+		auto entry = tmpvec[c];
+		if (entry == 0)
+			continue;
 
-			for (size_t i = 0; i < row->nnz; i++) {
-				tmpvec[row->indices[i]] = nmod_sub(tmpvec[row->indices[i]],
-					n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
-			}
-		}
-	}
-	else {
-		for (auto ii = pivots.rbegin(); ii != pivots.rend(); ii++) {
-			auto& [r, c] = *ii;
-			auto entry = tmpvec[c];
-			if (entry == 0)
-				continue;
-			auto row = sparse_mat_row(mat, r);
-			ulong e_pr = n_mulmod_precomp_shoup(entry, p.n);
+		auto row = sparse_mat_row(mat, r);
 
-			for (size_t i = 0; i < row->nnz; i++) {
-				tmpvec[row->indices[i]] = nmod_sub(tmpvec[row->indices[i]],
-					n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
-			}
+		ulong e_pr = n_mulmod_precomp_shoup(entry, p.n);
+		for (size_t i = 0; i < row->nnz; i++) {
+			tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
+				n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
 		}
 	}
 	therow->nnz = 0;
@@ -649,6 +659,8 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		}
 		// wait for the completion of the computation
 		pool.wait();
+		// make sure the computation is stable
+		// but it will be slow
 		pool.detach_loop<slong>(0, mat->ncol, [&](slong i) {
 			sparse_vec_sort_indices(tranmat->rows + i);
 			});

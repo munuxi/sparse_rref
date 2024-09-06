@@ -289,10 +289,36 @@ slong findrowpivot(sfmpq_mat_t mat, slong col, slong* rowpivs,
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
 void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, int ordering, fmpq* tmpvec) {
+	if (ordering < 0) {
+		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
+		schur_complete(mat, row, npivots, -ordering, tmpvec);
+	}
+	
 	auto therow = mat->rows + row;
 
 	if (therow->nnz == 0)
 		return;
+
+	// if pivots size is small, we can use the sparse vector
+	// to save to cost of converting between sparse and dense
+	// vectors, otherwise we use dense vector
+	if (pivots.size() < 100) {
+		sfmpq_vec_t tmpsvec;
+		sparse_vec_init(tmpsvec, mat->ncol);
+		sparse_vec_set(tmpsvec, therow);
+
+		for (auto& [r, c] : pivots) {
+			auto entry = sparse_vec_entry(tmpsvec, c);
+			if (entry == NULL)
+				continue;
+			auto row = mat->rows + r;
+			sfmpq_vec_sub_mul(tmpsvec, row, entry);
+		}
+
+		sparse_vec_swap(therow, tmpsvec);
+		sparse_vec_clear(tmpsvec);
+		return;
+	}
 
 	for (size_t i = 0; i < mat->ncol; i++)
 		fmpq_zero(tmpvec + i);
@@ -302,29 +328,15 @@ void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slo
 	fmpq_t entry;
 	fmpq_init(entry);
 
-	if (ordering == 1) {
-		for (auto& [r, c] : pivots) {
-			fmpq_set(entry, tmpvec + c);
-			if (fmpq_is_zero(entry))
-				continue;
+	for (auto& [r, c] : pivots) {
+		fmpq_set(entry, tmpvec + c);
+		if (fmpq_is_zero(entry))
+			continue;
 
-			auto row = mat->rows + r;
+		auto row = mat->rows + r;
 
-			for (size_t i = 0; i < row->nnz; i++)
-				fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
-		}
-	}
-	else if (ordering == -1) {
-		for (auto ii = pivots.rbegin(); ii != pivots.rend(); ii++) {
-			auto& [r, c] = *ii;
-			auto entry = tmpvec + c;
-			if (fmpq_is_zero(entry))
-				continue;
-
-			auto row = mat->rows + r;
-			for (size_t i = 0; i < row->nnz; i++)
-				fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
-		}
+		for (size_t i = 0; i < row->nnz; i++)
+			fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
 	}
 
 	therow->nnz = 0;
