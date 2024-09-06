@@ -482,6 +482,16 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 	}
 	sparse_mat_transpose_pointer(tranmat, mat);
 
+	std::vector<slong> leftrows;
+	ulong n_leftrows = 0;
+	leftrows.reserve(mat->nrow);
+	for (size_t i = 0; i < mat->nrow; i++) {
+		if (rowpivs[i] != -1 || mat->rows[i].nnz == 0)
+			continue;
+		leftrows.push_back(i);
+	}
+	n_leftrows = leftrows.size();
+
 	// upper triangle (with respect to row and col perm)
 	while (kk < mat->ncol) {
 		auto start = clocknow();
@@ -503,11 +513,19 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 		}
 		rank += ps.size();
 
-		pool.detach_loop<slong>(0, mat->nrow, [&](slong i) {
-			if (rowpivs[i] != -1)
-				return;
+		ulong nn_leftrows = n_leftrows;
+		n_leftrows = 0;
+		for (size_t i = 0; i < nn_leftrows; i++) {
+			auto row = leftrows[i];
+			if (rowpivs[row] != -1 || mat->rows[row].nnz == 0)
+				continue;
+			leftrows[n_leftrows] = row;
+			n_leftrows++;
+		}
+
+		pool.detach_loop<slong>(0, n_leftrows, [&](slong i) {
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, i, n_pivots, 1,
+			schur_complete(mat, leftrows[i], n_pivots, 1,
 				cachedensedmat + id * mat->ncol);
 			});
 
