@@ -529,9 +529,10 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 
 		pool.wait();
 
+		kk += ps.size();
 		auto end = clocknow();
 		now_nnz = sparse_mat_nnz(mat);
-		std::cout << "\r-- Col: " << kk + ps.size() << "/"
+		std::cout << "\r-- Col: " << kk << "/"
 			<< mat->ncol
 			<< " rank: " << rank << "  " << "nnz: " << now_nnz
 			<< "  " << "density: "
@@ -541,9 +542,7 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 
 		std::vector<slong> donelist(rowpivs);
 		count = eliminate_row_with_one_nnz_rec(mat, tranmat, donelist, false, 0);
-		rank += count;
-		kk += ps.size();
-
+		
 		sparse_mat_transpose_pointer(tranmat, mat);
 		// sort pivots by nnz, it will be faster
 		std::stable_sort(colperm.begin() + kk, colperm.end(),
