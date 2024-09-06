@@ -36,7 +36,7 @@ int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 	ulong na = a;
 	ulong na_pr = n_mulmod_precomp_shoup(na, p.n);
 
-	if (vec->nnz + src->nnz > vec->s_rank * vec->alloc)
+	if (vec->nnz + src->nnz > vec->alloc)
 		sparse_vec_realloc(vec, vec->nnz + src->nnz);
 
 	ulong ptr1 = vec->nnz;
@@ -82,7 +82,7 @@ int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 
 	vec->nnz += src->nnz;
 	sparse_vec_canonicalize(vec);
-	if (vec->alloc > 4 * vec->s_rank * vec->nnz)
+	if (vec->alloc > 4 * vec->nnz)
 		sparse_vec_realloc(vec, 2 * vec->nnz);
 
 	return 0;

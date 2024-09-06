@@ -81,34 +81,6 @@ ulong eliminate_row_with_one_nnz_rec(sfmpq_mat_t mat,
 	return count;
 }
 
-// lowerbound?
-inline slong rowcolpart(std::vector<slong> conp, ulong nrow) {
-	slong i;
-	for (i = 0; i < conp.size(); i++)
-		if (conp[i] >= nrow)
-			break;
-	return i;
-}
-
-// 0    1    -1   2
-// v a  v 0  v a  v 0
-// b w  b w  0 w  0 w
-
-inline int pair_irr(std::pair<slong, slong> v, std::pair<slong, slong> w,
-	sfmpq_mat_t mat) {
-	if (v.first == w.first || v.second == w.second)
-		return 0;
-	auto a = sparse_mat_entry(mat, v.first, w.second, true);
-	auto b = sparse_mat_entry(mat, w.first, v.second, true);
-	if (a == NULL && b == NULL)
-		return 2;
-	if (a == NULL)
-		return 1;
-	if (b == NULL)
-		return -1;
-	return 0;
-}
-
 auto findmanypivots_c(sfmpq_mat_t mat, sparse_mat_t<fmpq*> tranmat,
 	std::vector<slong>& rowpivs, std::vector<slong>& colperm,
 	iter start,
@@ -120,7 +92,7 @@ auto findmanypivots_c(sfmpq_mat_t mat, sparse_mat_t<fmpq*> tranmat,
 	std::unordered_set<slong> prows;
 	prows.reserve(std::min((size_t)4096, max_depth));
 	for (auto col = start; col < colperm.end(); col++) {
-		if (col - start > max_depth)
+		if ((ulong)(col - start) > max_depth)
 			break;
 		bool flag = true;
 		auto thecol = tranmat->rows + *col;
@@ -193,96 +165,6 @@ auto findmanypivots_c(sfmpq_mat_t mat, sparse_mat_t<fmpq*> tranmat,
 
 	std::vector<std::pair<slong, iter>> result(pivots.begin(), pivots.end());
 	return result;
-}
-
-auto findmanypivots(sfmpq_mat_t mat, sparse_mat_t<fmpq*> tranmat,
-	slong* rowpivs, std::vector<slong>& colperm,
-	std::vector<slong>::iterator start,
-	size_t max_depth = ULLONG_MAX) {
-
-	std::vector<std::pair<slong, std::vector<slong>::iterator>> pivots;
-	std::unordered_set<slong> prows;
-	prows.reserve(std::min((size_t)4096, max_depth));
-	for (auto col = start; col < colperm.end(); col++) {
-		if (col - start > max_depth)
-			break;
-		bool flag = true;
-		auto thecol = tranmat->rows + *col;
-		auto indices = thecol->indices;
-		for (size_t i = 0; i < thecol->nnz; i++) {
-			flag = flag && (prows.find(indices[i]) == prows.end());
-			if (!flag)
-				break;
-		}
-		if (!flag)
-			continue;
-
-		if (thecol->nnz == 0)
-			continue;
-		slong row;
-		ulong mnnz = ULLONG_MAX;
-		for (size_t i = 0; i < thecol->nnz; i++) {
-			if (rowpivs[indices[i]] != -1)
-				continue;
-			if (mat->rows[indices[i]].nnz < mnnz) {
-				row = indices[i];
-				mnnz = mat->rows[row].nnz;
-			}
-		}
-		if (mnnz != ULLONG_MAX) {
-			pivots.push_back(std::make_pair(row, col));
-			prows.insert(row);
-		}
-	}
-	return pivots;
-}
-
-slong findrowpivot(sfmpq_mat_t mat, slong col, slong* rowpivs,
-	std::vector<slong>& colparts, std::vector<slong>& kkparts,
-	std::vector<std::vector<slong>>& rowparts, slong* dolist,
-	fmpq** entrylist, slong& dolist_len, BS::thread_pool& pool) {
-
-	auto pivot = col;
-	auto mm = colparts[col];
-	auto rowlist = rowparts[mm];
-
-	// parallelize this loop
-
-	const auto loop = [&](slong i) {
-		if (rowlist[i] == -1)
-			return;
-		auto entry = sparse_mat_entry(mat, rowlist[i], pivot, true);
-		if (entry == NULL || fmpq_is_zero(entry))
-			return;
-		entrylist[i] = entry;
-		dolist[i] = 1;
-		};
-
-	pool.detach_loop<slong>(0, kkparts[mm], loop);
-	pool.wait();
-
-	slong rowi = -1; // choose the row with the minimal nnz
-	ulong mininnz = ULLONG_MAX;
-	for (size_t i = 0; i < kkparts[mm]; i++) {
-		if (dolist[i] == -1)
-			continue;
-
-		auto row = rowparts[mm][i];
-
-		// do not choose rows that have been used to eliminate
-		if (rowpivs[row] != -1)
-			continue;
-
-		dolist[dolist_len] = row;
-		entrylist[dolist_len] = entrylist[i];
-		dolist_len++;
-
-		if (mat->rows[row].nnz < mininnz) { // check the nnz of the row
-			rowi = row;
-			mininnz = mat->rows[row].nnz;
-		}
-	}
-	return rowi;
 }
 
 // first write a stupid one

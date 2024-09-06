@@ -79,14 +79,6 @@ ulong eliminate_row_with_one_nnz_rec(snmod_mat_t mat,
 	return count;
 }
 
-inline slong rowcolpart(std::vector<slong> conp, slong nrow) {
-	slong i;
-	for (i = 0; i < conp.size(); i++)
-		if (conp[i] >= nrow)
-			break;
-	return i;
-}
-
 auto findmanypivots_c(snmod_mat_t mat, sparse_mat_t<ulong*> tranmat,
 	std::vector<slong>& rowpivs, std::vector<slong>& colperm,
 	iter start,
@@ -615,7 +607,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		for (auto ind : ps) {
 			result.push_back(*ind.second);
 		}
-		for (auto it = kk; it < mat->nrow; it++) {
+		for (ulong it = kk; it < mat->nrow; it++) {
 			if (indices.find(it) == indices.end()) {
 				result.push_back(rowperm[it]);
 			}
