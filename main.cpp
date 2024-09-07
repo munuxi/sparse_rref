@@ -33,6 +33,11 @@ int main(int argc, char** argv) {
 		.default_value(false)
 		.implicit_value(true)
 		.nargs(0);
+	program.add_argument("-k", "--kernel")
+		.default_value(false)
+		.help("output the kernel")
+		.implicit_value(true)
+		.nargs(0);
 	program.add_argument("-f", "--field")
 		.default_value("QQ")
 		.help("QQ: rational field\nZp: Z/p for a prime p")
@@ -70,11 +75,6 @@ int main(int argc, char** argv) {
 	program.add_argument("-V", "--verbose")
 		.default_value(false)
 		.help("prints information of calculation")
-		.implicit_value(true)
-		.nargs(0);
-	program.add_argument("-k", "--kernel")
-		.default_value(false)
-		.help("output the kernel")
 		.implicit_value(true)
 		.nargs(0);
 	program.add_argument("-ps", "--print_step")

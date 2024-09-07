@@ -26,7 +26,6 @@ typedef sparse_vec_t<fmpq> sfmpq_vec_t;
 // sparse_vec
 
 // memory management
-// realloc is ok to apply to NULL pointer
 template <typename T>
 inline void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
 	if (alloc == vec->alloc)

@@ -3,50 +3,6 @@
 
 #include "sparse_vec.h"
 
-//template <typename T>
-//struct sparse_mat_s {
-//	field_t field;
-//	ulong nrow = 0;
-//	ulong ncol = 0;
-//	sparse_vec_struct<T>* rows = NULL;
-//
-//	sparse_vec_struct<T>* operator[](ulong i) { return rows + i; }
-//
-//	sparse_mat_s(ulong r, ulong c, field_t f) {
-//		nrow = r;
-//		ncol = c;
-//		field_set(field, f);
-//		rows = (sparse_vec_struct<T>*)malloc(nrow * sizeof(sparse_vec_struct<T>));
-//		for (size_t i = 0; i < nrow; i++)
-//			sparse_vec_init(rows + i, 1ULL, field->rank);
-//	}
-//
-//	~sparse_mat_s() {
-//		for (size_t i = 0; i < nrow; i++)
-//			sparse_vec_clear(rows + i);
-//		free(rows);
-//		rows = NULL;
-//		if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-//			free(field->pvec);
-//			field->pvec = NULL;
-//		}
-//	}
-//
-//	ulong nnz() {
-//		ulong nnz = 0;
-//		for (size_t i = 0; i < nrow; i++)
-//			nnz += rows[i].nnz;
-//		return nnz;
-//	}
-//
-//	ulong alloc() {
-//		ulong alloc = 0;
-//		for (size_t i = 0; i < nrow; i++)
-//			alloc += rows[i].alloc;
-//		return alloc;
-//	}
-//};
-
 template <typename T> struct sparse_mat_struct {
 	ulong nrow;
 	ulong ncol;
