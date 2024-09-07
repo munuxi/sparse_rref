@@ -191,10 +191,11 @@ auto findmanypivots_c(snmod_mat_t mat, sparse_mat_t<ulong*> tranmat,
 // first write a stupid one
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
-void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, int ordering, nmod_t p, ulong* tmpvec) {
+void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, 
+	std::vector<slong>& leftcols, int ordering, nmod_t p, ulong* tmpvec) {
 	if (ordering < 0) {
 		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
-		schur_complete(mat, row, npivots, -ordering, p, tmpvec);
+		schur_complete(mat, row, npivots, leftcols, -ordering, p, tmpvec);
 	}
 	
 	auto therow = sparse_mat_row(mat, row);
@@ -234,7 +235,7 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		}
 	}
 	therow->nnz = 0;
-	for (size_t i = 0; i < mat->ncol; i++) {
+	for (auto i : leftcols) {
 		if (tmpvec[i] != 0)
 			_sparse_vec_set_entry(therow, i, tmpvec + i);
 	}
@@ -309,7 +310,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 	// store the pivots that have been used
 	// -1 is not used
 	std::vector<slong> rowpivs(mat->nrow, -1);
-	std::vector<slong> colpivs(mat->ncol, -1);
 	std::vector<std::pair<slong, slong>> pivots;
 	// perm the col
 	std::vector<slong> colperm(mat->ncol);
@@ -352,7 +352,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			if (rowpivs[row] != -1)
 				continue;
 			rowpivs[row] = colperm[kk];
-			colpivs[colperm[kk]] = row;
 			auto e = sparse_mat_entry(mat, row, rowpivs[row], true);
 			auto scalar = nmod_inv(*e, p);
 			snmod_vec_rescale(mat->rows + row, scalar, p);
@@ -390,13 +389,11 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		for (auto i = ps.rbegin(); i != ps.rend(); i++) {
 			auto [r, cp] = *i;
 			rowpivs[r] = *cp;
-			colpivs[*cp] = r;
 			n_pivots.push_back(std::make_pair(r, *cp));
 			pivots.push_back(std::make_pair(r, *cp));
 			ulong scalar = nmod_inv(*sparse_mat_entry(mat, r, *cp), p);
 			snmod_vec_rescale(mat->rows + r, scalar, p);
 		}
-		rank += ps.size();
 
 		ulong n_leftrows = 0;
 		for (size_t i = 0; i < leftrows.size(); i++) {
@@ -408,15 +405,18 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		}
 		leftrows.resize(n_leftrows);
 
+		std::vector<slong> leftcols(colperm.begin() + kk, colperm.end());
+		std::sort(leftcols.begin(), leftcols.end());
+		
 		std::atomic<ulong> localcount(0);
 
 		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
 			localcount++;
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, leftrows[i], n_pivots, 1, p,
-				cachedensedmat + id * mat->ncol);
+			schur_complete(mat, leftrows[i], n_pivots, 
+				leftcols, 1, p, cachedensedmat + id * mat->ncol);
 			});
-		
+
 		// reorder the cols, move ps to the front
 		std::unordered_set<slong> indices(ps.size());
 		for (size_t i = 0; i < ps.size(); i++)
@@ -432,8 +432,10 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			}
 		}
 		colperm = std::move(result);
+		std::vector<slong> donelist(rowpivs);
 
 		bool print_once = true; // print at least once
+		rank += ps.size();
 		while (localcount < leftrows.size()) {
 			double pr = kk + (1.0 * ps.size() * localcount) / leftrows.size();
 
@@ -453,11 +455,9 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 				print_once = false;
 			}
 		}
-
-		kk += ps.size();
-		std::vector<slong> donelist(rowpivs);
 		pool.wait();
 
+		kk += ps.size();
 		count = eliminate_row_with_one_nnz_rec(mat, tranmat, donelist, false, 0);
 
 		// sparse_mat_transpose(tranmat, mat);
@@ -614,6 +614,12 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		}
 		rowperm = std::move(result);
 
+		std::vector<slong> leftcols;
+		for (size_t i = 0; i < mat->ncol; i++) {
+			if (colpivs[i] == -1)
+				leftcols.push_back(i);
+		}
+
 		kk += ps.size();
 		rank += ps.size();
 		slong newpiv = ps.size();
@@ -629,7 +635,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 			if (rowpivs[rowperm[i]] != -1)
 				return;
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, rowperm[i], n_pivots, 1, p,
+			schur_complete(mat, rowperm[i], n_pivots, leftcols, 1, p,
 				cachedensedmat + id * mat->ncol);
 			count++;
 			flags[i - kk] = true;

@@ -170,10 +170,11 @@ auto findmanypivots_c(sfmpq_mat_t mat, sparse_mat_t<fmpq*> tranmat,
 // first write a stupid one
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
-void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, int ordering, fmpq* tmpvec) {
+void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, 
+	std::vector<slong>& leftcols, int ordering, fmpq* tmpvec) {
 	if (ordering < 0) {
 		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
-		schur_complete(mat, row, npivots, -ordering, tmpvec);
+		schur_complete(mat, row, npivots, leftcols, -ordering, tmpvec);
 	}
 	
 	auto therow = mat->rows + row;
@@ -213,14 +214,13 @@ void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		for (size_t i = 0; i < row->nnz; i++)
 			fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
 	}
+	fmpq_clear(entry);
 
 	therow->nnz = 0;
-	for (size_t i = 0; i < mat->ncol; i++) {
+	for (auto i : leftcols) {
 		if (!fmpq_is_zero(tmpvec + i))
 			_sparse_vec_set_entry(therow, i, tmpvec + i);
 	}
-
-	fmpq_clear(entry);
 }
 
 // upper solver : ordering = -1
@@ -400,12 +400,15 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 		}
 		leftrows.resize(n_leftrows);
 
+		std::vector<slong> leftcols(colperm.begin() + kk, colperm.end());
+		std::sort(leftcols.begin(), leftcols.end());
+
 		std::atomic<ulong> localcount(0);
 
 		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
 			localcount++;
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, leftrows[i], n_pivots, 1,
+			schur_complete(mat, leftrows[i], n_pivots, leftcols, 1,
 				cachedensedmat + id * mat->ncol);
 			});
 
@@ -618,6 +621,12 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 		}
 		rowperm = std::move(result);
 
+		std::vector<slong> leftcols;
+		for (size_t i = 0; i < mat->ncol; i++) {
+			if (colpivs[i] == -1)
+				leftcols.push_back(i);
+		}
+
 		kk += ps.size();
 		rank += ps.size();
 		slong newpiv = ps.size();
@@ -633,7 +642,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 			if (rowpivs[rowperm[i]] != -1)
 				return;
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, rowperm[i], n_pivots, 1, cachedensedmat + id * mat->ncol);
+			schur_complete(mat, rowperm[i], n_pivots, leftcols, 1, cachedensedmat + id * mat->ncol);
 			count++;
 			flags[i - kk] = true;
 			});
