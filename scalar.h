@@ -8,6 +8,13 @@ inline void scalar_init(ulong* a) { return; } // do nothing
 
 inline bool scalar_is_zero(const fmpq_t a) { return fmpq_is_zero(a); }
 inline bool scalar_is_zero(const ulong* a) { return (*a) == 0; }
+template <typename T>
+inline bool scalar_is_zero(const scalar_s<T>* a) {
+	for (size_t i = 0; i < a->rank; i++)
+		if (!scalar_is_zero(a->data + i))
+			return false;
+	return true;
+}
 
 inline bool scalar_equal(const fmpq_t a, const fmpq_t b) { return fmpq_equal(a, b); }
 inline bool scalar_equal(const ulong* a, const ulong* b) { return (*a) == (*b); }
@@ -19,6 +26,10 @@ template <typename T>
 inline void scalar_set(T* a, const T* b, const ulong rank) {
 	for (ulong i = 0; i < rank; i++)
 		scalar_set(a + i, b + i);
+}
+
+inline void scalar_set(scalar_s<ulong>* a, const scalar_s<ulong>* b) {
+	scalar_set(a->data, b->data, b->rank);
 }
 
 inline void scalar_zero(fmpq_t a) { fmpq_zero(a); }

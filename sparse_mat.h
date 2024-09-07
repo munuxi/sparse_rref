@@ -24,8 +24,7 @@ inline void _sparse_mat_init(sparse_mat_t<T> mat, ulong nrow, ulong ncol,
 	ulong alloc) {
 	mat->nrow = nrow;
 	mat->ncol = ncol;
-	mat->rows =
-		(sparse_vec_struct<T> *)malloc(nrow * sizeof(sparse_vec_struct<T>));
+	mat->rows = s_malloc<sparse_vec_struct<T>>(nrow);
 	for (size_t i = 0; i < nrow; i++)
 		sparse_vec_init(mat->rows + i, alloc);
 }

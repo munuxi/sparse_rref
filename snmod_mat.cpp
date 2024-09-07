@@ -364,7 +364,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 
 	init_nnz = sparse_mat_nnz(mat);
 
-	ulong* cachedensedmat = (ulong*)malloc(mat->ncol * pool.get_thread_count() * sizeof(ulong));
+	ulong* cachedensedmat = s_malloc<ulong>(mat->ncol * pool.get_thread_count());
 	sparse_mat_transpose(tranmat, mat);
 
 	std::vector<slong> leftrows;
@@ -551,7 +551,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 	sparse_mat_t<bool> tranmat;
 	sparse_mat_init(tranmat, mat->ncol, mat->nrow);
 
-	ulong* cachedensedmat = (ulong*)malloc(mat->ncol * pool.get_thread_count() * sizeof(ulong));
+	ulong* cachedensedmat = s_malloc<ulong>(mat->ncol * pool.get_thread_count());
 
 	// skip the rows with only one/zero nonzero element
 	slong kk;

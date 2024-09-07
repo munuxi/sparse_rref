@@ -28,6 +28,19 @@
 #define SET_BIT_ONE(x, bit) ((x) |= (1ULL << (bit)))
 #define SET_BIT_NIL(x, bit) ((x) &= ~(1ULL << (bit)))
 
+template <typename T> struct scalar_s {
+	size_t rank = 1;
+	T* data = NULL;
+};
+
+template <typename T> struct is_scalar_s : std::false_type {};
+template <typename T> struct is_scalar_s<scalar_s<T>> : std::true_type {};
+template <typename T> struct is_scalar_s<const scalar_s<T>> : std::true_type {};
+
+template <typename T> struct scalar_s_decay { using type = T; };
+template <typename T> struct scalar_s_decay<scalar_s<T>> { using type = T; };
+template <typename T> struct scalar_s_decay<const scalar_s<T>> { using type = T; };
+
 struct rref_option {
 	bool verbose = false;
 	bool pivot_dir = true; // true: row, false: col
@@ -52,11 +65,56 @@ struct field_struct {
 };
 typedef struct field_struct field_t[1];
 
+// Memory management
+
+template <typename T>
+T* s_malloc(const size_t size) {
+	return (T*)malloc(size * sizeof(T));
+}
+
+template <typename T>
+scalar_s<T>* s_malloc(const size_t size, const size_t rank) {
+	scalar_s<T>* s = (scalar_s<T>*)malloc(size * sizeof(scalar_s<T>));
+	s->data = (T*)malloc(rank * size * sizeof(T));
+	for (size_t i = 0; i < size; i++) {
+		s[i].rank = rank;
+		s[i].data = s->data + i * rank;
+	}
+	return s;
+}
+
+template <typename T>
+void s_free(T* s) {
+	if constexpr (is_scalar_s<T>::value) {
+		free(s->data);
+		s->data = NULL;
+	}
+	free(s);
+}
+
+template <typename T>
+T* s_realloc(T* s, const size_t size) {
+	return (T*)realloc(s, size * sizeof(T));
+}
+
+template <typename T>
+scalar_s<T>* s_realloc(scalar_s<T>* s, const size_t size, const size_t rank) {
+	auto ptr = (T*)realloc(s->data, rank * size * sizeof(T));
+	scalar_s<T>* new_s = (scalar_s<T>*)realloc(s, size * sizeof(scalar_s<T>));
+	for (size_t i = 0; i < size; i++) {
+		new_s[i].rank = rank;
+		new_s[i].data = ptr + i * rank;
+	}
+	return new_s;
+}
+
+// field
+
 inline void field_init(field_t field, enum RING ring, ulong rank, const ulong* pvec) {
 	field->ring = ring;
 	field->rank = rank;
 	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-		field->pvec = (nmod_t*)malloc(rank * sizeof(nmod_t));
+		field->pvec = s_malloc<nmod_t>(rank);
 		for (ulong i = 0; i < rank; i++)
 			nmod_init(field->pvec + i, pvec[i]);
 	}
@@ -66,7 +124,7 @@ inline void field_init(field_t field, enum RING ring, const std::vector<ulong>& 
 	field->ring = ring;
 	field->rank = pvec.size();
 	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-		field->pvec = (nmod_t*)malloc(field->rank * sizeof(nmod_t));
+		field->pvec = s_malloc<nmod_t>(field->rank);
 		for (ulong i = 0; i < field->rank; i++)
 			nmod_init(field->pvec + i, pvec[i]);
 	}
@@ -76,7 +134,7 @@ inline void field_set(field_t field, const field_t ff) {
 	field->ring = ff->ring;
 	field->rank = ff->rank;
 	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-		field->pvec = (nmod_t*)realloc(field->pvec, field->rank * sizeof(nmod_t));
+		field->pvec = s_realloc(field->pvec, field->rank);
 		for (ulong i = 0; i < field->rank; i++)
 			nmod_init(field->pvec + i, ff->pvec[i].n);
 	}
@@ -96,7 +154,19 @@ inline void DeleteSpaces(std::string& str) {
 		[](unsigned char x) { return std::isspace(x); }),
 		str.end());
 }
-std::vector<std::string> SplitString(const std::string& s, std::string delim);
+
+inline std::vector<std::string> SplitString(const std::string& s, std::string delim) {
+	auto start = 0ULL;
+	auto end = s.find(delim);
+	std::vector<std::string> result;
+	while (end != std::string::npos) {
+		result.push_back(s.substr(start, end - start));
+		start = end + delim.length();
+		end = s.find(delim, start);
+	}
+	result.push_back(s.substr(start, end));
+	return result;
+}
 
 // time
 inline std::chrono::system_clock::time_point clocknow() {
@@ -125,148 +195,5 @@ void remove_indices(std::vector<T>& vec, std::vector<slong>& indices) {
 		}
 	}
 }
-
-// Hopcroft-Karp algorithm for maximum cardinality matching in bipartite graphs
-class BipartiteMatcher {
-public:
-	BipartiteMatcher(slong U, slong V) : U(U), V(V), NIL(0) { init(); }
-
-	void init() {
-		adj.resize(U + 1);
-		pairU.resize(U + 1, NIL);
-		pairV.resize(U + V + 1, NIL);
-		dist.resize(U + 1, LLONG_MAX);
-	}
-
-	~BipartiteMatcher() {
-		adj.clear();
-		pairU.clear();
-		pairV.clear();
-		dist.clear();
-	}
-
-	void clearAdj() {
-		for (auto& vec : adj) {
-			vec.clear();
-		}
-		adj.clear();
-	}
-
-	void addEdge(slong u, slong v) { adj[u].push_back(v); }
-
-	slong maxMatching() {
-		slong matching = 0;
-		while (bfs()) {
-			for (auto u = 1; u <= U; ++u) {
-				if (pairU[u] == NIL && dfs(u)) {
-					++matching;
-				}
-			}
-		}
-		return matching;
-	}
-
-	slong maximalMatchingWithEdge(slong u, slong v) {
-		pairU[u] = v;
-		pairV[v] = u;
-
-		for (auto& neighbors : adj) {
-			neighbors.erase(remove(neighbors.begin(), neighbors.end(), v),
-				neighbors.end());
-		}
-		adj[u].clear();
-
-		slong matching = 1;
-		while (bfs()) {
-			for (int i = 1; i <= U; ++i) {
-				if (pairU[i] == NIL && dfs(i)) {
-					++matching;
-				}
-			}
-		}
-		return matching;
-	}
-
-	std::vector<std::pair<slong, slong>> getMatchingPairs() {
-		std::vector<std::pair<slong, slong>> pairs;
-		for (auto u = 1; u <= U; ++u) {
-			if (pairU[u] != NIL) {
-				pairs.emplace_back(u, pairU[u] - U);
-			}
-		}
-		return pairs;
-	}
-
-private:
-	slong U, V, NIL;
-	std::vector<std::vector<slong>> adj;
-	std::vector<slong> pairU, pairV, dist;
-
-	bool bfs() {
-		std::queue<slong> Q;
-		for (auto u = 1; u <= U; ++u) {
-			if (pairU[u] == NIL) {
-				dist[u] = 0;
-				Q.push(u);
-			}
-			else {
-				dist[u] = LLONG_MAX;
-			}
-		}
-		dist[NIL] = LLONG_MAX;
-		while (!Q.empty()) {
-			auto u = Q.front();
-			Q.pop();
-			if (dist[u] < dist[NIL]) {
-				for (auto v : adj[u]) {
-					if (dist[pairV[v]] == LLONG_MAX) {
-						dist[pairV[v]] = dist[u] + 1;
-						Q.push(pairV[v]);
-					}
-				}
-			}
-		}
-		return dist[NIL] != LLONG_MAX;
-	}
-
-	bool dfs(slong u) {
-		if (u != NIL) {
-			for (auto v : adj[u]) {
-				if (dist[pairV[v]] == dist[u] + 1) {
-					if (dfs(pairV[v])) {
-						pairV[v] = u;
-						pairU[u] = v;
-						return true;
-					}
-				}
-			}
-			dist[u] = LLONG_MAX;
-			return false;
-		}
-		return true;
-	}
-};
-
-class Graph {
-public:
-	Graph(slong V) { this->V = V; }
-	void addEdge(slong v, slong w) {
-		adj[v].push_back(w);
-		adj[w].push_back(v);
-	}
-	void clear() { adj.clear(); }
-	std::vector<std::vector<slong>> findMaximalConnectedComponents();
-	std::unordered_set<slong> findMaximalCliqueContainingEdge(slong v, slong w);
-	std::unordered_set<slong> findMaximalCliqueContainingVertex(slong v);
-
-private:
-	void DFS(slong v, std::unordered_set<slong>& visited,
-		std::vector<slong>& component);
-	bool isClique(const std::unordered_set<slong>& vertices);
-	void expandClique(std::unordered_set<slong>& clique, slong new_vertex);
-
-	slong V;
-	std::unordered_map<slong, std::vector<slong>> adj;
-};
 
 #endif

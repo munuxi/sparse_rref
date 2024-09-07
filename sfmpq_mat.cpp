@@ -354,7 +354,7 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 
 	init_nnz = sparse_mat_nnz(mat);
 
-	fmpq* cachedensedmat = (fmpq*)malloc(mat->ncol * pool.get_thread_count() * sizeof(fmpq));
+	fmpq* cachedensedmat = s_malloc<fmpq>(mat->ncol * pool.get_thread_count());
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++) {
 		fmpq_init(cachedensedmat + i);
 	}
@@ -548,7 +548,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 	sparse_mat_t<bool> tranmat;
 	sparse_mat_init(tranmat, mat->ncol, mat->nrow);
 
-	fmpq* cachedensedmat = (fmpq*)malloc(mat->ncol * pool.get_thread_count() * sizeof(fmpq));
+	fmpq* cachedensedmat = s_malloc<fmpq>(mat->ncol * pool.get_thread_count());
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++)
 		fmpq_init(cachedensedmat + i);
 
