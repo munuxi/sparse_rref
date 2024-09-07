@@ -1,4 +1,5 @@
 // // use mimalloc to replace the default malloc
+// #include <cstdlib>
 // #include "mimalloc-override.h"
 // #include "mimalloc-new-delete.h"
 

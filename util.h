@@ -62,6 +62,16 @@ inline void field_init(field_t field, enum RING ring, ulong rank, const ulong* p
 	}
 }
 
+inline void field_init(field_t field, enum RING ring, const std::vector<ulong>& pvec) {
+	field->ring = ring;
+	field->rank = pvec.size();
+	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
+		field->pvec = (nmod_t*)malloc(field->rank * sizeof(nmod_t));
+		for (ulong i = 0; i < field->rank; i++)
+			nmod_init(field->pvec + i, pvec[i]);
+	}
+}
+
 inline void field_set(field_t field, const field_t ff) {
 	field->ring = ff->ring;
 	field->rank = ff->rank;

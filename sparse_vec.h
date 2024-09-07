@@ -72,7 +72,7 @@ inline const T* sparse_vec_entry_pointer(const sparse_vec_t<T> vec, const slong 
 
 // alloc at least 1 to make sure that indices and entries are not NULL
 template <typename T>
-inline void sparse_vec_init(sparse_vec_t<T> vec, ulong alloc = 1, ulong rank = 1) {
+inline void sparse_vec_init(sparse_vec_t<T> vec, ulong alloc = 1) {
 	vec->nnz = 0;
 	vec->alloc = alloc;
 	vec->indices = (slong*)malloc(vec->alloc * sizeof(slong));
