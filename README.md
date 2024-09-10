@@ -13,13 +13,13 @@ Some algorithms are inspired by [Spasm](https://github.com/cbouilla/spasm), but 
 
 ### How to use this code
 
-We only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime, but It is possible to generalize to other fields/rings by some small modification.
+We now only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime, but it is possible to generalize to other fields/rings by some small modification.
 
 It is highly recommended to use [mimalloc](https://github.com/microsoft/mimalloc) (or other similar library) to dynamically override the standard malloc, especially on Windows.
 
 We also provide an example, see `mma_link.cpp`, by using the LibraryLink api of Mathematica to compile a library which can used by Mathematica.
 
-Build it, e.g.
+Build it, e.g. (also add -lpthread if pthread is required by the compiler)
 
 ```bash
 g++ snmod_vec.cpp snmod_mat.cpp sfmpq_vec.cpp sfmpq_mat.cpp main.cpp -o sparserref -O3 -std=c++17 -Iincludepath -Llibpath -lflint -lgmp
@@ -28,7 +28,7 @@ g++ snmod_vec.cpp snmod_mat.cpp sfmpq_vec.cpp sfmpq_mat.cpp main.cpp -o sparserr
 and help is 
 
 ```
-Usage: sparserref [--help] [--version] [--output VAR] [--output-pivots] [--kernel] [--field VAR] [--prime VAR] [--threads VAR] [--search_depth VAR] [--search_min VAR] [--sort_step VAR] [--pivot_direction VAR] [--verbose] [--print_step VAR] input_file
+Usage: sparserref [--help] [--version] [--verbose] [--print_step VAR] [--output VAR] [--kernel] [--output-pivots] [--field VAR] [--prime VAR] [--threads VAR] [--pivot_direction VAR] [--search_depth VAR] input_file
 
 Positional arguments:
   input_file              input file in matrix market format
@@ -36,21 +36,17 @@ Positional arguments:
 Optional arguments:
   -h, --help              shows help message and exits
   -v, --version           prints version information and exits
+  -V, --verbose           prints information of calculation
+  -ps, --print_step       print step when --verbose is enabled [default: 100]
   -o, --output            output file in matrix market format [default: "input_file.rref"]
-  --output-pivots         output pivots
   -k, --kernel            output the kernel
+  --output-pivots         output pivots
   -f, --field             QQ: rational field
                           Zp: Z/p for a prime p [default: "QQ"]
   -p, --prime             a prime number, only vaild when field is Zp  [default: "34534567"]
   -t, --threads           the number of threads  [default: 1]
-  -sd, --search_depth     the depth of search, default is the max of size_t  [default: 0]
-  -sm, --search_min       the minimal length to go out of search
-                          if depth < min, only search once [default: 200]
-  -ss, --sort_step        sort the cols when rrefing
-                          if sort_step = 0, it equals max(1000,#cols/100) [default: 0]
   -pd, --pivot_direction  the direction to select pivots [default: "row"]
-  -V, --verbose           prints information of calculation
-  -ps, --print_step       print step when --verbose is enabled [default: 100]
+  -sd, --search_depth     the depth of search, default is the max of size_t  [default: 0]
 ```
 
 ### TODO

@@ -98,8 +98,6 @@ struct rref_option {
 	bool verbose = false;
 	bool pivot_dir = true; // true: row, false: col
 	int print_step = 100;
-	int sort_step = 0;
-	int search_min = 200;
 	int search_depth = INT_MAX;
 };
 typedef struct rref_option rref_option_t[1];

@@ -61,8 +61,6 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
 		opt->pivot_dir = true;
 	else 
 		opt->pivot_dir = false;
-    if (opt->sort_step == 0)
-        opt->sort_step = std::max(1000, (int)ncols / 100);
 
     // init a sparse matrix
     nmod_t pp;

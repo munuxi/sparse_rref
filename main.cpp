@@ -21,21 +21,31 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	argparse::ArgumentParser program("sparserref", "v0.1.3");
+	argparse::ArgumentParser program("sparserref", "v0.1.4");
 	program.add_argument("input_file")
 		.help("input file in matrix market format");
+	program.add_argument("-V", "--verbose")
+		.default_value(false)
+		.help("prints information of calculation")
+		.implicit_value(true)
+		.nargs(0);
+	program.add_argument("-ps", "--print_step")
+		.help("print step when --verbose is enabled")
+		.default_value(100)
+		.nargs(1)
+		.scan<'i', int>();
 	program.add_argument("-o", "--output")
 		.help("output file in matrix market format")
 		.default_value("input_file.rref")
 		.nargs(1);
-	program.add_argument("--output-pivots")
-		.help("output pivots")
-		.default_value(false)
-		.implicit_value(true)
-		.nargs(0);
 	program.add_argument("-k", "--kernel")
 		.default_value(false)
 		.help("output the kernel")
+		.implicit_value(true)
+		.nargs(0);
+	program.add_argument("--output-pivots")
+		.help("output pivots")
+		.default_value(false)
 		.implicit_value(true)
 		.nargs(0);
 	program.add_argument("-f", "--field")
@@ -51,35 +61,13 @@ int main(int argc, char** argv) {
 		.default_value(1)
 		.nargs(1)
 		.scan<'i', int>();
-	program.add_argument("-sd", "--search_depth")
-		.help("the depth of search, default is the max of size_t ")
-		.default_value(0)
-		.nargs(1)
-		.scan<'i', int>();
-	program.add_argument("-sm", "--search_min")
-		.help("the minimal length to go out of search\nif depth < min, only "
-			"search once")
-		.default_value(200)
-		.nargs(1)
-		.scan<'i', int>();
-	program.add_argument("-ss", "--sort_step")
-		.help("sort the cols when rrefing\nif sort_step = 0, it equals "
-			"max(1000,#cols/100)")
-		.default_value(0)
-		.nargs(1)
-		.scan<'i', int>();
 	program.add_argument("-pd", "--pivot_direction")
 		.help("the direction to select pivots")
 		.default_value("row")
 		.nargs(1);
-	program.add_argument("-V", "--verbose")
-		.default_value(false)
-		.help("prints information of calculation")
-		.implicit_value(true)
-		.nargs(0);
-	program.add_argument("-ps", "--print_step")
-		.help("print step when --verbose is enabled")
-		.default_value(100)
+	program.add_argument("-sd", "--search_depth")
+		.help("the depth of search, default is the max of int ")
+		.default_value(0)
 		.nargs(1)
 		.scan<'i', int>();
 
@@ -182,14 +170,10 @@ int main(int argc, char** argv) {
 	rref_option_t opt;
 	opt->verbose = (program["--verbose"] == true);
 	opt->print_step = program.get<int>("--print_step");
-	opt->sort_step = program.get<int>("--sort_step");
 	opt->search_depth = (ulong)program.get<int>("--search_depth");
-	opt->search_min = program.get<int>("--search_min");
 	opt->pivot_dir = (program.get<std::string>("--pivot_direction") == "row");
 	if (opt->search_depth == 0)
 		opt->search_depth = INT_MAX;
-	if (opt->sort_step == 0)
-		opt->sort_step = (int)std::max((ulong)1000, n_col / 100);
 
 	start = clocknow();
 	std::vector<std::pair<slong, slong>> pivots;
