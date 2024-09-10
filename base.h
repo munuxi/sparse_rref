@@ -1,26 +1,17 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include "flint/fmpq.h"
-#include "flint/nmod.h"
 #include "thread_pool.hpp"
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <cmath>
-#include <cstring>
-#include <execution>
 #include <iostream>
 #include <list>
 #include <queue>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#ifdef NULL
-#undef NULL
-#endif
-#define NULL nullptr
 
 // scalar array
 template <typename T> struct scalar_s {
@@ -36,17 +27,54 @@ template <typename T> struct scalar_s_decay { using type = T; };
 template <typename T> struct scalar_s_decay<scalar_s<T>> { using type = T; };
 template <typename T> struct scalar_s_decay<const scalar_s<T>> { using type = T; };
 
-// rref_option
 
-struct rref_option {
-	bool verbose = false;
-	bool pivot_dir = true; // true: row, false: col
-	int print_step = 100;
-	int sort_step = 0;
-	int search_min = 200;
-	ulong search_depth = ULLONG_MAX;
-};
-typedef struct rref_option rref_option_t[1];
+// Memory management
+
+template <typename T>
+T* s_malloc(const size_t size) {
+	return (T*)std::malloc(size * sizeof(T));
+}
+
+template <typename T>
+scalar_s<T>* s_malloc(const size_t size, const size_t rank) {
+	scalar_s<T>* s = (scalar_s<T>*)std::malloc(size * sizeof(scalar_s<T>));
+	s->data = (T*)std::malloc(rank * size * sizeof(T));
+	for (size_t i = 0; i < size; i++) {
+		s[i].rank = rank;
+		s[i].data = s->data + i * rank;
+	}
+	return s;
+}
+
+template <typename T>
+void s_free(T* s) {
+	if constexpr (is_scalar_s<T>::value) {
+		std::free(s->data);
+		s->data = NULL;
+	}
+	std::free(s);
+}
+
+template <typename T>
+T* s_realloc(T* s, const size_t size) {
+	return (T*)std::realloc(s, size * sizeof(T));
+}
+
+template <typename T>
+scalar_s<T>* s_realloc(scalar_s<T>* s, const size_t size, const size_t rank) {
+	auto ptr = (T*)std::realloc(s->data, rank * size * sizeof(T));
+	scalar_s<T>* new_s = (scalar_s<T>*)std::realloc(s, size * sizeof(scalar_s<T>));
+	for (size_t i = 0; i < size; i++) {
+		new_s[i].rank = rank;
+		new_s[i].data = ptr + i * rank;
+	}
+	return new_s;
+}
+
+template <typename T>
+void s_memset(T* s, const T val, const T size) {
+	std::fill(s, s + size, val);
+}
 
 // field
 
@@ -64,88 +92,17 @@ struct field_struct {
 };
 typedef struct field_struct field_t[1];
 
-// Memory management
+// rref_option
 
-template <typename T>
-T* s_malloc(const size_t size) {
-	return (T*)malloc(size * sizeof(T));
-}
-
-template <typename T>
-scalar_s<T>* s_malloc(const size_t size, const size_t rank) {
-	scalar_s<T>* s = (scalar_s<T>*)malloc(size * sizeof(scalar_s<T>));
-	s->data = (T*)malloc(rank * size * sizeof(T));
-	for (size_t i = 0; i < size; i++) {
-		s[i].rank = rank;
-		s[i].data = s->data + i * rank;
-	}
-	return s;
-}
-
-template <typename T>
-void s_free(T* s) {
-	if constexpr (is_scalar_s<T>::value) {
-		free(s->data);
-		s->data = NULL;
-	}
-	free(s);
-}
-
-template <typename T>
-T* s_realloc(T* s, const size_t size) {
-	return (T*)realloc(s, size * sizeof(T));
-}
-
-template <typename T>
-scalar_s<T>* s_realloc(scalar_s<T>* s, const size_t size, const size_t rank) {
-	auto ptr = (T*)realloc(s->data, rank * size * sizeof(T));
-	scalar_s<T>* new_s = (scalar_s<T>*)realloc(s, size * sizeof(scalar_s<T>));
-	for (size_t i = 0; i < size; i++) {
-		new_s[i].rank = rank;
-		new_s[i].data = ptr + i * rank;
-	}
-	return new_s;
-}
-
-// field
-
-inline void field_init(field_t field, enum RING ring, ulong rank, const ulong* pvec) {
-	field->ring = ring;
-	field->rank = rank;
-	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-		field->pvec = s_malloc<nmod_t>(rank);
-		for (ulong i = 0; i < rank; i++)
-			nmod_init(field->pvec + i, pvec[i]);
-	}
-}
-
-inline void field_init(field_t field, enum RING ring, const std::vector<ulong>& pvec) {
-	field->ring = ring;
-	field->rank = pvec.size();
-	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-		field->pvec = s_malloc<nmod_t>(field->rank);
-		for (ulong i = 0; i < field->rank; i++)
-			nmod_init(field->pvec + i, pvec[i]);
-	}
-}
-
-inline void field_set(field_t field, const field_t ff) {
-	field->ring = ff->ring;
-	field->rank = ff->rank;
-	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-		field->pvec = s_realloc(field->pvec, field->rank);
-		for (ulong i = 0; i < field->rank; i++)
-			nmod_init(field->pvec + i, ff->pvec[i].n);
-	}
-}
-
-template <typename T> inline T* binarysearch(T* begin, T* end, T val) {
-	auto ptr = std::lower_bound(begin, end, val);
-	if (ptr == end || *ptr == val)
-		return ptr;
-	else
-		return end;
-}
+struct rref_option {
+	bool verbose = false;
+	bool pivot_dir = true; // true: row, false: col
+	int print_step = 100;
+	int sort_step = 0;
+	int search_min = 200;
+	int search_depth = INT_MAX;
+};
+typedef struct rref_option rref_option_t[1];
 
 // string
 inline void DeleteSpaces(std::string& str) {

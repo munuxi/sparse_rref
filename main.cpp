@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
 	opt->search_min = program.get<int>("--search_min");
 	opt->pivot_dir = (program.get<std::string>("--pivot_direction") == "row");
 	if (opt->search_depth == 0)
-		opt->search_depth = ULLONG_MAX;
+		opt->search_depth = INT_MAX;
 	if (opt->sort_step == 0)
 		opt->sort_step = (int)std::max((ulong)1000, n_col / 100);
 

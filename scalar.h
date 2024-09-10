@@ -1,7 +1,55 @@
 #ifndef SCALAR_H
 #define SCALAR_H
 
-#include "util.h"
+#include <type_traits>
+
+#include "flint/fmpq.h"
+#include "flint/nmod.h"
+#include "flint/ulong_extras.h"
+
+#include "base.h"
+
+// field
+
+inline void field_init(field_t field, enum RING ring, ulong rank, const ulong* pvec) {
+	field->ring = ring;
+	field->rank = rank;
+	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
+		field->pvec = s_malloc<nmod_t>(rank);
+		for (ulong i = 0; i < rank; i++)
+			nmod_init(field->pvec + i, pvec[i]);
+	}
+}
+
+inline void field_init(field_t field, enum RING ring, const std::vector<ulong>& pvec) {
+	field->ring = ring;
+	field->rank = pvec.size();
+	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
+		field->pvec = s_malloc<nmod_t>(field->rank);
+		for (ulong i = 0; i < field->rank; i++)
+			nmod_init(field->pvec + i, pvec[i]);
+	}
+}
+
+inline void field_set(field_t field, const field_t ff) {
+	field->ring = ff->ring;
+	field->rank = ff->rank;
+	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
+		field->pvec = s_realloc(field->pvec, field->rank);
+		for (ulong i = 0; i < field->rank; i++)
+			nmod_init(field->pvec + i, ff->pvec[i].n);
+	}
+}
+
+template <typename T> inline T* binarysearch(T* begin, T* end, T val) {
+	auto ptr = std::lower_bound(begin, end, val);
+	if (ptr == end || *ptr == val)
+		return ptr;
+	else
+		return end;
+}
+
+// scalar
 
 inline void scalar_init(fmpq_t a) { fmpq_init(a); }
 inline void scalar_init(ulong* a) { return; } // do nothing

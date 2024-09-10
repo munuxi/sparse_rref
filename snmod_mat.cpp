@@ -38,7 +38,7 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		return;
 	}
 
-	memset(tmpvec, 0, mat->ncol * sizeof(ulong));
+	s_memset(tmpvec, (ulong)0, mat->ncol);
 	for (size_t i = 0; i < therow->nnz; i++)
 		tmpvec[therow->indices[i]] = therow->entries[i];
 

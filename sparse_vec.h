@@ -1,15 +1,9 @@
 #ifndef SPARSE_VEC_H
 #define SPARSE_VEC_H
 
-#include "flint/fmpq.h"
-#include "flint/fmpq_vec.h"
-#include "flint/nmod.h"
 #include "flint/nmod_vec.h"
-#include "flint/perm.h"
-#include "flint/ulong_extras.h"
 
 #include "scalar.h"
-#include "util.h"
 
 template <typename T> struct sparse_vec_struct {
 	ulong nnz = 0;
