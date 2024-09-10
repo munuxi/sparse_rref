@@ -1,16 +1,5 @@
 #include "sparse_vec.h"
 
-void snmod_vec_neg(snmod_vec_t vec, nmod_t p) {
-	_nmod_vec_neg(vec->entries, vec->entries, vec->nnz, p);
-}
-
-// p should less than 2^(FLINT_BITS-1) (2^63(2^31) on 64(32)-bit machine)
-// scalar and all vec->entries[i] should less than p
-void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p) {
-	_nmod_vec_scalar_mul_nmod_shoup(vec->entries, vec->entries, vec->nnz,
-		scalar, p);
-}
-
 // c.f. the relization of _nmod_vec_scalar_mul_nmod_shoup from FLINT
 // void _nmod_vec_scalar_mul_nmod_shoup(nn_ptr res, nn_srcptr vec,
 // 	slong len, ulong c, nmod_t mod)

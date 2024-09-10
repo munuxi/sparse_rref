@@ -197,62 +197,54 @@ inline void sparse_mat_transpose_part_parallel(sparse_mat_struct<S>* mat_vec, co
 }
 
 // dot product
-// -1: dimension mismatch
-// 0: result is zero
-// 1: result is non-zero
-
-template <typename T>
-inline int sparse_vec_dot_sparse_vec(T* result, const sparse_vec_t<T> v1, const sparse_vec_t<T> v2) {
-	if (v1->len != v2->len)
-		return -1;
-
-	if (v1->nnz == 0 || v2->nnz == 0) {
-		scalar_zero(result);
-		return 0;
-	}
-	slong ptr1 = 0, ptr2 = 0;
-	while (ptr1 < v1->nnz && ptr2 < v2->nnz) {
-		if (v1->indices[ptr1] == v2->indices[ptr2]) {
-			scalar_add(result, result, scalar_mul(v1->entries + ptr1, v2->entries + ptr2));
-			ptr1++;
-			ptr2++;
-		}
-		else if (v1->indices[ptr1] < v2->indices[ptr2])
-			ptr1++;
-		else
-			ptr2++;
-	}
-	if (scalar_is_zero(result))
-		return 0;
-	return 1;
-}
-
 template <typename T>
 inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<T> mat, const sparse_vec_t<T> vec) {
-	if (mat->nrow != vec->len)
-		return -1;
-
-	sparse_vec_init(result);
-	if (vec->nnz == 0 || sparse_mat_nnz(mat) == 0) {
-		sparse_vec_zero(result);
+	sparse_vec_zero(result);
+	if (vec->nnz == 0 || sparse_mat_nnz(mat) == 0) 
 		return 0;
-	}
 	T tmp[1];
-	if constexpr (std::is_same_v<T, fmpq>) {
-		fmpq_init(tmp);
-	}
-	else {
-		*tmp = 0;
-	}
+	scalar_init(tmp);
 
 	for (size_t i = 0; i < mat->nrow; i++) {
 		auto therow = mat->rows + i;
-		sparse_vec_dot_sparse_vec(result->entries + i, therow, vec);
+		int a = sparse_vec_dot_sparse_vec(tmp, therow, vec);
+		if (a != 0)
+			_sparse_vec_set_entry(result, i, tmp);
 	}
 }
 
-// rref 
+template <typename T>
+inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<T> mat, const sparse_vec_t<T*> vec) {
+	sparse_vec_zero(result);
+	if (vec->nnz == 0 || sparse_mat_nnz(mat) == 0)
+		return 0;
+	T tmp[1];
+	scalar_init(tmp);
 
+	for (size_t i = 0; i < mat->nrow; i++) {
+		auto therow = mat->rows + i;
+		int a = sparse_vec_dot_sparse_vec(tmp, therow, vec);
+		if (a != 0)
+			_sparse_vec_set_entry(result, i, tmp);
+	}
+}
+
+// A = B * C
+template <typename T>
+inline int sparse_mat_dot_sparse_mat(sparse_mat_t<T> A, sparse_mat_t<T> B, sparse_mat_t<T> C) {
+	if (B->ncol != C->nrow)
+		return -1;
+	// just use pointer to avoid copy
+	sparse_mat_t<T*> Ct;
+	sparse_mat_init(Ct, C->ncol, C->nrow);
+	sparse_mat_transpose(Ct, C);
+
+	// TODO: ...
+
+	return 0;
+}
+
+// rref 
 template <typename T, typename S>
 auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_vec,
 	std::vector<slong>& colpivs, std::vector<slong>& rowperm,

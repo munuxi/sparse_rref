@@ -22,12 +22,7 @@
 #endif
 #define NULL nullptr
 
-// get the bit at position bit
-#define GET_BIT(x, bit) (((x) >> (bit)) & 1ULL)
-// set the bit at position bit
-#define SET_BIT_ONE(x, bit) ((x) |= (1ULL << (bit)))
-#define SET_BIT_NIL(x, bit) ((x) &= ~(1ULL << (bit)))
-
+// scalar array
 template <typename T> struct scalar_s {
 	size_t rank = 1;
 	T* data = NULL;
@@ -41,6 +36,8 @@ template <typename T> struct scalar_s_decay { using type = T; };
 template <typename T> struct scalar_s_decay<scalar_s<T>> { using type = T; };
 template <typename T> struct scalar_s_decay<const scalar_s<T>> { using type = T; };
 
+// rref_option
+
 struct rref_option {
 	bool verbose = false;
 	bool pivot_dir = true; // true: row, false: col
@@ -50,6 +47,8 @@ struct rref_option {
 	ulong search_depth = ULLONG_MAX;
 };
 typedef struct rref_option rref_option_t[1];
+
+// field
 
 enum RING {
 	FIELD_F2,    // bool
@@ -179,21 +178,6 @@ inline double usedtime(std::chrono::system_clock::time_point start,
 		std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 	return ((double)duration.count() * std::chrono::microseconds::period::num /
 		std::chrono::microseconds::period::den);
-}
-
-// vector
-template <typename T>
-void remove_indices(std::vector<T>& vec, std::vector<slong>& indices) {
-	std::sort(indices.begin(), indices.end());
-	auto it = indices.rbegin();
-	for (; it != indices.rend(); ++it) {
-		if (*it >= 0 && *it < vec.size()) {
-			vec.erase(vec.begin() + *it);
-		}
-		else {
-			std::cerr << "Index out of range: " << *it << std::endl;
-		}
-	}
 }
 
 #endif

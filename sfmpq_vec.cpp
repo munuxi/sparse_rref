@@ -1,15 +1,5 @@
 #include "sparse_vec.h"
 
-void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar) {
-	for (ulong i = 0; i < vec->nnz; i++)
-		fmpq_mul(vec->entries + i, vec->entries + i, scalar);
-}
-
-void sfmpq_vec_neg(sfmpq_vec_t vec) {
-	for (ulong i = 0; i < vec->nnz; i++)
-		fmpq_neg(vec->entries + i, vec->entries + i);
-}
-
 int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 	if (src->nnz == 0)
 		return 0;
@@ -87,7 +77,9 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 	if (vec->nnz == 0) {
 		sparse_vec_set(vec, src);
 		sfmpq_vec_rescale(vec, a);
-		sfmpq_vec_neg(vec);
+		for (size_t i = 0; i < vec->nnz; i++) {
+			fmpq_neg(vec->entries + i, vec->entries + i);
+		}
 	}
 
 	fmpq_t na, entry;
@@ -148,16 +140,4 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 	fmpq_clear(na);
 	fmpq_clear(entry);
 	return 0;
-}
-
-void snmod_vec_from_sfmpq(snmod_vec_t vec, const sfmpq_vec_t src, nmod_t p) {
-	sparse_vec_realloc(vec, src->nnz);
-	vec->alloc = src->nnz;
-	vec->nnz = 0;
-	for (size_t i = 0; i < src->nnz; i++) {
-		ulong num = fmpz_get_nmod(fmpq_numref(src->entries + i), p);
-		ulong den = fmpz_get_nmod(fmpq_denref(src->entries + i), p);
-		ulong val = nmod_div(num, den, p);
-		_sparse_vec_set_entry(vec, src->indices[i], &val);
-	}
 }

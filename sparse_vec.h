@@ -27,7 +27,7 @@ typedef sparse_vec_t<fmpq> sfmpq_vec_t;
 
 // memory management
 template <typename T>
-inline void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
+void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
 	if (alloc == vec->alloc)
 		return;
 	// so sparse_vec_realloc(vec,vec->alloc) is useless
@@ -211,7 +211,8 @@ inline void sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, const T* val,
 }
 
 // TODO: Implement a better sorting algorithm (sort only once)
-template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
+template <typename T> 
+void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
 	if (vec->nnz <= 1)
 		return;
 
@@ -276,7 +277,7 @@ template <typename T> void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
 }
 
 template <typename T>
-inline void sparse_vec_canonicalize(sparse_vec_t<T> vec) {
+void sparse_vec_canonicalize(sparse_vec_t<T> vec) {
 	if constexpr (std::is_same_v<T, bool>) {
 		return;
 	}
@@ -308,19 +309,85 @@ inline void sparse_vec_compress(sparse_vec_t<T> vec) {
 
 // arithmetic operations
 
-void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p);
-void snmod_vec_neg(snmod_vec_t vec, nmod_t p);
+// p should less than 2^(FLINT_BITS-1) (2^63(2^31) on 64(32)-bit machine)
+// scalar and all vec->entries[i] should less than p
+inline void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p) {
+	_nmod_vec_scalar_mul_nmod_shoup(vec->entries, vec->entries, vec->nnz,
+		scalar, p);
+}
+
 int snmod_vec_add(snmod_vec_t vec, const snmod_vec_t src, nmod_t p);
 int snmod_vec_sub(snmod_vec_t vec, const snmod_vec_t src, nmod_t p);
 int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, nmod_t p);
 int snmod_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, nmod_t p);
 
-void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar);
-void sfmpq_vec_neg(sfmpq_vec_t vec);
+inline void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar) {
+	for (ulong i = 0; i < vec->nnz; i++)
+		fmpq_mul(vec->entries + i, vec->entries + i, scalar);
+}
+
 int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a);
 int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a);
 
-void snmod_vec_from_sfmpq(snmod_vec_t vec, const sfmpq_vec_t src, nmod_t p);
+static void snmod_vec_from_sfmpq(snmod_vec_t vec, const sfmpq_vec_t src, nmod_t p) {
+	sparse_vec_realloc(vec, src->nnz);
+	vec->alloc = src->nnz;
+	vec->nnz = 0;
+	for (size_t i = 0; i < src->nnz; i++) {
+		ulong num = fmpz_get_nmod(fmpq_numref(src->entries + i), p);
+		ulong den = fmpz_get_nmod(fmpq_denref(src->entries + i), p);
+		ulong val = nmod_div(num, den, p);
+		_sparse_vec_set_entry(vec, src->indices[i], &val);
+	}
+}
+
+// dot product
+// return 0 if the result is zero, otherwise return 1
+template <typename T>
+int sparse_vec_dot_sparse_vec(T* result, const sparse_vec_t<T> v1, const sparse_vec_t<T> v2) {
+	if (v1->nnz == 0 || v2->nnz == 0) {
+		scalar_zero(result);
+		return 0;
+	}
+	slong ptr1 = 0, ptr2 = 0;
+	while (ptr1 < v1->nnz && ptr2 < v2->nnz) {
+		if (v1->indices[ptr1] == v2->indices[ptr2]) {
+			scalar_add(result, result, scalar_mul(v1->entries + ptr1, v2->entries + ptr2));
+			ptr1++;
+			ptr2++;
+		}
+		else if (v1->indices[ptr1] < v2->indices[ptr2])
+			ptr1++;
+		else
+			ptr2++;
+	}
+	if (scalar_is_zero(result))
+		return 0;
+	return 1;
+}
+
+template <typename T>
+int sparse_vec_dot_sparse_vec(T* result, const sparse_vec_t<T> v1, const sparse_vec_t<T*> v2) {
+	if (v1->nnz == 0 || v2->nnz == 0) {
+		scalar_zero(result);
+		return 0;
+	}
+	slong ptr1 = 0, ptr2 = 0;
+	while (ptr1 < v1->nnz && ptr2 < v2->nnz) {
+		if (v1->indices[ptr1] == v2->indices[ptr2]) {
+			scalar_add(result, result, scalar_mul(v1->entries + ptr1, v2->entries[ptr2]));
+			ptr1++;
+			ptr2++;
+		}
+		else if (v1->indices[ptr1] < v2->indices[ptr2])
+			ptr1++;
+		else
+			ptr2++;
+	}
+	if (scalar_is_zero(result))
+		return 0;
+	return 1;
+}
 
 // debug only, not used to the large vector
 template <typename T> void print_vec_info(const sparse_vec_t<T> vec) {
