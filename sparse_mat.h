@@ -244,7 +244,103 @@ inline int sparse_mat_dot_sparse_mat(sparse_mat_t<T> A, sparse_mat_t<T> B, spars
 	return 0;
 }
 
-// rref 
+// rref staffs
+
+// first look for rows with only one nonzero value and eliminate them
+// we assume that mat is canonical, i.e. each index is sorted
+// and the result is also canonical
+template <typename T>
+ulong eliminate_row_with_one_nnz(sparse_mat_t<T> mat,
+	sparse_mat_t<T*> tranmat,
+	std::vector<slong>& donelist) {
+	auto localcounter = 0;
+	std::vector<slong> pivlist(mat->nrow, -1);
+	std::vector<slong> collist(mat->ncol, -1);
+	for (size_t i = 0; i < mat->nrow; i++) {
+		if (donelist[i] != -1)
+			continue;
+		if (mat->rows[i].nnz == 1) {
+			if (collist[mat->rows[i].indices[0]] == -1) {
+				localcounter++;
+				pivlist[i] = mat->rows[i].indices[0];
+				collist[mat->rows[i].indices[0]] = i;
+			}
+		}
+	}
+
+	if (localcounter == 0)
+		return localcounter;
+
+	sparse_mat_transpose(tranmat, mat);
+	for (size_t i = 0; i < mat->nrow; i++) {
+		if (pivlist[i] == -1)
+			continue;
+		auto thecol = tranmat->rows + pivlist[i];
+		for (size_t j = 0; j < thecol->nnz; j++) {
+			if (thecol->indices[j] == i) {
+				scalar_one(thecol->entries[j]);
+			}
+			else
+				scalar_zero(thecol->entries[j]);
+		}
+	}
+
+	for (size_t i = 0; i < mat->nrow; i++)
+		sparse_vec_canonicalize(mat->rows + i);
+
+	for (size_t i = 0; i < mat->nrow; i++)
+		if (pivlist[i] != -1)
+			donelist[i] = pivlist[i];
+
+	return localcounter;
+}
+
+template <typename T>
+ulong eliminate_row_with_one_nnz_rec(sparse_mat_t<T> mat,
+	sparse_mat_t<T*> tranmat,
+	std::vector<slong>& donelist, bool verbose,
+	slong max_depth = INT_MAX) {
+	slong depth = 0;
+	ulong oldnnz = 0;
+	ulong localcounter = 0;
+	ulong count = 0;
+
+	do {
+		oldnnz = sparse_mat_nnz(mat);
+		localcounter = eliminate_row_with_one_nnz(mat, tranmat, donelist);
+		if (verbose) {
+			std::cout << "\r-- eliminating rows with only one element, depth: "
+				<< depth << ", eliminated row: " << count << std::flush;
+		}
+		count += localcounter;
+		depth++;
+	} while (localcounter > 0 && depth < max_depth);
+	return count;
+}
+
+// TODO: add a DFS algorithm to find a maximal compatible set
+// //     |    a2 b2 |    |    a2 b2 |    |    a2 b2|    |    a2 b2 |   
+// //  11 | a1  *  * | 10 | a1  *  0 | 01 | a1  *  *| 00 | a1  *  0 |   
+// //     | b1  *  * |    | b1  *  * |    | b1  0  *|    | b1  0  * |   
+// //   3               2               1              0 
+// 
+// int compatible_degree(std::unordered_set<std::pair<slong, slong>>& adjmat,
+// 	std::pair<slong, slong>& a, std::pair<slong, slong>& b) {
+// 	auto [a1,a2] = a;
+// 	auto [b1,b2] = b;
+// 	if (a1 == b1 || a2 == b2) // same row or same col
+// 		return 3;
+// 	bool test1 = adjmat.find(std::make_pair(a1, b2)) == adjmat.end();
+// 	bool test2 = adjmat.find(std::make_pair(b1, a2)) == adjmat.end();
+// 	if (test1 && test2)
+// 		return 0;
+// 	if (test1)
+// 		return 2;
+// 	if (test2)
+// 		return 1;
+// 	return 3;
+// }
+
 template <typename T, typename S>
 auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_vec,
 	std::vector<slong>& colpivs, std::vector<slong>& rowperm,
@@ -343,6 +439,93 @@ auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_v
 	return result;
 }
 
+template <typename T>
+auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<T*> tranmat,
+	std::vector<slong>& rowpivs, std::vector<slong>& colperm,
+	std::vector<slong>::iterator start,
+	size_t max_depth = ULLONG_MAX) {
+
+	using iter = std::vector<slong>::iterator;
+	auto end = colperm.end();
+
+	std::list<std::pair<slong, iter>> pivots;
+	std::unordered_set<slong> prows;
+	prows.reserve(std::min((size_t)4096, max_depth));
+	for (auto col = start; col < colperm.end(); col++) {
+		if ((ulong)(col - start) > max_depth)
+			break;
+		bool flag = true;
+		auto thecol = tranmat->rows + *col;
+		auto indices = thecol->indices;
+		for (size_t i = 0; i < thecol->nnz; i++) {
+			flag = (prows.find(indices[i]) == prows.end());
+			if (!flag)
+				break;
+		}
+		if (!flag)
+			continue;
+
+		if (thecol->nnz == 0)
+			continue;
+		slong row;
+		ulong mnnz = ULLONG_MAX;
+		for (size_t i = 0; i < thecol->nnz; i++) {
+			if (rowpivs[indices[i]] != -1)
+				continue;
+			if (mat->rows[indices[i]].nnz < mnnz) {
+				row = indices[i];
+				mnnz = mat->rows[row].nnz;
+			}
+		}
+		if (mnnz != ULLONG_MAX) {
+			pivots.push_back(std::make_pair(row, col));
+			prows.insert(row);
+		}
+	}
+
+	// leftlook then
+	// now prows will be used as pcols to store the cols that have been used
+	prows.clear();
+	// make a table to help to look for row pointers
+	std::vector<iter> colptrs(mat->ncol, end);
+	for (auto it = start; it != end; it++)
+		colptrs[*it] = it;
+
+	for (auto p : pivots)
+		prows.insert(*(p.second));
+
+	for (size_t i = 0; i < mat->nrow; i++) {
+		if (pivots.size() > max_depth)
+			break;
+		auto row = i;
+		if (rowpivs[row] != -1)
+			continue;
+		bool flag = true;
+		slong col = 0;
+		ulong mnnz = ULLONG_MAX;
+		auto tc = sparse_mat_row(mat, row);
+		for (size_t j = 0; j < tc->nnz; j++) {
+			if (colptrs[tc->indices[j]] == end)
+				continue;
+			flag = (prows.find(tc->indices[j]) == prows.end());
+			if (!flag)
+				break;
+			if (tranmat->rows[tc->indices[j]].nnz < mnnz) {
+				mnnz = tranmat->rows[tc->indices[j]].nnz;
+				col = tc->indices[j];
+			}
+		}
+		if (!flag)
+			continue;
+		if (mnnz != ULLONG_MAX) {
+			pivots.push_front(std::make_pair(row, colptrs[col]));
+			prows.insert(col);
+		}
+	}
+
+	std::vector<std::pair<slong, iter>> result(pivots.begin(), pivots.end());
+	return result;
+}
 
 std::vector<std::pair<slong, slong>> sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt);
 ulong sfmpq_mat_rref_kernel(sfmpq_mat_t K, const sfmpq_mat_t M, const std::vector<std::pair<slong, slong>>& pivots, BS::thread_pool& pool);
