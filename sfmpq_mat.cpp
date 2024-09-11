@@ -244,13 +244,13 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 		std::vector<slong> leftcols(colperm.begin() + kk, colperm.end());
 		std::sort(leftcols.begin(), leftcols.end());
 
-		std::atomic<ulong> localcount(0);
+		std::vector<uint8_t> flags(leftrows.size(), 0);
 
 		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
-			localcount++;
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, leftrows[i], n_pivots, leftcols, 1,
-				cachedensedmat + id * mat->ncol);
+			schur_complete(mat, leftrows[i], n_pivots,
+				leftcols, 1, cachedensedmat + id * mat->ncol);
+			flags[i] = 1;
 			});
 
 		// reorder the cols, move ps to the front
@@ -268,11 +268,31 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 			}
 		}
 		colperm = std::move(result);
+		std::vector<slong> donelist(rowpivs);
 
 		bool print_once = true; // print at least once
-		while (localcount < leftrows.size()) {
-			double pr = kk + (1.0 * ps.size() * localcount) / leftrows.size();
+		rank += ps.size();
+		// we need first clear the transpose matrix
+		for (auto i = 0; i < tranmat->nrow; i++)
+			tranmat->rows[i].nnz = 0;
 
+		ulong localcount = 0;
+		while (localcount < leftrows.size()) {
+			for (size_t i = 0; i < leftrows.size(); i++) {
+				if (flags[i]) {
+					auto row = leftrows[i];
+					auto therow = mat->rows + row;
+					for (size_t j = 0; j < therow->nnz; j++) {
+						auto col = therow->indices[j];
+						auto entry = therow->entries + j;
+						_sparse_vec_set_entry(tranmat->rows + col, row, &entry);
+					}
+					flags[i] = 0;
+					localcount++;
+				}
+			}
+
+			double pr = kk + (1.0 * ps.size() * localcount) / leftrows.size();
 			if (verbose && (print_once || pr - oldpr > opt->print_step)) {
 				auto end = clocknow();
 				now_nnz = sparse_mat_nnz(mat);
@@ -289,21 +309,17 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 				print_once = false;
 			}
 		}
-
-		kk += ps.size();
-		std::vector<slong> donelist(rowpivs);
 		pool.wait();
 
-		count = eliminate_row_with_one_nnz_rec(mat, tranmat, donelist, false, 0);
+		kk += ps.size();
+		// count = eliminate_row_with_one_nnz(mat, tranmat, donelist, true);
+		// sparse_mat_transpose_part(tranmat, mat, leftrows);
 		
-		// sparse_mat_transpose(tranmat, mat);
-		sparse_mat_transpose_part(tranmat, mat, leftrows);
-
-		// sort pivots by nnz, it may have less nnz in final result
-		std::stable_sort(colperm.begin() + kk, colperm.end(),
-			[&tranmat](slong a, slong b) {
-				return tranmat->rows[a].nnz < tranmat->rows[b].nnz;
-			});
+		//// sort pivots by nnz, it may have less nnz in final result
+		//std::stable_sort(colperm.begin() + kk, colperm.end(),
+		//	[&tranmat](slong a, slong b) {
+		//		return tranmat->rows[a].nnz < tranmat->rows[b].nnz;
+		//	});
 	}
 
 	if (verbose) {
@@ -472,10 +488,9 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 		rank += ps.size();
 		slong newpiv = ps.size();
 
-		std::atomic<int> count(0);
 		ulong tran_count = 0;
 		// flags[i] is true if the i-th row has been computed
-		std::vector<std::atomic<bool>> flags(mat->nrow - kk);
+		std::vector<uint8_t> flags(mat->nrow - kk);
 		for (size_t i = 0; i < mat->nrow - kk; i++)
 			flags[i] = false;
 		// and then compute the elimination of the rows asynchronizely
@@ -484,8 +499,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 				return;
 			auto id = BS::this_thread::get_index().value();
 			schur_complete(mat, rowperm[i], n_pivots, leftcols, 1, cachedensedmat + id * mat->ncol);
-			count++;
-			flags[i - kk] = true;
+			flags[i - kk] = 0;
 			});
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
 		for (size_t i = 0; i < tranmat->nrow; i++)
@@ -498,13 +512,13 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 					auto therow = mat->rows + row;
 					for (size_t j = 0; j < therow->nnz; j++) {
 						auto col = therow->indices[j];
-						_sparse_vec_set_entry(tranmat->rows + col, row, (bool*)nullptr);
+						_sparse_vec_set_entry(tranmat->rows + col, row, (bool*)NULL);
 					}
 					tran_count++;
-					flags[i] = false;
+					flags[i] = 1;
 				}
 			}
-			auto status = (kk - newpiv + 1) + ((double)count / (mat->nrow - kk)) * newpiv;
+			auto status = (kk - newpiv + 1) + ((double)tran_count / (mat->nrow - kk)) * newpiv;
 			if (verbose && status - oldstatus > printstep) {
 				auto end = clocknow();
 				now_nnz = sparse_mat_nnz(mat);
@@ -518,11 +532,6 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 				start = end;
 			}
 		}
-		// wait for the completion of the computation
-		pool.wait();
-		pool.detach_loop<slong>(0, mat->ncol, [&](slong i) {
-			sparse_vec_sort_indices(tranmat->rows + i);
-			});
 	}
 
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++)

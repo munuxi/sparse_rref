@@ -251,8 +251,7 @@ inline int sparse_mat_dot_sparse_mat(sparse_mat_t<T> A, sparse_mat_t<T> B, spars
 // and the result is also canonical
 template <typename T>
 ulong eliminate_row_with_one_nnz(sparse_mat_t<T> mat,
-	sparse_mat_t<T*> tranmat,
-	std::vector<slong>& donelist) {
+	sparse_mat_t<T*> tranmat, std::vector<slong>& donelist, bool is_tran = false) {
 	auto localcounter = 0;
 	std::vector<slong> pivlist(mat->nrow, -1);
 	std::vector<slong> collist(mat->ncol, -1);
@@ -271,7 +270,8 @@ ulong eliminate_row_with_one_nnz(sparse_mat_t<T> mat,
 	if (localcounter == 0)
 		return localcounter;
 
-	sparse_mat_transpose(tranmat, mat);
+	if (!is_tran)
+		sparse_mat_transpose(tranmat, mat);
 	for (size_t i = 0; i < mat->nrow; i++) {
 		if (pivlist[i] == -1)
 			continue;
@@ -306,7 +306,9 @@ ulong eliminate_row_with_one_nnz_rec(sparse_mat_t<T> mat,
 	ulong count = 0;
 
 	do {
-		oldnnz = sparse_mat_nnz(mat);
+		if (verbose) {
+			oldnnz = sparse_mat_nnz(mat);
+		}
 		localcounter = eliminate_row_with_one_nnz(mat, tranmat, donelist);
 		if (verbose) {
 			std::cout << "\r-- eliminating rows with only one element, depth: "
@@ -381,6 +383,10 @@ auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_v
 				col = indices[i];
 				mnnz = newnnz;
 			}
+			// make the result stable
+			else if (newnnz == mnnz && indices[i] < col) {
+				col = indices[i];
+			}
 		}
 		if (!flag)
 			continue;
@@ -420,6 +426,10 @@ auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_v
 					break;
 				if (mat->rows[tc->indices[j]].nnz < mnnz) {
 					mnnz = mat->rows[tc->indices[j]].nnz;
+					row = tc->indices[j];
+				}
+				// make the result stable
+				else if (mat->rows[tc->indices[j]].nnz == mnnz && tc->indices[j] < row) {
 					row = tc->indices[j];
 				}
 			}
@@ -476,6 +486,10 @@ auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<T*> tranmat,
 				row = indices[i];
 				mnnz = mat->rows[row].nnz;
 			}
+			// make the result stable
+			else if (mat->rows[indices[i]].nnz == mnnz && indices[i] < row) {
+				row = indices[i];
+			}
 		}
 		if (mnnz != ULLONG_MAX) {
 			pivots.push_back(std::make_pair(row, col));
@@ -512,6 +526,10 @@ auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<T*> tranmat,
 				break;
 			if (tranmat->rows[tc->indices[j]].nnz < mnnz) {
 				mnnz = tranmat->rows[tc->indices[j]].nnz;
+				col = tc->indices[j];
+			}
+			// make the result stable
+			else if (tranmat->rows[tc->indices[j]].nnz == mnnz && tc->indices[j] < col) {
 				col = tc->indices[j];
 			}
 		}

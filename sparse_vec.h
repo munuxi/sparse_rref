@@ -169,7 +169,7 @@ inline void sparse_vec_swap(sparse_vec_t<T> vec, sparse_vec_t<T> src) {
 template <typename T>
 void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, const T* val) {
 	if (vec->nnz == vec->alloc) {
-		ulong new_alloc = vec->alloc + (vec->alloc + 1) / 2;
+		ulong new_alloc = 2 * vec->alloc;
 		sparse_vec_realloc(vec, new_alloc);
 	}
 	vec->indices[vec->nnz] = index;
