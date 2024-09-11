@@ -583,8 +583,6 @@ template <typename T> void sfmpq_mat_read(sfmpq_mat_t mat, T& st) {
 	fmpq_t val;
 	fmpq_init(val);
 
-	int totalprint = 0;
-
 	while (getline(st, strLine)) {
 		if (strLine[0] == '%')
 			continue;

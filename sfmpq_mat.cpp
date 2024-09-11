@@ -490,7 +490,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 				return;
 			auto id = BS::this_thread::get_index().value();
 			schur_complete(mat, rowperm[i], n_pivots, leftcols, 1, cachedensedmat + id * mat->ncol);
-			flags[i - kk] = 0;
+			flags[i - kk] = 1;
 			});
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
 		for (size_t i = 0; i < tranmat->nrow; i++)
@@ -506,7 +506,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 						_sparse_vec_set_entry(tranmat->rows + col, row, (bool*)NULL);
 					}
 					tran_count++;
-					flags[i] = 1;
+					flags[i] = 0;
 				}
 			}
 			auto status = (kk - newpiv + 1) + ((double)tran_count / (mat->nrow - kk)) * newpiv;

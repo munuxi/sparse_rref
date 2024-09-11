@@ -146,9 +146,6 @@ int main(int argc, char** argv) {
 	}
 	file.close();
 
-	auto n_row = (prime == 0) ? mat_Q->nrow : mat_Zp->nrow;
-	auto n_col = (prime == 0) ? mat_Q->ncol : mat_Zp->ncol;
-
 	auto end = clocknow();
 	std::cout << "-------------------" << std::endl;
 	printtime("read");
