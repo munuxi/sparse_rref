@@ -124,6 +124,20 @@ inline void sparse_mat_transpose(sparse_mat_t<T*> mat2, const sparse_mat_t<T> ma
 	}
 }
 
+template <typename T>
+inline void sparse_mat_transpose(sparse_mat_t<bool> mat2, const sparse_mat_t<T> mat) {
+	for (size_t i = 0; i < mat2->nrow; i++)
+		sparse_mat_row(mat2, i)->nnz = 0;
+
+	for (size_t i = 0; i < mat->nrow; i++) {
+		auto therow = sparse_mat_row(mat, i);
+		for (size_t j = 0; j < therow->nnz; j++) {
+			auto col = therow->indices[j];
+			_sparse_vec_set_entry(mat2->rows + col, i, (bool*)NULL);
+		}
+	}
+}
+
 // tranpose only part of the rows
 template <typename T>
 inline void sparse_mat_transpose_part(sparse_mat_t<T> mat2, const sparse_mat_t<T> mat, const std::vector<slong>& rows) {
@@ -449,8 +463,8 @@ auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_v
 	return result;
 }
 
-template <typename T>
-auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<T*> tranmat,
+template <typename T, typename S>
+auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
 	std::vector<slong>& rowpivs, std::vector<slong>& colperm,
 	std::vector<slong>::iterator start,
 	size_t max_depth = ULLONG_MAX) {

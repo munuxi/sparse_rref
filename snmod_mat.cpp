@@ -140,12 +140,12 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 	// look for row with only one non-zero entry
 
 	// compute the transpose of pointers of the matrix
-	sparse_mat_t<ulong*> tranmat;
-	sparse_mat_init(tranmat, mat->ncol, mat->nrow);
+	sparse_mat_t<ulong*> tranmatp;
+	sparse_mat_init(tranmatp, mat->ncol, mat->nrow);
 
 	bool verbose = opt->verbose;
 	ulong count =
-		eliminate_row_with_one_nnz_rec(mat, tranmat, rowpivs, verbose);
+		eliminate_row_with_one_nnz_rec(mat, tranmatp, rowpivs, verbose);
 	now_nnz = sparse_mat_nnz(mat);
 	if (verbose) {
 		std::cout << "\n** eliminated " << count
@@ -153,23 +153,23 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			<< std::endl;
 	}
 
-	sparse_mat_transpose(tranmat, mat);
+	sparse_mat_transpose(tranmatp, mat);
 
 	// sort pivots by nnz, it will be faster
 	std::stable_sort(colperm.begin(), colperm.end(),
-		[&tranmat](slong a, slong b) {
-			return tranmat->rows[a].nnz < tranmat->rows[b].nnz;
+		[&tranmatp](slong a, slong b) {
+			return tranmatp->rows[a].nnz < tranmatp->rows[b].nnz;
 		});
 
 	// look for pivot cols with only one nonzero element
 	slong kk = 0;
 	std::fill(rowpivs.begin(), rowpivs.end(), -1);
 	for (; kk < mat->ncol; kk++) {
-		auto nnz = tranmat->rows[colperm[kk]].nnz;
+		auto nnz = tranmatp->rows[colperm[kk]].nnz;
 		if (nnz == 0)
 			continue;
 		if (nnz == 1) {
-			auto row = tranmat->rows[colperm[kk]].indices[0];
+			auto row = tranmatp->rows[colperm[kk]].indices[0];
 			if (rowpivs[row] != -1)
 				continue;
 			rowpivs[row] = colperm[kk];
@@ -182,10 +182,12 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		else if (nnz > 1)
 			break; // since it's sorted
 	}
-
-	init_nnz = sparse_mat_nnz(mat);
+	sparse_mat_clear(tranmatp);
 
 	ulong* cachedensedmat = s_malloc<ulong>(mat->ncol * pool.get_thread_count());
+
+	sparse_mat_t<bool> tranmat;
+	sparse_mat_init(tranmat, mat->ncol, mat->nrow);
 	sparse_mat_transpose(tranmat, mat);
 
 	std::vector<slong> leftrows;
@@ -269,8 +271,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 					auto therow = mat->rows + row;
 					for (size_t j = 0; j < therow->nnz; j++) {
 						auto col = therow->indices[j];
-						auto entry = therow->entries + j;
-						_sparse_vec_set_entry(tranmat->rows + col, row, &entry);
+						_sparse_vec_set_entry(tranmat->rows + col, row, (bool*)NULL);
 					}
 					flags[i] = 0;
 					localcount++;
@@ -297,14 +298,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		pool.wait();
 
 		kk += ps.size();
-		// count = eliminate_row_with_one_nnz(mat, tranmat, donelist, true);
-		// sparse_mat_transpose_part(tranmat, mat, leftrows);
-		
-		//// sort pivots by nnz, it may have less nnz in final result
-		//std::stable_sort(colperm.begin() + kk, colperm.end(),
-		//	[&tranmat](slong a, slong b) {
-		//		return tranmat->rows[a].nnz < tranmat->rows[b].nnz;
-		//	});
 	}
 
 	if (verbose) {
@@ -463,9 +456,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		
 		ulong tran_count = 0;
 		// flags[i] is true if the i-th row has been computed
-		std::vector<uint8_t> flags(mat->nrow - kk);
-		for (size_t i = 0; i < mat->nrow - kk; i++)
-			flags[i] = 0;
+		std::vector<uint8_t> flags(mat->nrow - kk, 0);
 		// and then compute the elimination of the rows asynchronizely
 		pool.detach_loop<slong>(kk, mat->nrow, [&](slong i) {
 			if (rowpivs[rowperm[i]] != -1)
