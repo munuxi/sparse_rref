@@ -1,3 +1,4 @@
+#include <set>
 #include "sparse_mat.h"
 
 using iter = std::vector<slong>::iterator;
@@ -18,7 +19,7 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
 		schur_complete(mat, row, npivots, leftcols, -ordering, p, tmpvec);
 	}
-	
+
 	auto therow = sparse_mat_row(mat, row);
 
 	if (therow->nnz == 0)
@@ -38,9 +39,13 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		return;
 	}
 
+	std::set<slong> nonzero_c; // it's important that it is sorted
+
 	s_memset(tmpvec, (ulong)0, mat->ncol);
-	for (size_t i = 0; i < therow->nnz; i++)
+	for (size_t i = 0; i < therow->nnz; i++) {
+		nonzero_c.insert(therow->indices[i]);
 		tmpvec[therow->indices[i]] = therow->entries[i];
+	}
 
 	for (auto [r, c] : pivots) {
 		auto entry = tmpvec[c];
@@ -53,10 +58,11 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		for (size_t i = 0; i < row->nnz; i++) {
 			tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
 				n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
+			nonzero_c.insert(row->indices[i]);
 		}
 	}
 	therow->nnz = 0;
-	for (auto i : leftcols) {
+	for (auto i : nonzero_c) {
 		if (tmpvec[i] != 0)
 			_sparse_vec_set_entry(therow, i, tmpvec + i);
 	}
@@ -103,7 +109,7 @@ void triangular_solver(snmod_mat_t mat, std::vector<std::pair<slong, slong>>& pi
 		}
 		auto end = clocknow();
 
-		if ((i % printstep == 0 || i == pivots.size() - 1) && verbose) {
+		if ((i % printstep == 0 || i == pivots.size() - 1) && verbose && thecol.size() > 1) {
 			auto now_nnz = sparse_mat_nnz(mat);
 			std::cout << "\r-- Row: " << (i + 1) << "/" << pivots.size()
 				<< "  " << "row to eliminate: " << thecol.size() - 1
@@ -122,8 +128,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		sparse_vec_sort_indices(mat->rows + i);
 		sparse_vec_canonicalize(mat->rows + i);
 	}
-
-	ulong rank = 0;
 
 	ulong init_nnz = sparse_mat_nnz(mat);
 	ulong now_nnz = init_nnz;
@@ -177,7 +181,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			auto scalar = nmod_inv(*e, p);
 			snmod_vec_rescale(mat->rows + row, scalar, p);
 			pivots.push_back(std::make_pair(row, colperm[kk]));
-			rank++;
 		}
 		else if (nnz > 1)
 			break; // since it's sorted
@@ -258,7 +261,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		std::vector<slong> donelist(rowpivs);
 
 		bool print_once = true; // print at least once
-		rank += ps.size();
 		// we need first clear the transpose matrix
 		for (auto i = 0; i < tranmat->nrow; i++)
 			tranmat->rows[i].nnz = 0;
@@ -284,7 +286,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 				now_nnz = sparse_mat_nnz(mat);
 				std::cout << "\r-- Col: " << (int)pr << "/"
 					<< mat->ncol
-					<< "  rank: " << rank << "  " << "nnz: " << now_nnz
+					<< "  rank: " << pivots.size() << "  " << "nnz: " << now_nnz
 					<< "  " << "density: "
 					<< 100 * (double)now_nnz / (mat->nrow * mat->ncol)
 					<< "%  " << "speed: " <<
@@ -301,7 +303,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 	}
 
 	if (verbose) {
-		std::cout << "\n** Rank: " << rank << " nnz: " << sparse_mat_nnz(mat)
+		std::cout << "\n** Rank: " << pivots.size() << " nnz: " << sparse_mat_nnz(mat)
 			<< "  " << std::endl;
 		std::cout << "\n>> Reverse solving: " << std::endl;
 	}
@@ -336,8 +338,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 
 	auto printstep = opt->print_step;
 	bool verbose = opt->verbose;
-
-	ulong rank = 0;
 
 	ulong init_nnz = sparse_mat_nnz(mat);
 	ulong now_nnz = init_nnz;
@@ -393,7 +393,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		else if (therow->nnz == 1) {
 			auto col = therow->indices[0];
 			pivots.push_back(std::make_pair(row, col));
-			rank++;
 			rowpivs[row] = col;
 			colpivs[col] = row;
 		}
@@ -451,7 +450,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		}
 
 		kk += ps.size();
-		rank += ps.size();
 		slong newpiv = ps.size();
 		
 		ulong tran_count = 0;
@@ -489,7 +487,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 				auto end = clocknow();
 				now_nnz = sparse_mat_nnz(mat);
 				std::cout << "\r-- Row: " << (int)std::floor(status) << "/" << mat->nrow
-					<< "  rank: " << rank
+					<< "  rank: " << pivots.size()
 					<< "  nnz: " << now_nnz << "  " << "density: "
 					<< (double)100 * now_nnz / (mat->nrow * mat->ncol) << "%"
 					<< "  speed: " << (status - oldstatus) / usedtime(start, end)
@@ -504,7 +502,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 	free(cachedensedmat);
 
 	if (verbose) {
-		std::cout << "\n** Rank: " << rank
+		std::cout << "\n** Rank: " << pivots.size()
 			<< " nnz: " << sparse_mat_nnz(mat) << std::endl
 			<< "\n>> Reverse solving: " << std::endl;
 	}
