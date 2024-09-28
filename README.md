@@ -22,7 +22,7 @@ We also provide an example, see `mma_link.cpp`, by using the LibraryLink api of 
 Build it, e.g. (also add -lpthread if pthread is required by the compiler)
 
 ```bash
-g++ snmod_vec.cpp snmod_mat.cpp sfmpq_vec.cpp sfmpq_mat.cpp main.cpp -o sparserref -O3 -std=c++17 -Iincludepath -Llibpath -lflint -lgmp
+g++ sparse_vec.cpp snmod_mat.cpp sfmpq_mat.cpp main.cpp -o sparserref -O3 -std=c++17 -Iincludepath -Llibpath -lflint -lgmp
 ```
 
 and help is 

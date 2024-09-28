@@ -39,7 +39,7 @@ template <typename T>
 inline void sparse_mat_clear(sparse_mat_t<T> mat) {
 	for (size_t i = 0; i < mat->nrow; i++)
 		sparse_vec_clear(mat->rows + i);
-	free(mat->rows);
+	s_free(mat->rows);
 	mat->nrow = 0;
 	mat->ncol = 0;
 	mat->rows = NULL;
@@ -70,14 +70,6 @@ inline void sparse_mat_compress(sparse_mat_t<T> mat) {
 template <typename T>
 inline T* sparse_mat_entry(sparse_mat_t<T> mat, slong row, slong col, bool isbinary = true) {
 	return sparse_vec_entry(sparse_mat_row(mat, row), col, isbinary);
-}
-
-template <typename T, typename S>
-inline void _sparse_mat_set_entry(sparse_mat_t<T> mat, slong row, slong col, S val) {
-	if (row < 0 || col < 0 || (ulong)row >= mat->nrow ||
-		(ulong)col >= mat->ncol)
-		return;
-	_sparse_vec_set_entry(sparse_mat_row(mat, row), col, val);
 }
 
 template <typename T>
@@ -183,31 +175,6 @@ inline void sparse_mat_transpose_part(sparse_mat_t<T*> mat2, const sparse_mat_t<
 			_sparse_vec_set_entry(mat2->rows + col, row, &ptr);
 		}
 	}
-}
-
-// tranpose only part of the rows
-template <typename T, typename S>
-inline void sparse_mat_transpose_part_parallel(sparse_mat_struct<S>* mat_vec, const sparse_mat_t<T> mat, const std::vector<slong>& rows, 
-	BS::thread_pool& pool) {
-
-	pool.detach_loop<size_t>(0, pool.get_thread_count(), [&](size_t it) {
-		auto mat2 = mat_vec + it;
-		for (size_t i = 0; i < mat2->nrow; i++)
-			mat2->rows[i].nnz = 0;
-		});
-	pool.wait();
-
-	pool.detach_loop<size_t>(0, rows.size(), [&](size_t i) {
-		auto row = rows[i];
-		auto therow = mat->rows + row;
-		auto id = BS::this_thread::get_index().value();
-		auto mat2 = mat_vec + id;
-		for (size_t j = 0; j < therow->nnz; j++) {
-			auto col = therow->indices[j];
-			_sparse_vec_set_entry(mat2->rows + col, row, therow->entries + j);
-		}
-		});
-	pool.wait();
 }
 
 // dot product

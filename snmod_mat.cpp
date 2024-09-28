@@ -317,7 +317,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 
 	sparse_mat_clear(tranmat);
 
-	free(cachedensedmat);
+	s_free(cachedensedmat);
 
 	return pivots;
 }
@@ -499,7 +499,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		}
 	}
 
-	free(cachedensedmat);
+	s_free(cachedensedmat);
 
 	if (verbose) {
 		std::cout << "\n** Rank: " << pivots.size()

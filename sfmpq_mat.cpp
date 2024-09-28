@@ -335,7 +335,7 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++) {
 		fmpq_clear(cachedensedmat + i);
 	}
-	free(cachedensedmat);
+	s_free(cachedensedmat);
 
 	return pivots;
 }
@@ -525,7 +525,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++)
 		fmpq_clear(cachedensedmat + i);
-	free(cachedensedmat);
+	s_free(cachedensedmat);
 
 	if (verbose) {
 		std::cout << "\n** Rank: " << pivots.size()
