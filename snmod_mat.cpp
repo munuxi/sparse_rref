@@ -3,21 +3,14 @@
 
 using iter = std::vector<slong>::iterator;
 
-// Row x - a*Row y
-
-inline void snmod_mat_xmay(snmod_mat_t mat, slong x, slong y, ulong a,
-	nmod_t p) {
-	snmod_vec_sub_mul(mat->rows + x, mat->rows + y, a, p);
-}
-
 // first write a stupid one
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
 void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, 
-	std::vector<slong>& leftcols, int ordering, nmod_t p, ulong* tmpvec) {
+	int ordering, nmod_t p, ulong* tmpvec) {
 	if (ordering < 0) {
 		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
-		schur_complete(mat, row, npivots, leftcols, -ordering, p, tmpvec);
+		schur_complete(mat, row, npivots, -ordering, p, tmpvec);
 	}
 
 	auto therow = sparse_mat_row(mat, row);
@@ -102,7 +95,7 @@ void triangular_solver(snmod_mat_t mat, std::vector<std::pair<slong, slong>>& pi
 				if (r == pp.first)
 					return;
 				auto entry = sparse_mat_entry(mat, r, pp.second, true);
-				snmod_mat_xmay(mat, r, pp.first, *entry, p);
+				snmod_vec_sub_mul(mat->rows + r, mat->rows + pp.first, *entry, p);
 				};
 			pool.detach_loop<slong>(0, thecol.size(), loop);
 			pool.wait();
@@ -230,16 +223,13 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 			n_leftrows++;
 		}
 		leftrows.resize(n_leftrows);
-
-		std::vector<slong> leftcols(colperm.begin() + kk, colperm.end());
-		std::sort(leftcols.begin(), leftcols.end());
 		
 		std::vector<uint8_t> flags(leftrows.size(), 0);
 
 		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
 			auto id = BS::this_thread::get_index().value();
 			schur_complete(mat, leftrows[i], n_pivots, 
-				leftcols, 1, p, cachedensedmat + id * mat->ncol);
+				1, p, cachedensedmat + id * mat->ncol);
 			flags[i] = 1;
 			});
 
@@ -443,12 +433,6 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		}
 		rowperm = std::move(result);
 
-		std::vector<slong> leftcols;
-		for (size_t i = 0; i < mat->ncol; i++) {
-			if (colpivs[i] == -1)
-				leftcols.push_back(i);
-		}
-
 		kk += ps.size();
 		slong newpiv = ps.size();
 		
@@ -460,7 +444,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 			if (rowpivs[rowperm[i]] != -1)
 				return;
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, rowperm[i], n_pivots, leftcols, 1, p,
+			schur_complete(mat, rowperm[i], n_pivots, 1, p,
 				cachedensedmat + id * mat->ncol);
 			flags[i - kk] = 1;
 			});
