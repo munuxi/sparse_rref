@@ -1,4 +1,5 @@
 #include <set>
+#include <cstring> // memcpy
 #include "sparse_mat.h"
 
 using iter = std::vector<slong>::iterator;

@@ -4,31 +4,31 @@
 using iter = std::vector<slong>::iterator;
 
 #define rrefonerow do {                                                    \
-	for (size_t i = 0; i < therow->nnz; i++) {                             \
-		nonzero_c.insert(therow->indices[i]);                              \
-		scalar_set(tmpvec + therow->indices[i], therow->entries + i);      \
-	}                                                                      \
-	fmpq entry[1];                                                         \
-	scalar_init(entry);                                                    \
-	for (auto [r, c] : pivots) {                                           \
-		if (nonzero_c.find(c) == nonzero_c.end())                          \
-			continue;                                                      \
-		scalar_set(entry, tmpvec + c);                                     \
-		if (scalar_is_zero(entry)) {                                       \
-			nonzero_c.erase(c);                                            \
-			continue;                                                      \
-		}                                                                  \
-		auto row = mat->rows + r;                                          \
-		for (size_t i = 0; i < row->nnz; i++) {                            \
-			auto old_len = nonzero_c.size();                               \
-			nonzero_c.insert(row->indices[i]);                             \
-			if (nonzero_c.size() != old_len)                               \
-				fmpq_zero(tmpvec + row->indices[i]);                       \
-			fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);\
-		}                                                                  \
-		nonzero_c.erase(c);                                                \
-	}                                                                      \
-	scalar_clear(entry);                                                   \
+    for (size_t i = 0; i < therow->nnz; i++) {                             \
+        nonzero_c.insert(therow->indices[i]);                              \
+        scalar_set(tmpvec + therow->indices[i], therow->entries + i);      \
+    }                                                                      \
+    fmpq entry[1];                                                         \
+    scalar_init(entry);                                                    \
+    for (auto [r, c] : pivots) {                                           \
+        if (nonzero_c.find(c) == nonzero_c.end())                          \
+            continue;                                                      \
+        scalar_set(entry, tmpvec + c);                                     \
+        if (scalar_is_zero(entry)) {                                       \
+            nonzero_c.erase(c);                                            \
+            continue;                                                      \
+        }                                                                  \
+        auto row = mat->rows + r;                                          \
+        for (size_t i = 0; i < row->nnz; i++) {                            \
+            auto old_len = nonzero_c.size();                               \
+            nonzero_c.insert(row->indices[i]);                             \
+            if (nonzero_c.size() != old_len)                               \
+                fmpq_zero(tmpvec + row->indices[i]);                       \
+            fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);\
+        }                                                                  \
+        nonzero_c.erase(c);                                                \
+    }                                                                      \
+    scalar_clear(entry);                                                   \
 } while (0);
 
 // first write a stupid one
