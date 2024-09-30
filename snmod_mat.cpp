@@ -69,7 +69,6 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 			if (tmpvec[i] != 0)
 				_sparse_vec_set_entry(therow, i, tmpvec + i);
 		}
-		nonzero_c.erase(c);
 	}
 	else {
 		std::unordered_set<slong> nonzero_c;

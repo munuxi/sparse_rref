@@ -362,22 +362,8 @@ bool sparse_vec_dot(T* result, const sparse_vec_t<T> v1, const sparse_vec_t<T> v
 	return scalar_is_zero(result);
 }
 
-static inline std::pair<size_t, char*> snmod_vec_to_binary(sparse_vec_t<ulong> vec) {
-	auto ratio = sizeof(ulong) / sizeof(char);
-	char* buffer = s_malloc<char>((1 + 2 * vec->nnz) * ratio);
-	memcpy(buffer, &(vec->nnz), sizeof(ulong));
-	memcpy(buffer + ratio, vec->indices, vec->nnz * sizeof(ulong));
-	memcpy(buffer + (1 + vec->nnz) * ratio, vec->entries, vec->nnz * sizeof(ulong));
-	return std::make_pair((1 + 2 * vec->nnz) * ratio, buffer);
-}
-
-static inline void snmod_vec_from_binary(sparse_vec_t<ulong> vec, const char* buffer) {
-	auto ratio = sizeof(ulong) / sizeof(char);
-	memcpy(&(vec->nnz), buffer, sizeof(ulong));
-	sparse_vec_realloc(vec, vec->nnz);
-	memcpy(vec->indices, buffer + ratio, vec->nnz * sizeof(ulong));
-	memcpy(vec->entries, buffer + (1 + vec->nnz) * ratio, vec->nnz * sizeof(ulong));
-}
+std::pair<size_t, char*> snmod_vec_to_binary(sparse_vec_t<ulong> vec);
+void snmod_vec_from_binary(sparse_vec_t<ulong> vec, const char* buffer);
 
 // debug only, not used to the large vector
 template <typename T> void print_vec_info(const sparse_vec_t<T> vec) {
