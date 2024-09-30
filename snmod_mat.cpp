@@ -3,14 +3,42 @@
 
 using iter = std::vector<slong>::iterator;
 
+#define rrefonerow do {                                                    \
+    for (size_t i = 0; i < therow->nnz; i++) {                             \
+        nonzero_c.insert(therow->indices[i]);                              \
+        tmpvec[therow->indices[i]] = therow->entries[i];                   \
+    }                                                                      \
+    for (auto [r, c] : pivots) {                                           \
+        if (nonzero_c.find(c) == nonzero_c.end())                          \
+            continue;                                                      \
+        if (tmpvec[c] == 0) {                                              \
+            nonzero_c.erase(c);                                            \
+            continue;                                                      \
+        }                                                                  \
+        auto entry = tmpvec[c];                                            \
+        auto row = sparse_mat_row(mat, r);                                 \
+        ulong e_pr = n_mulmod_precomp_shoup(entry, p.n);                   \
+        for (size_t i = 0; i < row->nnz; i++) {                            \
+            auto old_len = nonzero_c.size();                               \
+            nonzero_c.insert(row->indices[i]);                             \
+            if (nonzero_c.size() != old_len)                               \
+                tmpvec[row->indices[i]] = 0;                               \
+            tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],   \
+                n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);     \
+        }                                                                  \
+        nonzero_c.erase(c);                                                \
+    }                                                                      \
+} while (0);
+
 // first write a stupid one
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
-void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots,
-	int ordering, nmod_t p, ulong* tmpvec) {
+// mode : true: very sparse < SPARSE_BOUND%
+void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, 
+	int ordering, nmod_t p, ulong* tmpvec, bool mode) {
 	if (ordering < 0) {
 		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
-		schur_complete(mat, row, npivots, -ordering, p, tmpvec);
+		schur_complete(mat, row, npivots, -ordering, p, tmpvec, mode);
 	}
 
 	auto therow = sparse_mat_row(mat, row);
@@ -32,41 +60,27 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		return;
 	}
 
-	// it's important that it is sorted, 
-	// so we use set instead of unordered_set
-	std::set<slong> nonzero_c;
-
-	for (size_t i = 0; i < therow->nnz; i++) {
-		nonzero_c.insert(therow->indices[i]);
-		tmpvec[therow->indices[i]] = therow->entries[i];
-	}
-
-	for (auto [r, c] : pivots) {
-		if (nonzero_c.find(c) == nonzero_c.end())
-			continue;
-		if (tmpvec[c] == 0) {
-			nonzero_c.erase(c);
-			continue;
-		}
-
-		auto entry = tmpvec[c];
-		auto row = sparse_mat_row(mat, r);
-
-		ulong e_pr = n_mulmod_precomp_shoup(entry, p.n);
-		for (size_t i = 0; i < row->nnz; i++) {
-			auto old_len = nonzero_c.size();
-			nonzero_c.insert(row->indices[i]);
-			if (nonzero_c.size() != old_len)
-				tmpvec[row->indices[i]] = 0;
-			tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
-				n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
+	if (mode) {
+		std::set<slong> nonzero_c;
+		rrefonerow;
+		therow->nnz = 0;
+		for (auto i : nonzero_c) {
+			if (tmpvec[i] != 0)
+				_sparse_vec_set_entry(therow, i, tmpvec + i);
 		}
 		nonzero_c.erase(c);
 	}
-	therow->nnz = 0;
-	for (auto i : nonzero_c) {
-		if (tmpvec[i] != 0)
-			_sparse_vec_set_entry(therow, i, tmpvec + i);
+	else {
+		std::unordered_set<slong> nonzero_c;
+		nonzero_c.reserve(5 * therow->nnz);
+		rrefonerow;
+		std::vector<slong> indices(nonzero_c.begin(), nonzero_c.end());
+		std::sort(indices.begin(), indices.end());
+		therow->nnz = 0;
+		for (auto i : indices) {
+			if (tmpvec[i] != 0)
+				_sparse_vec_set_entry(therow, i, tmpvec + i);
+		}
 	}
 }
 
@@ -235,10 +249,11 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		
 		std::vector<uint8_t> flags(leftrows.size(), 0);
 
+		bool mode = ((double)100 * now_nnz / (mat->nrow * mat->ncol) < SPARSE_BOUND);
 		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
 			auto id = BS::this_thread::get_index().value();
 			schur_complete(mat, leftrows[i], n_pivots, 
-				1, p, cachedensedmat + id * mat->ncol);
+				1, p, cachedensedmat + id * mat->ncol, mode);
 			flags[i] = 1;
 			});
 
@@ -449,12 +464,13 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 		// flags[i] is true if the i-th row has been computed
 		std::vector<uint8_t> flags(mat->nrow - kk, 0);
 		// and then compute the elimination of the rows asynchronizely
+		bool mode = ((double)100 * now_nnz / (mat->nrow * mat->ncol) < SPARSE_BOUND);
 		pool.detach_loop<slong>(kk, mat->nrow, [&](slong i) {
 			if (rowpivs[rowperm[i]] != -1)
 				return;
 			auto id = BS::this_thread::get_index().value();
 			schur_complete(mat, rowperm[i], n_pivots, 1, p,
-				cachedensedmat + id * mat->ncol);
+				cachedensedmat + id * mat->ncol, mode);
 			flags[i - kk] = 1;
 			});
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
@@ -572,4 +588,38 @@ ulong snmod_mat_rref_kernel(snmod_mat_t K, const snmod_mat_t M, const std::vecto
 
 	sparse_mat_clear(trows);
 	return M->ncol - rank;
+}
+
+std::pair<size_t, char*> snmod_mat_to_binary(sparse_mat_t<ulong> mat) {
+	auto ratio = sizeof(ulong) / sizeof(char);
+	auto nnz = sparse_mat_nnz(mat);
+	auto len = (3 + mat->nrow + 2 * nnz) * ratio;
+	char* buffer = s_malloc<char>(len);
+	char* ptr = buffer;
+	memcpy(ptr, &(mat->nrow), sizeof(ulong)); ptr += ratio;
+	memcpy(ptr, &(mat->ncol), sizeof(ulong)); ptr += ratio;
+	memcpy(ptr, &nnz, sizeof(ulong)); ptr += ratio;
+	for (size_t i = 0; i < mat->nrow; i++) {
+		auto therow = mat->rows + i;
+		memcpy(ptr, &(therow->nnz), sizeof(ulong)); ptr += ratio;
+		memcpy(ptr, therow->indices, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+		memcpy(ptr, therow->entries, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+	}
+	return std::make_pair(len, buffer);
+}
+
+void snmod_mat_from_binary(sparse_mat_t<ulong> mat, char* buffer) {
+	auto ratio = sizeof(ulong) / sizeof(char);
+	char* ptr = buffer;
+	ulong nnz;
+	memcpy(&(mat->nrow), ptr, sizeof(ulong)); ptr += ratio;
+	memcpy(&(mat->ncol), ptr, sizeof(ulong)); ptr += ratio;
+	memcpy(&nnz, ptr, sizeof(ulong)); ptr += ratio;
+	sparse_mat_init(mat, mat->nrow, mat->ncol);
+	for (size_t i = 0; i < mat->nrow; i++) {
+		auto therow = mat->rows + i;
+		memcpy(&(therow->nnz), ptr, sizeof(ulong)); ptr += ratio;
+		memcpy(therow->indices, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+		memcpy(therow->entries, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+	}
 }

@@ -71,6 +71,15 @@ inline void scalar_clear(scalar_s<T>* a) {
 	a->data = NULL;
 }
 
+static inline std::string scalar_to_str(fmpq_t a) {
+	char* cstr = s_malloc<char>(fmpz_sizeinbase(fmpq_numref(a), 10) + fmpz_sizeinbase(fmpq_denref(a), 10) + 3);
+	fmpq_get_str(cstr, 10, a);
+	std::string str(cstr);
+	s_free(cstr);
+	return str;
+}
+static inline std::string scalar_to_str(ulong* a) { return std::to_string(*a); }
+
 static inline bool scalar_is_zero(const fmpq_t a) { return fmpq_is_zero(a); }
 static inline bool scalar_is_zero(const ulong* a) { return (*a) == 0; }
 template <typename T>
@@ -126,7 +135,7 @@ inline void scalar_one(scalar_s<T>* a) {
 static inline void scalar_add(ulong* a, const ulong* b, const ulong* c, const field_t field) {
 	*a = _nmod_add(*b, *c, field->pvec[0]);
 }
-static inline void scalar_add(fmpq_t a, const fmpq_t b, const fmpq_t c) { fmpq_add(a, b, c); }
+static inline void scalar_add(fmpq_t a, const fmpq_t b, const fmpq_t c, const field_t field) { fmpq_add(a, b, c); }
 
 template <typename T>
 inline void scalar_add(scalar_s<T>* a, const scalar_s<T>* b, const scalar_s<T>* c, const field_t field) {
@@ -137,7 +146,7 @@ inline void scalar_add(scalar_s<T>* a, const scalar_s<T>* b, const scalar_s<T>* 
 static inline void scalar_sub(ulong* a, const ulong* b, const ulong* c, const field_t field) {
 	*a = _nmod_sub(*b, *c, field->pvec[0]);
 }
-static inline void scalar_sub(fmpq_t a, const fmpq_t b, const fmpq_t c) { fmpq_sub(a, b, c); }
+static inline void scalar_sub(fmpq_t a, const fmpq_t b, const fmpq_t c, const field_t field) { fmpq_sub(a, b, c); }
 
 template <typename T>
 inline void scalar_sub(scalar_s<T>* a, const scalar_s<T>* b, const scalar_s<T>* c, const field_t field) {
@@ -148,7 +157,7 @@ inline void scalar_sub(scalar_s<T>* a, const scalar_s<T>* b, const scalar_s<T>* 
 static inline void scalar_mul(ulong* a, const ulong* b, const ulong* c, const field_t field) {
 	*a = nmod_mul(*b, *c, field->pvec[0]);
 }
-static inline void scalar_mul(fmpq_t a, const fmpq_t b, const fmpq_t c) { fmpq_mul(a, b, c); }
+static inline void scalar_mul(fmpq_t a, const fmpq_t b, const fmpq_t c, const field_t field) { fmpq_mul(a, b, c); }
 
 template <typename T>
 inline void scalar_mul(scalar_s<T>* a, const scalar_s<T>* b, const scalar_s<T>* c, const field_t field) {
@@ -159,7 +168,7 @@ inline void scalar_mul(scalar_s<T>* a, const scalar_s<T>* b, const scalar_s<T>* 
 static inline void scalar_div(ulong* a, const ulong* b, const ulong* c, const field_t field) {
 	*a = nmod_div(*b, *c, field->pvec[0]);
 }
-static inline void scalar_div(fmpq_t a, const fmpq_t b, const fmpq_t c) { fmpq_div(a, b, c); }
+static inline void scalar_div(fmpq_t a, const fmpq_t b, const fmpq_t c, const field_t field) { fmpq_div(a, b, c); }
 
 template <typename T>
 inline void scalar_div(scalar_s<T>* a, const scalar_s<T>* b, const scalar_s<T>* c, const field_t field) {

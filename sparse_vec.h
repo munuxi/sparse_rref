@@ -62,12 +62,7 @@ void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
 }
 
 template <typename T>
-inline T* sparse_vec_entry_pointer(sparse_vec_t<T> vec, const slong index) {
-	return vec->entries + index;
-}
-
-template <typename T>
-inline const T* sparse_vec_entry_pointer(const sparse_vec_t<T> vec, const slong index) {
+inline T* sparse_vec_entry_pointer(const sparse_vec_t<T> vec, const slong index) {
 	return vec->entries + index;
 }
 
@@ -300,22 +295,27 @@ inline void sparse_vec_compress(sparse_vec_t<T> vec) {
 	sparse_vec_realloc(vec, vec->nnz);
 }
 
-
 // arithmetic operations
 
 // p should less than 2^(FLINT_BITS-1) (2^63(2^31) on 64(32)-bit machine)
 // scalar and all vec->entries[i] should less than p
-inline void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p) {
+static inline void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p) {
 	_nmod_vec_scalar_mul_nmod_shoup(vec->entries, vec->entries, vec->nnz,
 		scalar, p);
 }
 
-int snmod_vec_add(snmod_vec_t vec, const snmod_vec_t src, nmod_t p);
-int snmod_vec_sub(snmod_vec_t vec, const snmod_vec_t src, nmod_t p);
 int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, nmod_t p);
-int snmod_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, nmod_t p);
+static inline int snmod_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, nmod_t p) {
+	return snmod_vec_add_mul(vec, src, nmod_neg(a, p), p);
+}
+//static inline int sparse_vec_add(snmod_vec_t vec, const snmod_vec_t src, field_t F) {
+//	return snmod_vec_add_mul(vec, src, (ulong)1, F->pvec[0]);
+//}
+//static inline int sparse_vec_sub(snmod_vec_t vec, const snmod_vec_t src, field_t F) {
+//	return snmod_vec_sub_mul(vec, src, (ulong)1, F->pvec[0]);
+//}
 
-inline void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar) {
+static inline void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar) {
 	for (ulong i = 0; i < vec->nnz; i++)
 		fmpq_mul(vec->entries + i, vec->entries + i, scalar);
 }
@@ -336,17 +336,20 @@ static void snmod_vec_from_sfmpq(snmod_vec_t vec, const sfmpq_vec_t src, nmod_t 
 }
 
 // dot product
-// return 0 if the result is zero, otherwise return 1
+// return true if the result is zero
 template <typename T>
-int sparse_vec_dot_sparse_vec(T* result, const sparse_vec_t<T> v1, const sparse_vec_t<T> v2) {
+bool sparse_vec_dot(T* result, const sparse_vec_t<T> v1, const sparse_vec_t<T> v2, field_t F) {
 	if (v1->nnz == 0 || v2->nnz == 0) {
 		scalar_zero(result);
 		return 0;
 	}
 	slong ptr1 = 0, ptr2 = 0;
+	T tmp[1];
+	scalar_init(tmp);
 	while (ptr1 < v1->nnz && ptr2 < v2->nnz) {
 		if (v1->indices[ptr1] == v2->indices[ptr2]) {
-			scalar_add(result, result, scalar_mul(v1->entries + ptr1, v2->entries + ptr2));
+			scalar_mul(tmp, v1->entries + ptr1, v2->entries + ptr2, F);
+			scalar_add(result, result, tmp, F);
 			ptr1++;
 			ptr2++;
 		}
@@ -355,32 +358,25 @@ int sparse_vec_dot_sparse_vec(T* result, const sparse_vec_t<T> v1, const sparse_
 		else
 			ptr2++;
 	}
-	if (scalar_is_zero(result))
-		return 0;
-	return 1;
+	scalar_clear(tmp);
+	return scalar_is_zero(result);
 }
 
-template <typename T>
-int sparse_vec_dot_sparse_vec(T* result, const sparse_vec_t<T> v1, const sparse_vec_t<T*> v2) {
-	if (v1->nnz == 0 || v2->nnz == 0) {
-		scalar_zero(result);
-		return 0;
-	}
-	slong ptr1 = 0, ptr2 = 0;
-	while (ptr1 < v1->nnz && ptr2 < v2->nnz) {
-		if (v1->indices[ptr1] == v2->indices[ptr2]) {
-			scalar_add(result, result, scalar_mul(v1->entries + ptr1, v2->entries[ptr2]));
-			ptr1++;
-			ptr2++;
-		}
-		else if (v1->indices[ptr1] < v2->indices[ptr2])
-			ptr1++;
-		else
-			ptr2++;
-	}
-	if (scalar_is_zero(result))
-		return 0;
-	return 1;
+static inline std::pair<size_t, char*> snmod_vec_to_binary(sparse_vec_t<ulong> vec) {
+	auto ratio = sizeof(ulong) / sizeof(char);
+	char* buffer = s_malloc<char>((1 + 2 * vec->nnz) * ratio);
+	memcpy(buffer, &(vec->nnz), sizeof(ulong));
+	memcpy(buffer + ratio, vec->indices, vec->nnz * sizeof(ulong));
+	memcpy(buffer + (1 + vec->nnz) * ratio, vec->entries, vec->nnz * sizeof(ulong));
+	return std::make_pair((1 + 2 * vec->nnz) * ratio, buffer);
+}
+
+static inline void snmod_vec_from_binary(sparse_vec_t<ulong> vec, const char* buffer) {
+	auto ratio = sizeof(ulong) / sizeof(char);
+	memcpy(&(vec->nnz), buffer, sizeof(ulong));
+	sparse_vec_realloc(vec, vec->nnz);
+	memcpy(vec->indices, buffer + ratio, vec->nnz * sizeof(ulong));
+	memcpy(vec->entries, buffer + (1 + vec->nnz) * ratio, vec->nnz * sizeof(ulong));
 }
 
 // debug only, not used to the large vector
@@ -395,11 +391,7 @@ template <typename T> void print_vec_info(const sparse_vec_t<T> vec) {
 	for (size_t i = 0; i < vec->nnz; i++)
 		std::cout << vec->indices[i] << " ";
 	std::cout << "\nentries: ";
-	if constexpr (std::is_same_v<fmpq, T>) {
-		for (size_t i = 0; i < vec->nnz; i++)
-			std::cout << fmpq_get_str(NULL, 10, vec->entries + i) << " ";
-	}
-	else if constexpr (is_scalar_s<T>::value) {
+	if constexpr (is_scalar_s<T>::value) {
 		for (size_t i = 0; i < vec->nnz; i++) {
 			auto data = vec->entries[i].data;
 			for (size_t j = 0; j < vec->entries->rank - 1; j++)
@@ -410,7 +402,7 @@ template <typename T> void print_vec_info(const sparse_vec_t<T> vec) {
 	}
 	else {
 		for (size_t i = 0; i < vec->nnz; i++)
-			std::cout << vec->entries[i] << " ";
+			std::cout << scalar_to_str(vec->entries + i) << " ";
 	}
 	std::cout << std::endl;
 }

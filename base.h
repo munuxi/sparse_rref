@@ -31,7 +31,7 @@ template <typename T> struct scalar_s_decay<const scalar_s<T>> { using type = T;
 // Memory management
 
 template <typename T>
-T* s_malloc(const size_t size) {
+inline T* s_malloc(const size_t size) {
 	return (T*)std::malloc(size * sizeof(T));
 }
 
@@ -47,7 +47,7 @@ scalar_s<T>* s_malloc(const size_t size, const size_t rank) {
 }
 
 template <typename T>
-void s_free(T* s) {
+inline void s_free(T* s) {
 	if constexpr (is_scalar_s<T>::value) {
 		std::free(s->data);
 		s->data = NULL;
@@ -56,7 +56,7 @@ void s_free(T* s) {
 }
 
 template <typename T>
-T* s_realloc(T* s, const size_t size) {
+inline T* s_realloc(T* s, const size_t size) {
 	return (T*)std::realloc(s, size * sizeof(T));
 }
 

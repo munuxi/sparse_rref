@@ -77,18 +77,6 @@ int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 	return 0;
 }
 
-int snmod_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, nmod_t p) {
-	return snmod_vec_add_mul(vec, src, nmod_neg(a, p), p);
-}
-
-int snmod_vec_add(snmod_vec_t vec, const snmod_vec_t src, nmod_t p) {
-	return snmod_vec_add_mul(vec, src, (ulong)1, p);
-}
-
-int snmod_vec_sub(snmod_vec_t vec, const snmod_vec_t src, nmod_t p) {
-	return snmod_vec_sub_mul(vec, src, (ulong)1, p);
-}
-
 int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 	if (src->nnz == 0)
 		return 0;

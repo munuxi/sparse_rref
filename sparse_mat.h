@@ -3,6 +3,8 @@
 
 #include "sparse_vec.h"
 
+constexpr double SPARSE_BOUND = 0.1;
+
 template <typename T> struct sparse_mat_struct {
 	ulong nrow;
 	ulong ncol;
@@ -46,7 +48,7 @@ inline void sparse_mat_clear(sparse_mat_t<T> mat) {
 }
 
 template <typename T>
-inline ulong sparse_mat_nnz(sparse_mat_t<T> mat) {
+inline ulong sparse_mat_nnz(const sparse_mat_t<T> mat) {
 	ulong nnz = 0;
 	for (size_t i = 0; i < mat->nrow; i++)
 		nnz += sparse_mat_row(mat, i)->nnz;
@@ -54,7 +56,7 @@ inline ulong sparse_mat_nnz(sparse_mat_t<T> mat) {
 }
 
 template <typename T>
-inline ulong sparse_mat_alloc(sparse_mat_t<T> mat) {
+inline ulong sparse_mat_alloc(const sparse_mat_t<T> mat) {
 	ulong alloc = 0;
 	for (size_t i = 0; i < mat->nrow; i++)
 		alloc += sparse_mat_row(mat, i)->alloc;
@@ -179,7 +181,7 @@ inline void sparse_mat_transpose_part(sparse_mat_t<T*> mat2, const sparse_mat_t<
 
 // dot product
 template <typename T>
-inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<T> mat, const sparse_vec_t<T> vec) {
+inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<T> mat, const sparse_vec_t<T> vec, field_t F) {
 	sparse_vec_zero(result);
 	if (vec->nnz == 0 || sparse_mat_nnz(mat) == 0) 
 		return 0;
@@ -188,40 +190,27 @@ inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<
 
 	for (size_t i = 0; i < mat->nrow; i++) {
 		auto therow = mat->rows + i;
-		int a = sparse_vec_dot_sparse_vec(tmp, therow, vec);
-		if (a != 0)
+		scalar_zero(tmp);
+		if (!sparse_vec_dot(tmp, therow, vec, F))
 			_sparse_vec_set_entry(result, i, tmp);
 	}
-}
-
-template <typename T>
-inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<T> mat, const sparse_vec_t<T*> vec) {
-	sparse_vec_zero(result);
-	if (vec->nnz == 0 || sparse_mat_nnz(mat) == 0)
-		return 0;
-	T tmp[1];
-	scalar_init(tmp);
-
-	for (size_t i = 0; i < mat->nrow; i++) {
-		auto therow = mat->rows + i;
-		int a = sparse_vec_dot_sparse_vec(tmp, therow, vec);
-		if (a != 0)
-			_sparse_vec_set_entry(result, i, tmp);
-	}
+	scalar_clear(tmp);
 }
 
 // A = B * C
 template <typename T>
-inline int sparse_mat_dot_sparse_mat(sparse_mat_t<T> A, sparse_mat_t<T> B, sparse_mat_t<T> C) {
+inline int sparse_mat_dot_sparse_mat(sparse_mat_t<T> A, sparse_mat_t<T> B, sparse_mat_t<T> C, field_t F) {
 	if (B->ncol != C->nrow)
 		return -1;
-	// just use pointer to avoid copy
-	sparse_mat_t<T*> Ct;
+
+	sparse_mat_t<T> Ct;
 	sparse_mat_init(Ct, C->ncol, C->nrow);
 	sparse_mat_transpose(Ct, C);
 
-	// TODO: ...
+	for (size_t i = 0; i < B->nrow; i++)
+		sparse_mat_dot_sparse_vec(A->rows + i, B, Ct->rows + i, F);
 
+	sparse_mat_clear(Ct);
 	return 0;
 }
 
@@ -532,7 +521,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref(snmod_mat_t mat, nmod_t p, B
 ulong snmod_mat_rref_kernel(snmod_mat_t K, const snmod_mat_t M, const std::vector<std::pair<slong, slong>>& pivots, nmod_t p, BS::thread_pool& pool);
 
 // convert
-inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src,
+static inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src,
 	nmod_t p) {
 	for (size_t i = 0; i < src->nrow; i++) {
 		auto row = src->rows + i;
@@ -576,50 +565,6 @@ template <typename T> void sfmpq_mat_read(sfmpq_mat_t mat, T& st) {
 	}
 }
 
-// BUGS on some compilers....
-//template <typename T> void snmod_mat_read(snmod_mat_t mat, nmod_t p, T& st) {
-//	if (!st.is_open())
-//		return;
-//	std::string strLine;
-//
-//	bool is_size = true;
-//	ulong val;
-//
-//	fmpq_t val;
-//	fmpq_init(val);
-//
-//	int totalprint = 0;
-//
-//	while (getline(st, strLine)) {
-//		if (strLine[0] == '%')
-//			continue;
-//
-//		auto tokens = SplitString(strLine, " ");
-//		if (is_size) {
-//			ulong nrow = std::stoul(tokens[0]);
-//			ulong ncol = std::stoul(tokens[1]);
-//			ulong nnz = std::stoul(tokens[2]);
-//			// here we alloc 1, or alloc nnz/ncol ?
-//			sparse_mat_init(mat, nrow, ncol);
-//			is_size = false;
-//		}
-//		else {
-//			ulong row = std::stoul(tokens[0]) - 1;
-//			ulong col = std::stoul(tokens[1]) - 1;
-//			DeleteSpaces(tokens[2]);
-//			fmpq_set_str(val, tokens[2].c_str(), 10);
-//			fmpz_mod_ui(fmpq_numref(val), fmpq_numref(val), p.n);
-//			fmpz_mod_ui(fmpq_denref(val), fmpq_denref(val), p.n);
-//			ulong num = fmpz_get_ui(fmpq_numref(val));
-//			ulong den = fmpz_get_ui(fmpq_denref(val));
-//			ulong val = nmod_div(num, den, p);
-//			_sparse_vec_set_entry(mat->rows + row, col, val);
-//		}
-//	}
-//
-//	fmpq_clear(val);
-//}
-
 template <typename T, typename S> void sparse_mat_write(sparse_mat_t<T> mat, S& st) {
 	if constexpr (std::is_same_v<T, fmpq>) {
 		st << "%%MatrixMarket matrix coordinate rational general" << '\n';
@@ -633,18 +578,14 @@ template <typename T, typename S> void sparse_mat_write(sparse_mat_t<T> mat, S& 
 		for (size_t j = 0; j < therow->nnz; j++) {
 			if (scalar_is_zero(therow->entries + j))
 				continue;
-			if constexpr (std::is_same_v<T, fmpq>) {
-				st << i + 1 << " "
-					<< therow->indices[j] + 1 << " "
-					<< fmpq_get_str(NULL, 10, therow->entries + j) << '\n';
-			}
-			else {
-				st << i + 1 << " "
-					<< therow->indices[j] + 1 << " "
-					<< therow->entries[j] << '\n';
-			}
+			st << i + 1 << " "
+				<< therow->indices[j] + 1 << " "
+				<< scalar_to_str(therow->entries + j) << '\n';
 		}
 	}
 }
+
+std::pair<size_t, char*> snmod_mat_to_binary(sparse_mat_t<ulong> mat);
+void snmod_mat_from_binary(sparse_mat_t<ulong> mat, char* buffer);
 
 #endif

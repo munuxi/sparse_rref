@@ -3,14 +3,43 @@
 
 using iter = std::vector<slong>::iterator;
 
+#define rrefonerow do {                                                    \
+	for (size_t i = 0; i < therow->nnz; i++) {                             \
+		nonzero_c.insert(therow->indices[i]);                              \
+		scalar_set(tmpvec + therow->indices[i], therow->entries + i);      \
+	}                                                                      \
+	fmpq entry[1];                                                         \
+	scalar_init(entry);                                                    \
+	for (auto [r, c] : pivots) {                                           \
+		if (nonzero_c.find(c) == nonzero_c.end())                          \
+			continue;                                                      \
+		scalar_set(entry, tmpvec + c);                                     \
+		if (scalar_is_zero(entry)) {                                       \
+			nonzero_c.erase(c);                                            \
+			continue;                                                      \
+		}                                                                  \
+		auto row = mat->rows + r;                                          \
+		for (size_t i = 0; i < row->nnz; i++) {                            \
+			auto old_len = nonzero_c.size();                               \
+			nonzero_c.insert(row->indices[i]);                             \
+			if (nonzero_c.size() != old_len)                               \
+				fmpq_zero(tmpvec + row->indices[i]);                       \
+			fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);\
+		}                                                                  \
+		nonzero_c.erase(c);                                                \
+	}                                                                      \
+	scalar_clear(entry);                                                   \
+} while (0);
+
 // first write a stupid one
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
-void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots,
-	int ordering, fmpq* tmpvec) {
+// mode : true: very sparse < SPARSE_BOUND%
+void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slong>>&pivots,
+	int ordering, fmpq * tmpvec, bool mode) {
 	if (ordering < 0) {
 		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
-		schur_complete(mat, row, npivots, -ordering, tmpvec);
+		schur_complete(mat, row, npivots, -ordering, tmpvec, mode);
 	}
 
 	auto therow = mat->rows + row;
@@ -32,42 +61,27 @@ void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		return;
 	}
 
-	std::set<slong> nonzero_c; // it's important that it is sorted
-
-	for (size_t i = 0; i < therow->nnz; i++) {
-		nonzero_c.insert(therow->indices[i]);
-		scalar_set(tmpvec + therow->indices[i], therow->entries + i);
-	}
-
-	fmpq entry[1];
-	scalar_init(entry);
-
-	for (auto [r, c] : pivots) {
-		if (nonzero_c.find(c) == nonzero_c.end())
-			continue;
-		scalar_set(entry, tmpvec + c);
-		if (scalar_is_zero(entry)) {
-			nonzero_c.erase(c);
-			continue;
-		}
-
-		auto row = mat->rows + r;
-
-		for (size_t i = 0; i < row->nnz; i++) {
-			auto old_len = nonzero_c.size();
-			nonzero_c.insert(row->indices[i]);
-			if (nonzero_c.size() != old_len)
-				fmpq_zero(tmpvec + row->indices[i]);
-			fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
+	if (mode) {
+		std::set<slong> nonzero_c; // it's important that it is sorted
+		rrefonerow;
+		therow->nnz = 0;
+		for (auto i : nonzero_c) {
+			if (!scalar_is_zero(tmpvec + i))
+				_sparse_vec_set_entry(therow, i, tmpvec + i);
 		}
 		nonzero_c.erase(c);
 	}
-	scalar_clear(entry);
-
-	therow->nnz = 0;
-	for (auto i : nonzero_c) {
-		if (!scalar_is_zero(tmpvec + i))
-			_sparse_vec_set_entry(therow, i, tmpvec + i);
+	else {
+		std::unordered_set<slong> nonzero_c;
+		nonzero_c.reserve(5 * therow->nnz);
+		rrefonerow;
+		std::vector<slong> indices(nonzero_c.begin(), nonzero_c.end());
+		std::sort(indices.begin(), indices.end());
+		therow->nnz = 0;
+		for (auto i : indices) {
+			if (!scalar_is_zero(tmpvec + i))
+				_sparse_vec_set_entry(therow, i, tmpvec + i);
+		}
 	}
 }
 
@@ -138,8 +152,8 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 	ulong init_nnz = sparse_mat_nnz(mat);
 	ulong now_nnz = init_nnz;
 
-	fmpq_t scalar;
-	fmpq_init(scalar);
+	fmpq scalar[1];
+	scalar_init(scalar);
 
 	// store the pivots that have been used
 	// -1 is not used
@@ -247,11 +261,11 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 		leftrows.resize(n_leftrows);
 
 		std::vector<uint8_t> flags(leftrows.size(), 0);
-
+		bool mode = ((double)100 * now_nnz / (mat->nrow * mat->ncol) < SPARSE_BOUND);
 		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
 			auto id = BS::this_thread::get_index().value();
 			schur_complete(mat, leftrows[i], n_pivots,
-				1, cachedensedmat + id * mat->ncol);
+				1, cachedensedmat + id * mat->ncol, mode);
 			flags[i] = 1;
 			});
 
@@ -474,11 +488,12 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 		// flags[i] is true if the i-th row has been computed
 		std::vector<uint8_t> flags(mat->nrow - kk, 0);
 		// and then compute the elimination of the rows asynchronizely
+		bool mode = ((double)100 * now_nnz / (mat->nrow * mat->ncol) < SPARSE_BOUND);
 		pool.detach_loop<slong>(kk, mat->nrow, [&](slong i) {
 			if (rowpivs[rowperm[i]] != -1)
 				return;
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, rowperm[i], n_pivots, 1, cachedensedmat + id * mat->ncol);
+			schur_complete(mat, rowperm[i], n_pivots, 1, cachedensedmat + id * mat->ncol, mode);
 			flags[i - kk] = 1;
 			});
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
