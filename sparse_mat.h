@@ -3,6 +3,8 @@
 
 #include "sparse_vec.h"
 
+constexpr double SPARSE_BOUND = 0.1;
+
 template <typename T> struct sparse_mat_struct {
 	ulong nrow;
 	ulong ncol;
