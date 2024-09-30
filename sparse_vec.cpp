@@ -1,4 +1,5 @@
 #include "sparse_vec.h"
+#include <cstring> // memcpy
 
 // c.f. the relization of _nmod_vec_scalar_mul_nmod_shoup from FLINT
 // void _nmod_vec_scalar_mul_nmod_shoup(nn_ptr res, nn_srcptr vec,
@@ -217,4 +218,21 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 	fmpq_clear(na);
 	fmpq_clear(entry);
 	return 0;
+}
+
+std::pair<size_t, char*> snmod_vec_to_binary(sparse_vec_t<ulong> vec) {
+	auto ratio = sizeof(ulong) / sizeof(char);
+	char* buffer = s_malloc<char>((1 + 2 * vec->nnz) * ratio);
+	memcpy(buffer, &(vec->nnz), sizeof(ulong));
+	memcpy(buffer + ratio, vec->indices, vec->nnz * sizeof(ulong));
+	memcpy(buffer + (1 + vec->nnz) * ratio, vec->entries, vec->nnz * sizeof(ulong));
+	return std::make_pair((1 + 2 * vec->nnz) * ratio, buffer);
+}
+
+void snmod_vec_from_binary(sparse_vec_t<ulong> vec, const char* buffer) {
+	auto ratio = sizeof(ulong) / sizeof(char);
+	memcpy(&(vec->nnz), buffer, sizeof(ulong));
+	sparse_vec_realloc(vec, vec->nnz);
+	memcpy(vec->indices, buffer + ratio, vec->nnz * sizeof(ulong));
+	memcpy(vec->entries, buffer + (1 + vec->nnz) * ratio, vec->nnz * sizeof(ulong));
 }
