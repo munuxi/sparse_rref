@@ -6,7 +6,7 @@ using iter = std::vector<slong>::iterator;
 // first write a stupid one
 // TODO: Gilbert-Peierls algorithm for parallel computation 
 // see https://hal.science/hal-01333670/document
-void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, 
+void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots,
 	int ordering, nmod_t p, ulong* tmpvec) {
 	if (ordering < 0) {
 		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
@@ -17,7 +17,7 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 
 	if (therow->nnz == 0)
 		return;
-	
+
 	// if pivots size is small, we can use the sparse vector
 	// to save to cost of converting between sparse and dense
 	// vectors, otherwise we use dense vector
@@ -32,27 +32,36 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		return;
 	}
 
-	std::set<slong> nonzero_c; // it's important that it is sorted
+	// it's important that it is sorted, 
+	// so we use set instead of unordered_set
+	std::set<slong> nonzero_c;
 
-	s_memset(tmpvec, (ulong)0, mat->ncol);
 	for (size_t i = 0; i < therow->nnz; i++) {
 		nonzero_c.insert(therow->indices[i]);
 		tmpvec[therow->indices[i]] = therow->entries[i];
 	}
 
 	for (auto [r, c] : pivots) {
-		auto entry = tmpvec[c];
-		if (entry == 0)
+		if (nonzero_c.find(c) == nonzero_c.end())
 			continue;
+		if (tmpvec[c] == 0) {
+			nonzero_c.erase(c);
+			continue;
+		}
 
+		auto entry = tmpvec[c];
 		auto row = sparse_mat_row(mat, r);
 
 		ulong e_pr = n_mulmod_precomp_shoup(entry, p.n);
 		for (size_t i = 0; i < row->nnz; i++) {
+			auto old_len = nonzero_c.size();
+			nonzero_c.insert(row->indices[i]);
+			if (nonzero_c.size() != old_len)
+				tmpvec[row->indices[i]] = 0;
 			tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
 				n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
-			nonzero_c.insert(row->indices[i]);
 		}
+		nonzero_c.erase(c);
 	}
 	therow->nnz = 0;
 	for (auto i : nonzero_c) {
