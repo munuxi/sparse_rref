@@ -69,7 +69,6 @@ void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slo
 			if (!scalar_is_zero(tmpvec + i))
 				_sparse_vec_set_entry(therow, i, tmpvec + i);
 		}
-		nonzero_c.erase(c);
 	}
 	else {
 		std::unordered_set<slong> nonzero_c;
