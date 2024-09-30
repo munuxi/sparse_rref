@@ -94,13 +94,7 @@ int main(int argc, char** argv) {
 			fmpz_t prep;
 			fmpz_init(prep);
 			fmpz_set_str(prep, str.c_str(), 10);
-			int is_max;
-			if constexpr (FLINT64) {
-				is_max = fmpz_cmp_ui(prep, 1ULL << 63);
-			}
-			else {
-				is_max = fmpz_cmp_ui(prep, 1ULL << 31);
-			}
+			int is_max = fmpz_cmp_ui(prep, 1ULL << ((FLINT64) ? 63 : 31));
 			if (is_max > 0) {
 				std::cerr << "The prime number is too large: " << str
 					<< std::endl;
@@ -238,7 +232,7 @@ int main(int argc, char** argv) {
 		file2.close();
 	}
 
-	// clean is very expansive
+	// clean is very expansive, leave to OS :(
 	// sparse_mat_clear(mat_Q);
 	// sparse_mat_clear(mat_Zp);
 	return 0;

@@ -34,33 +34,39 @@ void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slo
 
 	std::set<slong> nonzero_c; // it's important that it is sorted
 
-	for (size_t i = 0; i < mat->ncol; i++)
-		fmpq_zero(tmpvec + i);
 	for (size_t i = 0; i < therow->nnz; i++) {
 		nonzero_c.insert(therow->indices[i]);
-		fmpq_set(tmpvec + therow->indices[i], therow->entries + i);
+		scalar_set(tmpvec + therow->indices[i], therow->entries + i);
 	}
 
-	fmpq_t entry;
-	fmpq_init(entry);
+	fmpq entry[1];
+	scalar_init(entry);
 
 	for (auto [r, c] : pivots) {
-		fmpq_set(entry, tmpvec + c);
-		if (fmpq_is_zero(entry))
+		if (nonzero_c.find(c) == nonzero_c.end())
 			continue;
+		scalar_set(entry, tmpvec + c);
+		if (scalar_is_zero(entry)) {
+			nonzero_c.erase(c);
+			continue;
+		}
 
 		auto row = mat->rows + r;
 
 		for (size_t i = 0; i < row->nnz; i++) {
-			fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
+			auto old_len = nonzero_c.size();
 			nonzero_c.insert(row->indices[i]);
+			if (nonzero_c.size() != old_len)
+				fmpq_zero(tmpvec + row->indices[i]);
+			fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
 		}
+		nonzero_c.erase(c);
 	}
-	fmpq_clear(entry);
+	scalar_clear(entry);
 
 	therow->nnz = 0;
 	for (auto i : nonzero_c) {
-		if (!fmpq_is_zero(tmpvec + i))
+		if (!scalar_is_zero(tmpvec + i))
 			_sparse_vec_set_entry(therow, i, tmpvec + i);
 	}
 }
@@ -132,8 +138,8 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 	ulong init_nnz = sparse_mat_nnz(mat);
 	ulong now_nnz = init_nnz;
 
-	fmpq_t scalar;
-	fmpq_init(scalar);
+	fmpq scalar[1];
+	scalar_init(scalar);
 
 	// store the pivots that have been used
 	// -1 is not used

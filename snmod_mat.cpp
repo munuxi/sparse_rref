@@ -32,27 +32,36 @@ void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slo
 		return;
 	}
 
-	std::set<slong> nonzero_c; // it's important that it is sorted
+	// it's important that it is sorted, 
+	// so we use set instead of unordered_set
+	std::set<slong> nonzero_c; 
 
-	s_memset(tmpvec, (ulong)0, mat->ncol);
 	for (size_t i = 0; i < therow->nnz; i++) {
 		nonzero_c.insert(therow->indices[i]);
 		tmpvec[therow->indices[i]] = therow->entries[i];
 	}
 
 	for (auto [r, c] : pivots) {
-		auto entry = tmpvec[c];
-		if (entry == 0)
+		if (nonzero_c.find(c) == nonzero_c.end())
 			continue;
+		if (tmpvec[c] == 0) {
+			nonzero_c.erase(c);
+			continue;
+		}
 
+		auto entry = tmpvec[c];
 		auto row = sparse_mat_row(mat, r);
 
 		ulong e_pr = n_mulmod_precomp_shoup(entry, p.n);
 		for (size_t i = 0; i < row->nnz; i++) {
+			auto old_len = nonzero_c.size();
+			nonzero_c.insert(row->indices[i]);
+			if (nonzero_c.size() != old_len) 
+				tmpvec[row->indices[i]] = 0;
 			tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
 				n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);
-			nonzero_c.insert(row->indices[i]);
 		}
+		nonzero_c.erase(c);
 	}
 	therow->nnz = 0;
 	for (auto i : nonzero_c) {
@@ -563,4 +572,38 @@ ulong snmod_mat_rref_kernel(snmod_mat_t K, const snmod_mat_t M, const std::vecto
 
 	sparse_mat_clear(trows);
 	return M->ncol - rank;
+}
+
+std::pair<size_t, char*> snmod_mat_to_binary(sparse_mat_t<ulong> mat) {
+	auto ratio = sizeof(ulong) / sizeof(char);
+	auto nnz = sparse_mat_nnz(mat);
+	auto len = (3 + mat->nrow + 2 * nnz) * ratio;
+	char* buffer = s_malloc<char>(len);
+	char* ptr = buffer;
+	memcpy(ptr, &(mat->nrow), sizeof(ulong)); ptr += ratio;
+	memcpy(ptr, &(mat->ncol), sizeof(ulong)); ptr += ratio;
+	memcpy(ptr, &nnz, sizeof(ulong)); ptr += ratio;
+	for (size_t i = 0; i < mat->nrow; i++) {
+		auto therow = mat->rows + i;
+		memcpy(ptr, &(therow->nnz), sizeof(ulong)); ptr += ratio;
+		memcpy(ptr, therow->indices, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+		memcpy(ptr, therow->entries, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+	}
+	return std::make_pair(len, buffer);
+}
+
+void snmod_mat_from_binary(sparse_mat_t<ulong> mat, char* buffer) {
+	auto ratio = sizeof(ulong) / sizeof(char);
+	char* ptr = buffer;
+	ulong nnz;
+	memcpy(&(mat->nrow), ptr, sizeof(ulong)); ptr += ratio;
+	memcpy(&(mat->ncol), ptr, sizeof(ulong)); ptr += ratio;
+	memcpy(&nnz, ptr, sizeof(ulong)); ptr += ratio;
+	sparse_mat_init(mat, mat->nrow, mat->ncol);
+	for (size_t i = 0; i < mat->nrow; i++) {
+		auto therow = mat->rows + i;
+		memcpy(&(therow->nnz), ptr, sizeof(ulong)); ptr += ratio;
+		memcpy(therow->indices, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+		memcpy(therow->entries, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+	}
 }
