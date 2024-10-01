@@ -22,7 +22,7 @@ We also provide an example, see `mma_link.cpp`, by using the LibraryLink api of 
 Build it, e.g. (also add -lpthread if pthread is required by the compiler)
 
 ```bash
-g++ sparse_vec.cpp snmod_mat.cpp sfmpq_mat.cpp main.cpp -o sparserref -O3 -std=c++17 -Iincludepath -Llibpath -lflint -lgmp
+g++ main.cpp -o sparserref -O3 -std=c++17 -Iincludepath -Llibpath -lflint -lgmp
 ```
 
 and help is 
@@ -42,16 +42,14 @@ Optional arguments:
   -k, --kernel            output the kernel
   --output-pivots         output pivots
   -f, --field             QQ: rational field
-                          Zp: Z/p for a prime p [default: "QQ"]
+                          Zp or Fp: Z/p for a prime p [default: "QQ"]
   -p, --prime             a prime number, only vaild when field is Zp  [default: "34534567"]
   -t, --threads           the number of threads  [default: 1]
   -pd, --pivot_direction  the direction to select pivots [default: "row"]
-  -sd, --search_depth     the depth of search, default is the max of size_t  [default: 0]
+  -sd, --search_depth     the depth of search, default is the max of int  [default: 0]
 ```
 
 ### TODO
 
-* There are a lot of similar codes at `sfmpq_*` and `snmod_*`, we should union 
-it in `sparse_*`. 
 * Improve the algorithms.
 

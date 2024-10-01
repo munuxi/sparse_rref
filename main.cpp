@@ -21,7 +21,7 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	argparse::ArgumentParser program("sparserref", "v0.1.6");
+	argparse::ArgumentParser program("sparserref", "v0.2.0");
 	program.add_argument("input_file")
 		.help("input file in matrix market format");
 	program.add_argument("-V", "--verbose")
