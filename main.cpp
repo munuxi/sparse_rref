@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
 		.nargs(0);
 	program.add_argument("-f", "--field")
 		.default_value("QQ")
-		.help("QQ: rational field\nZp: Z/p for a prime p")
+		.help("QQ: rational field\nZp or Fp: Z/p for a prime p")
 		.nargs(1);
 	program.add_argument("-p", "--prime")
 		.default_value("34534567")
@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
 	if (program.get<std::string>("--field") == "QQ") {
 		prime = 0;
 	}
-	else if (program.get<std::string>("--field") == "Zp") {
+	else if (program.get<std::string>("--field") == "Zp" || program.get<std::string>("--field") == "Fp") {
 		if (program.get<std::string>("--prime") == "34534567") {
 			prime = 34534567;
 		}
@@ -119,6 +119,12 @@ int main(int argc, char** argv) {
 			<< program.get<std::string>("--field") << std::endl;
 		std::exit(1);
 	}
+
+	field_t F;
+	if (prime == 0)
+		field_init(F, FIELD_QQ, 1, NULL);
+	else
+		field_init(F, FIELD_Fp, std::vector<ulong>{prime});
 
 	sparse_mat_t<fmpq> mat_Q;
 	sparse_mat_t<ulong> mat_Zp;
@@ -169,10 +175,10 @@ int main(int argc, char** argv) {
 	start = clocknow();
 	std::vector<std::pair<slong, slong>> pivots;
 	if (prime == 0) {
-		pivots = sfmpq_mat_rref(mat_Q, pool, opt);
+		pivots = sparse_mat_rref(mat_Q, F, pool, opt);
 	}
 	else {
-		pivots = snmod_mat_rref(mat_Zp, p, pool, opt);
+		pivots = sparse_mat_rref(mat_Zp, F, pool, opt);
 	}
 
 	end = clocknow();
@@ -219,21 +225,22 @@ int main(int argc, char** argv) {
 		file2.open(outname + outname_add);
 		if (prime == 0) {
 			sfmpq_mat_t K;
-			sfmpq_mat_rref_kernel(K, mat_Q, pivots, pool);
+			sparse_mat_rref_kernel(K, mat_Q, pivots, F, pool);
 			sparse_mat_write(K, file2);
-			// sparse_mat_clear(K);
 		}
 		else {
 			snmod_mat_t K;
-			snmod_mat_rref_kernel(K, mat_Zp, pivots, p, pool);
+			sparse_mat_rref_kernel(K, mat_Zp, pivots, F, pool);
 			sparse_mat_write(K, file2);
-			// sparse_mat_clear(K);
 		}
 		file2.close();
 	}
 
+	field_clear(F);
+
 	// clean is very expansive, leave to OS :(
 	// sparse_mat_clear(mat_Q);
 	// sparse_mat_clear(mat_Zp);
+	// sparse_mat_clear(K);
 	return 0;
 }

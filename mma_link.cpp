@@ -80,9 +80,11 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     }
     fmpz_clear(tmp);
 
+    field_t F;
+	field_init(F, FIELD_Fp, std::vector<ulong>{(ulong)p});
 
-    auto pivots = snmod_mat_rref(A, pp, pool, opt);
-    auto len = snmod_mat_rref_kernel(K, A, pivots, pp, pool);
+    auto pivots = sparse_mat_rref(A, F, pool, opt);
+    auto len = sparse_mat_rref_kernel(K, A, pivots, F, pool);
     auto rank = pivots.size();
     
     nnz = sparse_mat_nnz(A) + sparse_mat_nnz(K);
@@ -131,6 +133,8 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     ld->MTensor_free(pos);
     ld->MTensor_free(val);
     ld->MTensor_free(dim);
+
+	field_clear(F);
 
     if (err)
 		return LIBRARY_FUNCTION_ERROR;

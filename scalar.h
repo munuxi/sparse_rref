@@ -11,7 +11,7 @@
 
 // field
 
-inline void field_init(field_t field, enum RING ring, ulong rank, const ulong* pvec) {
+static inline void field_init(field_t field, const enum RING ring, const ulong rank = 1, const ulong* pvec = NULL) {
 	field->ring = ring;
 	field->rank = rank;
 	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
@@ -21,7 +21,7 @@ inline void field_init(field_t field, enum RING ring, ulong rank, const ulong* p
 	}
 }
 
-inline void field_init(field_t field, enum RING ring, const std::vector<ulong>& pvec) {
+static inline void field_init(field_t field, const enum RING ring, const std::vector<ulong>& pvec) {
 	field->ring = ring;
 	field->rank = pvec.size();
 	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
@@ -31,7 +31,12 @@ inline void field_init(field_t field, enum RING ring, const std::vector<ulong>& 
 	}
 }
 
-inline void field_set(field_t field, const field_t ff) {
+static inline void field_clear(field_t field) {
+	s_free(field->pvec);
+	field->pvec = NULL;
+}
+
+static inline void field_set(field_t field, const field_t ff) {
 	field->ring = ff->ring;
 	field->rank = ff->rank;
 	if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
@@ -131,6 +136,28 @@ inline void scalar_one(scalar_s<T>* a) {
 }
 
 // arithmetic
+
+static inline void scalar_neg(ulong* a, const ulong* b, const field_t field) {
+	*a = field->pvec[0].n - *b;
+}
+static inline void scalar_neg(fmpq_t a, const fmpq_t b, const field_t field) { fmpq_neg(a, b); }
+
+template <typename T>
+inline void scalar_neg(scalar_s<T>* a, const scalar_s<T>* b, const field_t field) {
+	for (size_t i = 0; i < field->rank; i++)
+		a->data[i] = field->pvec[i].n - b->data[i];
+}
+
+static inline void scalar_inv(ulong* a, const ulong* b, const field_t field) {
+	*a = nmod_inv(*b, field->pvec[0]);
+}
+static inline void scalar_inv(fmpq_t a, const fmpq_t b, const field_t field) { fmpq_inv(a, b); }
+
+template <typename T>
+inline void scalar_inv(scalar_s<T>* a, const scalar_s<T>* b, const field_t field) {
+	for (size_t i = 0; i < field->rank; i++)
+		a->data[i] = nmod_inv(b->data[i], field->pvec[i]);
+}
 
 static inline void scalar_add(ulong* a, const ulong* b, const ulong* c, const field_t field) {
 	*a = _nmod_add(*b, *c, field->pvec[0]);

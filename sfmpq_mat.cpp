@@ -1,146 +1,9 @@
-#include <set>
 #include "sparse_mat.h"
 
 using iter = std::vector<slong>::iterator;
 
-#define rrefonerow do {                                                    \
-    for (size_t i = 0; i < therow->nnz; i++) {                             \
-        nonzero_c.insert(therow->indices[i]);                              \
-        scalar_set(tmpvec + therow->indices[i], therow->entries + i);      \
-    }                                                                      \
-    fmpq entry[1];                                                         \
-    scalar_init(entry);                                                    \
-    for (auto [r, c] : pivots) {                                           \
-        if (nonzero_c.find(c) == nonzero_c.end())                          \
-            continue;                                                      \
-        scalar_set(entry, tmpvec + c);                                     \
-        if (scalar_is_zero(entry)) {                                       \
-            nonzero_c.erase(c);                                            \
-            continue;                                                      \
-        }                                                                  \
-        auto row = mat->rows + r;                                          \
-        for (size_t i = 0; i < row->nnz; i++) {                            \
-            auto old_len = nonzero_c.size();                               \
-            nonzero_c.insert(row->indices[i]);                             \
-            if (nonzero_c.size() != old_len)                               \
-                fmpq_zero(tmpvec + row->indices[i]);                       \
-            fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);\
-        }                                                                  \
-        nonzero_c.erase(c);                                                \
-    }                                                                      \
-    scalar_clear(entry);                                                   \
-} while (0);
-
-// first write a stupid one
-// TODO: Gilbert-Peierls algorithm for parallel computation 
-// see https://hal.science/hal-01333670/document
-// mode : true: very sparse < SPARSE_BOUND%
-void schur_complete(sfmpq_mat_t mat, slong row, std::vector<std::pair<slong, slong>>&pivots,
-	int ordering, fmpq * tmpvec, bool mode) {
-	if (ordering < 0) {
-		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
-		schur_complete(mat, row, npivots, -ordering, tmpvec, mode);
-	}
-
-	auto therow = mat->rows + row;
-
-	if (therow->nnz == 0)
-		return;
-
-	// if pivots size is small, we can use the sparse vector
-	// to save to cost of converting between sparse and dense
-	// vectors, otherwise we use dense vector
-	if (pivots.size() < 100) {
-		for (auto [r, c] : pivots) {
-			auto entry = sparse_vec_entry(therow, c);
-			if (entry == NULL)
-				continue;
-			auto row = mat->rows + r;
-			sfmpq_vec_sub_mul(therow, row, entry);
-		}
-		return;
-	}
-
-	if (mode) {
-		std::set<slong> nonzero_c; // it's important that it is sorted
-		rrefonerow;
-		therow->nnz = 0;
-		for (auto i : nonzero_c) {
-			if (!scalar_is_zero(tmpvec + i))
-				_sparse_vec_set_entry(therow, i, tmpvec + i);
-		}
-	}
-	else {
-		std::unordered_set<slong> nonzero_c;
-		nonzero_c.reserve(5 * therow->nnz);
-		rrefonerow;
-		std::vector<slong> indices(nonzero_c.begin(), nonzero_c.end());
-		std::sort(indices.begin(), indices.end());
-		therow->nnz = 0;
-		for (auto i : indices) {
-			if (!scalar_is_zero(tmpvec + i))
-				_sparse_vec_set_entry(therow, i, tmpvec + i);
-		}
-	}
-}
-
-// upper solver : ordering = -1
-// lower solver : ordering = 1
-void triangular_solver(sfmpq_mat_t mat, std::vector<std::pair<slong, slong>>& pivots,
-	rref_option_t opt, int ordering, BS::thread_pool& pool) {
-	bool verbose = opt->verbose;
-	auto printstep = opt->print_step;
-
-	std::vector<std::vector<slong>> tranmat(mat->ncol);
-
-	// we only need to compute the transpose of the submatrix involving pivots
-
-	for (size_t i = 0; i < pivots.size(); i++) {
-		auto therow = mat->rows + pivots[i].first;
-		for (size_t j = 0; j < therow->nnz; j++) {
-			if (scalar_is_zero(therow->entries + j))
-				continue;
-			auto col = therow->indices[j];
-			tranmat[col].push_back(pivots[i].first);
-		}
-	}
-
-	for (size_t i = 0; i < pivots.size(); i++) {
-		size_t index = i;
-		if (ordering < 0)
-			index = pivots.size() - 1 - i;
-		auto pp = pivots[index];
-		auto thecol = tranmat[pp.second];
-		auto start = clocknow();
-		auto loop = [&](slong j) {
-			auto r = thecol[j];
-			if (r == pp.first)
-				return;
-			auto entry = sparse_mat_entry(mat, r, pp.second, true);
-			sfmpq_vec_sub_mul(mat->rows + r, mat->rows + pp.first, entry);
-			};
-		if (thecol.size() > 1) {
-			pool.detach_loop<slong>(0, thecol.size(), loop);
-			pool.wait();
-		}
-		auto end = clocknow();
-
-		if ((i % printstep == 0 || i == pivots.size() - 1) && verbose && thecol.size() > 1) {
-			end = clocknow();
-			auto now_nnz = sparse_mat_nnz(mat);
-			std::cout << "\r-- Row: " << (i + 1) << "/" << pivots.size()
-				<< "  " << "row to eliminate: " << thecol.size() - 1
-				<< "  " << "nnz: " << now_nnz << "  " << "density: "
-				<< (double)100 * now_nnz / (mat->nrow * mat->ncol)
-				<< "%  " << "speed: " << printstep / usedtime(start, end)
-				<< " row/s" << std::flush;
-			start = clocknow();
-		}
-	}
-}
-
-std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::thread_pool& pool,
-	rref_option_t opt) {
+std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sfmpq_mat_t mat, field_t F,
+	BS::thread_pool& pool, rref_option_t opt) {
 	// first canonicalize, sort and compress the matrix
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
@@ -202,8 +65,8 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 			rowpivs[row] = colperm[kk];
 			colpivs[colperm[kk]] = row;
 			auto e = sparse_mat_entry(mat, row, rowpivs[row], true);
-			fmpq_inv(scalar,e);
-			sfmpq_vec_rescale(mat->rows + row, scalar);
+			scalar_inv(scalar, e, F);
+			sparse_vec_rescale(mat->rows + row, scalar);
 			pivots.push_back(std::make_pair(row, colperm[kk]));
 		}
 		else if (nnz > 1)
@@ -213,7 +76,7 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 
 	fmpq* cachedensedmat = s_malloc<fmpq>(mat->ncol * pool.get_thread_count());
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++) {
-		fmpq_init(cachedensedmat + i);
+		scalar_init(cachedensedmat + i);
 	}
 
 	sparse_mat_t<bool> tranmat;
@@ -243,8 +106,8 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 			auto [r, cp] = *i;
 			rowpivs[r] = *cp;
 			colpivs[*cp] = r;
-			fmpq_inv(scalar,sparse_mat_entry(mat, r, *cp));
-			sfmpq_vec_rescale(mat->rows + r, scalar);
+			scalar_inv(scalar, sparse_mat_entry(mat, r, *cp), F);
+			sparse_vec_rescale(mat->rows + r, scalar);
 			n_pivots.push_back(std::make_pair(r, *cp));
 			pivots.push_back(std::make_pair(r, *cp));
 		}
@@ -263,8 +126,7 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 		bool mode = ((double)100 * now_nnz / (mat->nrow * mat->ncol) < SPARSE_BOUND);
 		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, leftrows[i], n_pivots,
-				1, cachedensedmat + id * mat->ncol, mode);
+			schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, mode);
 			flags[i] = 1;
 			});
 
@@ -334,7 +196,7 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 	}
 
 	// the matrix is upper triangular
-	triangular_solver(mat, pivots, opt, -1, pool);
+	triangular_solver(mat, pivots, F, opt, -1, pool);
 
 	if (verbose) {
 		std::cout << '\n' << std::endl;
@@ -343,17 +205,15 @@ std::vector<std::pair<slong, slong>> sfmpq_mat_rref_c(sfmpq_mat_t mat, BS::threa
 	sparse_mat_clear(tranmat);
 
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++) {
-		fmpq_clear(cachedensedmat + i);
+		scalar_clear(cachedensedmat + i);
 	}
 	s_free(cachedensedmat);
 
 	return pivots;
 }
 
-
-auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt) {
+auto sparse_mat_rref_r(sfmpq_mat_t mat, field_t F, BS::thread_pool& pool, rref_option_t opt) {
 	// first canonicalize, sort and compress the matrix
-
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
 		sparse_vec_canonicalize(mat->rows + i);
@@ -410,7 +270,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 
 	fmpq* cachedensedmat = s_malloc<fmpq>(mat->ncol * pool.get_thread_count());
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++)
-		fmpq_init(cachedensedmat + i);
+		scalar_init(cachedensedmat + i);
 
 	// skip the rows with only one/zero nonzero element
 	slong kk;
@@ -451,18 +311,18 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 		std::vector<std::pair<slong, slong>> n_pivots;
 
 		fmpq_t scalar;
-		fmpq_init(scalar);
+		scalar_init(scalar);
 
 		for (auto& [c, rp] : ps) {
 			pivots.push_back(std::make_pair(*rp, c));
 			n_pivots.push_back(std::make_pair(*rp, c));
 			colpivs[c] = *rp;
 			rowpivs[*rp] = c;
-			fmpq_inv(scalar, sparse_mat_entry(mat, *rp, c, true));
-			sfmpq_vec_rescale(mat->rows + *rp, scalar);
+			scalar_inv(scalar, sparse_mat_entry(mat, *rp, c, true), F);
+			sparse_vec_rescale(mat->rows + *rp, scalar);
 		}
 
-		fmpq_clear(scalar);
+		scalar_clear(scalar);
 
 		// reorder the rows, move ps to the front
 		std::unordered_set<slong> indices(ps.size());
@@ -492,7 +352,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 			if (rowpivs[rowperm[i]] != -1)
 				return;
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, rowperm[i], n_pivots, 1, cachedensedmat + id * mat->ncol, mode);
+			schur_complete(mat, rowperm[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, mode);
 			flags[i - kk] = 1;
 			});
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
@@ -529,7 +389,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 	}
 
 	for (size_t i = 0; i < mat->ncol * pool.get_thread_count(); i++)
-		fmpq_clear(cachedensedmat + i);
+		scalar_clear(cachedensedmat + i);
 	s_free(cachedensedmat);
 
 	if (verbose) {
@@ -539,7 +399,7 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 	}
 
 	// the matrix is upper triangular
-	triangular_solver(mat, pivots, opt, -1, pool);
+	triangular_solver(mat, pivots, F, opt, -1, pool);
 
 	if (verbose) {
 		std::cout << std::endl;
@@ -550,69 +410,9 @@ auto sfmpq_mat_rref_r(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt)
 	return pivots;
 }
 
-
-std::vector<std::pair<slong, slong>> sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt) {
+std::vector<std::pair<slong, slong>> sparse_mat_rref(sfmpq_mat_t mat, field_t F, BS::thread_pool& pool, rref_option_t opt) {
 	if (opt->pivot_dir)
-		return sfmpq_mat_rref_r(mat, pool, opt);
+		return sparse_mat_rref_r(mat, F, pool, opt);
 	else
-		return sfmpq_mat_rref_c(mat, pool, opt);
-}
-
-ulong sfmpq_mat_rref_kernel(sfmpq_mat_t K, const sfmpq_mat_t M, const std::vector<std::pair<slong, slong>>& pivots, BS::thread_pool& pool) {
-	auto rank = pivots.size();
-	if (rank == M->ncol)
-		return 0; // full rank, no kernel
-
-	fmpq_t m1;
-	fmpq_init(m1);
-	fmpq_one(m1);
-
-	if (rank == 0) {
-		sparse_mat_init(K, M->ncol, M->ncol);
-		for (size_t i = 0; i < M->ncol; i++)
-			_sparse_vec_set_entry(sparse_mat_row(K, i), i, m1);
-		fmpq_clear(m1);
-		return M->ncol;
-	}
-	fmpq_neg(m1, m1);
-
-	sfmpq_mat_t rows, trows;
-	sparse_mat_init(rows, rank, M->ncol);
-	sparse_mat_init(trows, M->ncol, rank);
-	for (size_t i = 0; i < rank; i++) {
-		sparse_vec_set(sparse_mat_row(rows, i), sparse_mat_row(M, pivots[i].first));
-	}
-	sparse_mat_transpose(trows, rows);
-	sparse_mat_clear(rows);
-
-	sparse_mat_init(K, M->ncol - rank, M->ncol);
-	for (size_t i = 0; i < K->nrow; i++)
-		sparse_mat_row(K, i)->nnz = 0;
-
-	std::vector<slong> colpivs(M->ncol, -1);
-	std::vector<slong> nonpivs;
-	for (size_t i = 0; i < rank; i++)
-		colpivs[pivots[i].second] = pivots[i].first;
-
-	for (auto i = 0; i < M->ncol; i++)
-		if (colpivs[i] == -1)
-			nonpivs.push_back(i);
-
-	pool.detach_loop<size_t>(0, nonpivs.size(), [&](size_t i) {
-		auto thecol = sparse_mat_row(trows, nonpivs[i]);
-		auto k_vec = sparse_mat_row(K, i);
-		sparse_vec_realloc(k_vec, thecol->nnz + 1);
-		for (size_t j = 0; j < thecol->nnz; j++) {
-			_sparse_vec_set_entry(k_vec,
-				pivots[thecol->indices[j]].second,
-				thecol->entries + j);
-		}
-		_sparse_vec_set_entry(k_vec, nonpivs[i], m1);
-		sparse_vec_sort_indices(k_vec); // sort the indices
-		});
-	pool.wait();
-
-	sparse_mat_clear(trows);
-	fmpq_clear(m1);
-	return M->ncol - rank;
+		return sparse_mat_rref_c(mat, F, pool, opt);
 }

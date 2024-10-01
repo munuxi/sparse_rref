@@ -2,6 +2,7 @@
 #define SPARSE_MAT_H
 
 #include "sparse_vec.h"
+#include <set>
 
 constexpr double SPARSE_BOUND = 0.1;
 
@@ -515,10 +516,217 @@ auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
 	return result;
 }
 
-std::vector<std::pair<slong, slong>> sfmpq_mat_rref(sfmpq_mat_t mat, BS::thread_pool& pool, rref_option_t opt);
-ulong sfmpq_mat_rref_kernel(sfmpq_mat_t K, const sfmpq_mat_t M, const std::vector<std::pair<slong, slong>>& pivots, BS::thread_pool& pool);
-std::vector<std::pair<slong, slong>> snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool, rref_option_t opt);
-ulong snmod_mat_rref_kernel(snmod_mat_t K, const snmod_mat_t M, const std::vector<std::pair<slong, slong>>& pivots, nmod_t p, BS::thread_pool& pool);
+// upper solver : ordering = -1
+// lower solver : ordering = 1
+template <typename T>
+void triangular_solver(sparse_mat_t<T> mat, std::vector<std::pair<slong, slong>>& pivots,
+	field_t F, rref_option_t opt, int ordering, BS::thread_pool& pool) {
+	bool verbose = opt->verbose;
+	auto printstep = opt->print_step;
+
+	std::vector<std::vector<slong>> tranmat(mat->ncol);
+
+	// we only need to compute the transpose of the submatrix involving pivots
+
+	for (size_t i = 0; i < pivots.size(); i++) {
+		auto therow = mat->rows + pivots[i].first;
+		for (size_t j = 0; j < therow->nnz; j++) {
+			if (scalar_is_zero(therow->entries + j))
+				continue;
+			auto col = therow->indices[j];
+			tranmat[col].push_back(pivots[i].first);
+		}
+	}
+
+	for (size_t i = 0; i < pivots.size(); i++) {
+		size_t index = i;
+		if (ordering < 0)
+			index = pivots.size() - 1 - i;
+		auto pp = pivots[index];
+		auto thecol = tranmat[pp.second];
+		auto start = clocknow();
+		auto loop = [&](slong j) {
+			auto r = thecol[j];
+			if (r == pp.first)
+				return;
+			auto entry = sparse_mat_entry(mat, r, pp.second, true);
+			sparse_vec_sub_mul(mat->rows + r, mat->rows + pp.first, entry, F);
+			};
+		if (thecol.size() > 1) {
+			pool.detach_loop<slong>(0, thecol.size(), loop);
+			pool.wait();
+		}
+		auto end = clocknow();
+
+		if ((i % printstep == 0 || i == pivots.size() - 1) && verbose && thecol.size() > 1) {
+			end = clocknow();
+			auto now_nnz = sparse_mat_nnz(mat);
+			std::cout << "\r-- Row: " << (i + 1) << "/" << pivots.size()
+				<< "  " << "row to eliminate: " << thecol.size() - 1
+				<< "  " << "nnz: " << now_nnz << "  " << "density: "
+				<< (double)100 * now_nnz / (mat->nrow * mat->ncol)
+				<< "%  " << "speed: " << printstep / usedtime(start, end)
+				<< " row/s" << std::flush;
+			start = clocknow();
+		}
+	}
+}
+
+// first write a stupid one
+// TODO: Gilbert-Peierls algorithm for parallel computation 
+// see https://hal.science/hal-01333670/document
+// mode : true: very sparse < SPARSE_BOUND%
+template <typename T>
+void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<std::pair<slong, slong>>& pivots,
+	int ordering, field_t F, T* tmpvec, bool mode) {
+	if (ordering < 0) {
+		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
+		schur_complete(mat, row, npivots, -ordering, F, tmpvec, mode);
+	}
+
+	auto therow = sparse_mat_row(mat, row);
+
+	if (therow->nnz == 0)
+		return;
+
+	// if pivots size is small, we can use the sparse vector
+	// to save to cost of converting between sparse and dense
+	// vectors, otherwise we use dense vector
+	if (pivots.size() < 100) {
+		for (auto [r, c] : pivots) {
+			auto entry = sparse_vec_entry(therow, c);
+			if (entry == NULL)
+				continue;
+			auto row = mat->rows + r;
+			sparse_vec_sub_mul(therow, row, entry, F);
+		}
+		return;
+	}
+
+	auto rrefonerow = [&](auto& nonzero_c) {
+		for (size_t i = 0; i < therow->nnz; i++) {
+			nonzero_c.insert(therow->indices[i]);
+			scalar_set(tmpvec + therow->indices[i], therow->entries + i);
+		}
+		T entry[1];
+		ulong e_pr;
+		scalar_init(entry);
+		for (auto [r, c] : pivots) {
+			if (nonzero_c.find(c) == nonzero_c.end())
+				continue;
+			scalar_set(entry, tmpvec + c);
+			if (scalar_is_zero(entry)) {
+				nonzero_c.erase(c);
+				continue;
+			}
+			auto row = sparse_mat_row(mat, r);
+			if constexpr (std::is_same_v<T, ulong>) {
+				e_pr = n_mulmod_precomp_shoup(*entry, F->pvec[0].n);
+			}
+			for (size_t i = 0; i < row->nnz; i++) {
+				auto old_len = nonzero_c.size();
+				nonzero_c.insert(row->indices[i]);
+				if (nonzero_c.size() != old_len)
+					scalar_zero(tmpvec + row->indices[i]);
+				if constexpr (std::is_same_v<T, ulong>) {
+					tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
+						n_mulmod_shoup(*entry, row->entries[i], e_pr, F->pvec[0].n), F->pvec[0]);
+				}
+				else if constexpr (std::is_same_v<T, fmpq>) {
+					fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
+				}
+			}
+			nonzero_c.erase(c);
+		}
+		scalar_clear(entry);
+		};
+
+	if (mode) {
+		std::set<slong> nonzero_c;
+		rrefonerow(nonzero_c);
+		therow->nnz = 0;
+		for (auto i : nonzero_c) {
+			if (!scalar_is_zero(tmpvec + i))
+				_sparse_vec_set_entry(therow, i, tmpvec + i);
+		}
+	}
+	else {
+		std::unordered_set<slong> nonzero_c;
+		nonzero_c.reserve(5 * therow->nnz);
+		rrefonerow(nonzero_c);
+		std::vector<slong> indices(nonzero_c.begin(), nonzero_c.end());
+		std::sort(indices.begin(), indices.end());
+		therow->nnz = 0;
+		for (auto i : indices) {
+			if (!scalar_is_zero(tmpvec + i))
+				_sparse_vec_set_entry(therow, i, tmpvec + i);
+		}
+	}
+}
+
+std::vector<std::pair<slong, slong>> sparse_mat_rref(sfmpq_mat_t mat, field_t F, BS::thread_pool& pool, rref_option_t opt);
+std::vector<std::pair<slong, slong>> sparse_mat_rref(snmod_mat_t mat, field_t F, BS::thread_pool& pool, rref_option_t opt);
+
+template <typename T>
+ulong sparse_mat_rref_kernel(sparse_mat_t<T> K, const sparse_mat_t<T> M,
+	const std::vector<std::pair<slong, slong>>& pivots, field_t F, BS::thread_pool& pool) {
+	auto rank = pivots.size();
+	if (rank == M->ncol)
+		return 0; // full rank, no kernel
+
+	T m1[1];
+	scalar_init(m1);
+	scalar_one(m1);
+
+	if (rank == 0) {
+		sparse_mat_init(K, M->ncol, M->ncol);
+		for (size_t i = 0; i < M->ncol; i++)
+			_sparse_vec_set_entry(sparse_mat_row(K, i), i, m1);
+		scalar_clear(m1);
+		return M->ncol;
+	}
+	scalar_neg(m1, m1, F);
+
+	sparse_mat_t<T> rows, trows;
+	sparse_mat_init(rows, rank, M->ncol);
+	sparse_mat_init(trows, M->ncol, rank);
+	for (size_t i = 0; i < rank; i++) {
+		sparse_vec_set(sparse_mat_row(rows, i), sparse_mat_row(M, pivots[i].first));
+	}
+	sparse_mat_transpose(trows, rows);
+	sparse_mat_clear(rows);
+
+	sparse_mat_init(K, M->ncol - rank, M->ncol);
+	for (size_t i = 0; i < K->nrow; i++)
+		sparse_mat_row(K, i)->nnz = 0;
+
+	std::vector<slong> colpivs(M->ncol, -1);
+	std::vector<slong> nonpivs;
+	for (size_t i = 0; i < rank; i++)
+		colpivs[pivots[i].second] = pivots[i].first;
+
+	for (auto i = 0; i < M->ncol; i++)
+		if (colpivs[i] == -1)
+			nonpivs.push_back(i);
+
+	pool.detach_loop<size_t>(0, nonpivs.size(), [&](size_t i) {
+		auto thecol = sparse_mat_row(trows, nonpivs[i]);
+		auto k_vec = sparse_mat_row(K, i);
+		sparse_vec_realloc(k_vec, thecol->nnz + 1);
+		for (size_t j = 0; j < thecol->nnz; j++) {
+			_sparse_vec_set_entry(k_vec,
+				pivots[thecol->indices[j]].second,
+				thecol->entries + j);
+		}
+		_sparse_vec_set_entry(k_vec, nonpivs[i], m1);
+		sparse_vec_sort_indices(k_vec); // sort the indices
+		});
+	pool.wait();
+
+	sparse_mat_clear(trows);
+	scalar_clear(m1);
+	return M->ncol - rank;
+}
 
 // convert
 static inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src,

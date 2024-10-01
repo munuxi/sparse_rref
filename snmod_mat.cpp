@@ -1,149 +1,17 @@
-#include <set>
 #include <cstring> // memcpy
 #include "sparse_mat.h"
 
 using iter = std::vector<slong>::iterator;
 
-#define rrefonerow do {                                                    \
-    for (size_t i = 0; i < therow->nnz; i++) {                             \
-        nonzero_c.insert(therow->indices[i]);                              \
-        tmpvec[therow->indices[i]] = therow->entries[i];                   \
-    }                                                                      \
-    for (auto [r, c] : pivots) {                                           \
-        if (nonzero_c.find(c) == nonzero_c.end())                          \
-            continue;                                                      \
-        if (tmpvec[c] == 0) {                                              \
-            nonzero_c.erase(c);                                            \
-            continue;                                                      \
-        }                                                                  \
-        auto entry = tmpvec[c];                                            \
-        auto row = sparse_mat_row(mat, r);                                 \
-        ulong e_pr = n_mulmod_precomp_shoup(entry, p.n);                   \
-        for (size_t i = 0; i < row->nnz; i++) {                            \
-            auto old_len = nonzero_c.size();                               \
-            nonzero_c.insert(row->indices[i]);                             \
-            if (nonzero_c.size() != old_len)                               \
-                tmpvec[row->indices[i]] = 0;                               \
-            tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],   \
-                n_mulmod_shoup(entry, row->entries[i], e_pr, p.n), p);     \
-        }                                                                  \
-        nonzero_c.erase(c);                                                \
-    }                                                                      \
-} while (0);
-
-// first write a stupid one
-// TODO: Gilbert-Peierls algorithm for parallel computation 
-// see https://hal.science/hal-01333670/document
-// mode : true: very sparse < SPARSE_BOUND%
-void schur_complete(snmod_mat_t mat, slong row, std::vector<std::pair<slong, slong>>& pivots, 
-	int ordering, nmod_t p, ulong* tmpvec, bool mode) {
-	if (ordering < 0) {
-		std::vector<std::pair<slong, slong>> npivots(pivots.rbegin(), pivots.rend());
-		schur_complete(mat, row, npivots, -ordering, p, tmpvec, mode);
-	}
-
-	auto therow = sparse_mat_row(mat, row);
-
-	if (therow->nnz == 0)
-		return;
-
-	// if pivots size is small, we can use the sparse vector
-	// to save to cost of converting between sparse and dense
-	// vectors, otherwise we use dense vector
-	if (pivots.size() < 100) {
-		for (auto [r, c] : pivots) {
-			auto entry = sparse_vec_entry(therow, c);
-			if (entry == NULL)
-				continue;
-			auto row = mat->rows + r;
-			snmod_vec_sub_mul(therow, row, *entry, p);
-		}
-		return;
-	}
-
-	if (mode) {
-		std::set<slong> nonzero_c;
-		rrefonerow;
-		therow->nnz = 0;
-		for (auto i : nonzero_c) {
-			if (tmpvec[i] != 0)
-				_sparse_vec_set_entry(therow, i, tmpvec + i);
-		}
-	}
-	else {
-		std::unordered_set<slong> nonzero_c;
-		nonzero_c.reserve(5 * therow->nnz);
-		rrefonerow;
-		std::vector<slong> indices(nonzero_c.begin(), nonzero_c.end());
-		std::sort(indices.begin(), indices.end());
-		therow->nnz = 0;
-		for (auto i : indices) {
-			if (tmpvec[i] != 0)
-				_sparse_vec_set_entry(therow, i, tmpvec + i);
-		}
-	}
-}
-
-// upper solver : ordering = -1
-// lower solver : ordering = 1
-void triangular_solver(snmod_mat_t mat, std::vector<std::pair<slong, slong>>& pivots,
-	rref_option_t opt, int ordering, nmod_t p, BS::thread_pool& pool) {
-	bool verbose = opt->verbose;
-	auto printstep = opt->print_step;
-
-	std::vector<std::vector<slong>> tranmat(mat->ncol);
-
-	// we only need to compute the transpose of the submatrix involving pivots
-
-	for (size_t i = 0; i < pivots.size(); i++) {
-		auto therow = sparse_mat_row(mat, pivots[i].first);
-		for (size_t j = 0; j < therow->nnz; j++) {
-			if (scalar_is_zero(therow->entries + j))
-				continue;
-			auto col = therow->indices[j];
-			tranmat[col].push_back(pivots[i].first);
-		}
-	}
-
-	for (size_t i = 0; i < pivots.size(); i++) {
-		size_t index = i;
-		if (ordering < 0) 
-			index = pivots.size() - 1 - i;
-		auto pp = pivots[index];
-		auto thecol = tranmat[pp.second];
-		auto start = clocknow();
-		if (thecol.size() > 1) {
-			auto loop = [&](slong j) {
-				auto r = thecol[j];
-				if (r == pp.first)
-					return;
-				auto entry = sparse_mat_entry(mat, r, pp.second, true);
-				snmod_vec_sub_mul(mat->rows + r, mat->rows + pp.first, *entry, p);
-				};
-			pool.detach_loop<slong>(0, thecol.size(), loop);
-			pool.wait();
-		}
-		auto end = clocknow();
-
-		if ((i % printstep == 0 || i == pivots.size() - 1) && verbose && thecol.size() > 1) {
-			auto now_nnz = sparse_mat_nnz(mat);
-			std::cout << "\r-- Row: " << (i + 1) << "/" << pivots.size()
-				<< "  " << "row to eliminate: " << thecol.size() - 1
-				<< "  " << "nnz: " << now_nnz << "  " << "density: "
-				<< (double)100 * now_nnz / (mat->nrow * mat->ncol)
-				<< "%  " << "speed: " << 1 / usedtime(start, end)
-				<< " row/s" << std::flush;
-		}
-	}
-}
-
-std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool,
+std::vector<std::pair<slong, slong>> sparse_mat_rref_c(snmod_mat_t mat, field_t F, BS::thread_pool& pool,
 	rref_option_t opt) {
 	// first canonicalize, sort and compress the matrix
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
 		sparse_vec_canonicalize(mat->rows + i);
 	}
+
+	auto p = F->pvec[0];
 
 	ulong init_nnz = sparse_mat_nnz(mat);
 	ulong now_nnz = init_nnz;
@@ -253,7 +121,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
 			auto id = BS::this_thread::get_index().value();
 			schur_complete(mat, leftrows[i], n_pivots, 
-				1, p, cachedensedmat + id * mat->ncol, mode);
+				1, F, cachedensedmat + id * mat->ncol, mode);
 			flags[i] = 1;
 			});
 
@@ -323,22 +191,23 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_c(snmod_mat_t mat, nmod_t p,
 	}
 
 	// the matrix is upper triangular
-	triangular_solver(mat, pivots, opt, -1, p, pool);
+	triangular_solver(mat, pivots, F, opt, -1, pool);
 
 	if (verbose) {
 		std::cout << '\n' << std::endl;
 	}
 
 	sparse_mat_clear(tranmat);
-
 	s_free(cachedensedmat);
 
 	return pivots;
 }
 
-std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool,
+std::vector<std::pair<slong, slong>> sparse_mat_rref_r(snmod_mat_t mat, field_t F, BS::thread_pool& pool,
 	rref_option_t opt) {
 	// first canonicalize, sort and compress the matrix
+
+	auto p = F->pvec[0];
 
 	for (size_t i = 0; i < mat->nrow; i++) {
 		sparse_vec_sort_indices(mat->rows + i);
@@ -469,7 +338,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 			if (rowpivs[rowperm[i]] != -1)
 				return;
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, rowperm[i], n_pivots, 1, p,
+			schur_complete(mat, rowperm[i], n_pivots, 1, F,
 				cachedensedmat + id * mat->ncol, mode);
 			flags[i - kk] = 1;
 			});
@@ -517,7 +386,7 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 	}
 
 	// the matrix is upper triangular
-	triangular_solver(mat, pivots, opt, -1, p, pool);
+	triangular_solver(mat, pivots, F, opt, -1, pool);
 
 	if (verbose) {
 		std::cout << std::endl;
@@ -528,66 +397,11 @@ std::vector<std::pair<slong, slong>> snmod_mat_rref_r(snmod_mat_t mat, nmod_t p,
 }
 
 
-std::vector<std::pair<slong, slong>> snmod_mat_rref(snmod_mat_t mat, nmod_t p, BS::thread_pool& pool, rref_option_t opt) {
+std::vector<std::pair<slong, slong>> sparse_mat_rref(snmod_mat_t mat, field_t F, BS::thread_pool& pool, rref_option_t opt) {
 	if (opt->pivot_dir)
-		return snmod_mat_rref_r(mat, p, pool, opt);
+		return sparse_mat_rref_r(mat, F, pool, opt);
 	else
-		return snmod_mat_rref_c(mat, p, pool, opt);
-}
-
-ulong snmod_mat_rref_kernel(snmod_mat_t K, const snmod_mat_t M, const std::vector<std::pair<slong, slong>>& pivots, nmod_t p, BS::thread_pool& pool) {
-	auto rank = pivots.size();
-	if (rank == M->ncol)
-		return 0; // full rank, no kernel
-
-	ulong m1 = 1;
-
-	if (rank == 0) {
-		sparse_mat_init(K, M->ncol, M->ncol);
-		for (size_t i = 0; i < M->ncol; i++)
-			_sparse_vec_set_entry(sparse_mat_row(K, i), i, &m1);
-		return M->ncol;
-	}
-	m1 = nmod_neg(m1, p);
-
-	snmod_mat_t rows, trows;
-	sparse_mat_init(rows, rank, M->ncol);
-	sparse_mat_init(trows, M->ncol, rank);
-	for (size_t i = 0; i < rank; i++) {
-		sparse_vec_set(sparse_mat_row(rows, i), sparse_mat_row(M, pivots[i].first));
-	}
-	sparse_mat_transpose(trows, rows);
-	sparse_mat_clear(rows);
-
-	sparse_mat_init(K, M->ncol - rank, M->ncol);
-	for (size_t i = 0; i < K->nrow; i++)
-		sparse_mat_row(K, i)->nnz = 0;
-
-	std::vector<slong> colpivs(M->ncol, -1);
-	std::vector<slong> nonpivs;
-	for (size_t i = 0; i < rank; i++)
-		colpivs[pivots[i].second] = pivots[i].first;
-
-	for (auto i = 0; i < M->ncol; i++)
-		if (colpivs[i] == -1)
-			nonpivs.push_back(i);
-
-	pool.detach_loop<size_t>(0, nonpivs.size(), [&](size_t i) {
-		auto thecol = sparse_mat_row(trows, nonpivs[i]);
-		auto k_vec = sparse_mat_row(K, i);
-		sparse_vec_realloc(k_vec, thecol->nnz + 1);
-		for (size_t j = 0; j < thecol->nnz; j++) {
-			_sparse_vec_set_entry(k_vec,
-				pivots[thecol->indices[j]].second,
-				thecol->entries+j);
-		}
-		_sparse_vec_set_entry(k_vec, nonpivs[i], &m1);
-		sparse_vec_sort_indices(k_vec); // sort the indices
-		});
-	pool.wait();
-
-	sparse_mat_clear(trows);
-	return M->ncol - rank;
+		return sparse_mat_rref_c(mat, F, pool, opt);
 }
 
 std::pair<size_t, char*> snmod_mat_to_binary(sparse_mat_t<ulong> mat) {
@@ -596,14 +410,14 @@ std::pair<size_t, char*> snmod_mat_to_binary(sparse_mat_t<ulong> mat) {
 	auto len = (3 + mat->nrow + 2 * nnz) * ratio;
 	char* buffer = s_malloc<char>(len);
 	char* ptr = buffer;
-	memcpy(ptr, &(mat->nrow), sizeof(ulong)); ptr += ratio;
-	memcpy(ptr, &(mat->ncol), sizeof(ulong)); ptr += ratio;
-	memcpy(ptr, &nnz, sizeof(ulong)); ptr += ratio;
+	std::memcpy(ptr, &(mat->nrow), sizeof(ulong)); ptr += ratio;
+	std::memcpy(ptr, &(mat->ncol), sizeof(ulong)); ptr += ratio;
+	std::memcpy(ptr, &nnz, sizeof(ulong)); ptr += ratio;
 	for (size_t i = 0; i < mat->nrow; i++) {
 		auto therow = mat->rows + i;
-		memcpy(ptr, &(therow->nnz), sizeof(ulong)); ptr += ratio;
-		memcpy(ptr, therow->indices, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
-		memcpy(ptr, therow->entries, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+		std::memcpy(ptr, &(therow->nnz), sizeof(ulong)); ptr += ratio;
+		std::memcpy(ptr, therow->indices, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+		std::memcpy(ptr, therow->entries, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
 	}
 	return std::make_pair(len, buffer);
 }
@@ -612,14 +426,14 @@ void snmod_mat_from_binary(sparse_mat_t<ulong> mat, char* buffer) {
 	auto ratio = sizeof(ulong) / sizeof(char);
 	char* ptr = buffer;
 	ulong nnz;
-	memcpy(&(mat->nrow), ptr, sizeof(ulong)); ptr += ratio;
-	memcpy(&(mat->ncol), ptr, sizeof(ulong)); ptr += ratio;
-	memcpy(&nnz, ptr, sizeof(ulong)); ptr += ratio;
+	std::memcpy(&(mat->nrow), ptr, sizeof(ulong)); ptr += ratio;
+	std::memcpy(&(mat->ncol), ptr, sizeof(ulong)); ptr += ratio;
+	std::memcpy(&nnz, ptr, sizeof(ulong)); ptr += ratio;
 	sparse_mat_init(mat, mat->nrow, mat->ncol);
 	for (size_t i = 0; i < mat->nrow; i++) {
 		auto therow = mat->rows + i;
-		memcpy(&(therow->nnz), ptr, sizeof(ulong)); ptr += ratio;
-		memcpy(therow->indices, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
-		memcpy(therow->entries, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+		std::memcpy(&(therow->nnz), ptr, sizeof(ulong)); ptr += ratio;
+		std::memcpy(therow->indices, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
+		std::memcpy(therow->entries, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
 	}
 }

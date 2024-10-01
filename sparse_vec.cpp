@@ -1,17 +1,6 @@
 #include "sparse_vec.h"
 #include <cstring> // memcpy
 
-// c.f. the relization of _nmod_vec_scalar_mul_nmod_shoup from FLINT
-// void _nmod_vec_scalar_mul_nmod_shoup(nn_ptr res, nn_srcptr vec,
-// 	slong len, ulong c, nmod_t mod)
-// {
-// 	slong i;
-// 	ulong w_pr;
-// 	w_pr = n_mulmod_precomp_shoup(c, mod.n);
-// 	for (i = 0; i < len; i++)
-// 		res[i] = n_mulmod_shoup(c, vec[i], w_pr, mod.n);
-// }
-
 // we assume that vec and src are sorted, and the result is also sorted
 int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 	const ulong a, nmod_t p) {
@@ -84,7 +73,7 @@ int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 
 	if (vec->nnz == 0) {
 		sparse_vec_set(vec, src);
-		sfmpq_vec_rescale(vec, a);
+		sparse_vec_rescale(vec, a);
 	}
 
 	fmpq_t na, entry;
@@ -154,7 +143,7 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 
 	if (vec->nnz == 0) {
 		sparse_vec_set(vec, src);
-		sfmpq_vec_rescale(vec, a);
+		sparse_vec_rescale(vec, a);
 		for (size_t i = 0; i < vec->nnz; i++) {
 			fmpq_neg(vec->entries + i, vec->entries + i);
 		}
@@ -223,16 +212,16 @@ int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 std::pair<size_t, char*> snmod_vec_to_binary(sparse_vec_t<ulong> vec) {
 	auto ratio = sizeof(ulong) / sizeof(char);
 	char* buffer = s_malloc<char>((1 + 2 * vec->nnz) * ratio);
-	memcpy(buffer, &(vec->nnz), sizeof(ulong));
-	memcpy(buffer + ratio, vec->indices, vec->nnz * sizeof(ulong));
-	memcpy(buffer + (1 + vec->nnz) * ratio, vec->entries, vec->nnz * sizeof(ulong));
+	std::memcpy(buffer, &(vec->nnz), sizeof(ulong));
+	std::memcpy(buffer + ratio, vec->indices, vec->nnz * sizeof(ulong));
+	std::memcpy(buffer + (1 + vec->nnz) * ratio, vec->entries, vec->nnz * sizeof(ulong));
 	return std::make_pair((1 + 2 * vec->nnz) * ratio, buffer);
 }
 
 void snmod_vec_from_binary(sparse_vec_t<ulong> vec, const char* buffer) {
 	auto ratio = sizeof(ulong) / sizeof(char);
-	memcpy(&(vec->nnz), buffer, sizeof(ulong));
+	std::memcpy(&(vec->nnz), buffer, sizeof(ulong));
 	sparse_vec_realloc(vec, vec->nnz);
-	memcpy(vec->indices, buffer + ratio, vec->nnz * sizeof(ulong));
-	memcpy(vec->entries, buffer + (1 + vec->nnz) * ratio, vec->nnz * sizeof(ulong));
+	std::memcpy(vec->indices, buffer + ratio, vec->nnz * sizeof(ulong));
+	std::memcpy(vec->entries, buffer + (1 + vec->nnz) * ratio, vec->nnz * sizeof(ulong));
 }

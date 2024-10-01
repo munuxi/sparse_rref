@@ -142,16 +142,6 @@ inline void sparse_vec_set(sparse_vec_t<T> vec, const sparse_vec_t<T> src) {
 	}
 }
 
-// be careful to use it
-template <typename T>
-inline void sparse_vec_move(sparse_vec_t<T> vec, const sparse_vec_t<T> src) {
-	sparse_vec_clear(vec);
-	vec->indices = src->indices;
-	vec->entries = src->entries;
-	vec->nnz = src->nnz;
-	vec->alloc = src->alloc;
-}
-
 template <typename T>
 inline void sparse_vec_swap(sparse_vec_t<T> vec, sparse_vec_t<T> src) {
 	std::swap(src->indices, vec->indices);
@@ -304,6 +294,16 @@ static inline void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p) {
 		scalar, p);
 }
 
+static inline void sparse_vec_rescale(snmod_vec_t vec, const ulong* scalar, field_t F) {
+	_nmod_vec_scalar_mul_nmod_shoup(vec->entries, vec->entries, vec->nnz,
+		*scalar, *(F->pvec));
+}
+
+static inline void sparse_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar, field_t F = NULL) {
+	for (ulong i = 0; i < vec->nnz; i++)
+		fmpq_mul(vec->entries + i, vec->entries + i, scalar);
+}
+
 int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, nmod_t p);
 static inline int snmod_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, nmod_t p) {
 	return snmod_vec_add_mul(vec, src, nmod_neg(a, p), p);
@@ -315,13 +315,16 @@ static inline int snmod_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, cons
 //	return snmod_vec_sub_mul(vec, src, (ulong)1, F->pvec[0]);
 //}
 
-static inline void sfmpq_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar) {
-	for (ulong i = 0; i < vec->nnz; i++)
-		fmpq_mul(vec->entries + i, vec->entries + i, scalar);
-}
-
 int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a);
 int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a);
+
+static inline int sparse_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong* a, field_t F) {
+	return snmod_vec_sub_mul(vec, src, *a, *(F->pvec));
+}
+
+static inline int sparse_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a, field_t F = NULL) {
+	return sfmpq_vec_sub_mul(vec, src, a);
+}
 
 static void snmod_vec_from_sfmpq(snmod_vec_t vec, const sfmpq_vec_t src, nmod_t p) {
 	sparse_vec_realloc(vec, src->nnz);
