@@ -782,12 +782,17 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sparse_mat_t<T> mat, fiel
 
 		std::vector<uint8_t> flags(leftrows.size(), 0);
 
-		bool mode = ((double)100 * now_nnz / (mat->nrow * mat->ncol) < SPARSE_BOUND);
-		pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
+		now_nnz = 0;
+		for (auto i : leftrows)
+			now_nnz += mat->rows[i].nnz;
+		bool mode = ((double)100 * now_nnz / (leftrows.size() * mat->ncol) < SPARSE_BOUND);
+		pool.detach_blocks<slong>(0, leftrows.size(), [&](const slong s, const slong e) {
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, mode);
-			flags[i] = 1;
-			});
+			for (size_t i = s; i < e; i++) {
+				schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, mode);
+				flags[i] = 1;
+			}
+			}, (leftrows.size() < 20 * pool.get_thread_count() ? 0 : 10 * pool.get_thread_count()));
 
 		// reorder the cols, move ps to the front
 		std::unordered_set<slong> indices(ps.size());
@@ -1007,14 +1012,19 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_r(sparse_mat_t<T> mat, fiel
 		// flags[i] is true if the i-th row has been computed
 		std::vector<uint8_t> flags(mat->nrow - kk, 0);
 		// and then compute the elimination of the rows asynchronizely
-		bool mode = ((double)100 * now_nnz / (mat->nrow * mat->ncol) < SPARSE_BOUND);
-		pool.detach_loop<slong>(kk, mat->nrow, [&](slong i) {
-			if (rowpivs[rowperm[i]] != -1)
-				return;
+		now_nnz = 0;
+		for (auto i = rowperm.begin() + kk; i != rowperm.end(); i++)
+			now_nnz += mat->rows[*i].nnz;
+		bool mode = ((double)100 * now_nnz / ((mat->nrow - kk) * mat->ncol) < SPARSE_BOUND);
+		pool.detach_blocks<slong>(kk, mat->nrow, [&](const slong s, const slong e) {
 			auto id = BS::this_thread::get_index().value();
-			schur_complete(mat, rowperm[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, mode);
-			flags[i - kk] = 1;
-			});
+			for (size_t i = s; i < e; i++) {
+				if (rowpivs[rowperm[i]] != -1)
+					continue;
+				schur_complete(mat, rowperm[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, mode);
+				flags[i - kk] = 1;
+			}
+			}, ((mat->nrow - kk) < 20 * pool.get_thread_count() ? 0 : 10 * pool.get_thread_count()));
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
 		for (size_t i = 0; i < tranmat->nrow; i++)
 			tranmat->rows[i].nnz = 0;

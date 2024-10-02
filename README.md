@@ -41,7 +41,14 @@ g++ mma_link.cpp -fPIC -shared -O3 -std=c++17 -o mathlink.dll -Iincludepath -Lli
 and help is 
 
 ```
-Usage: sparserref [--help] [--version] [--verbose] [--print_step VAR] [--output VAR] [--kernel] [--output-pivots] [--field VAR] [--prime VAR] [--threads VAR] [--pivot_direction VAR] [--search_depth VAR] input_file
+Usage: sparserref [--help] [--version] [--output VAR]
+                  [--kernel] [--output-pivots]
+                  [--field VAR] [--prime VAR] [--threads VAR]
+                  [--pivot_direction VAR] [--search_depth VAR]
+                  [--verbose] [--print_step VAR]
+                  input_file
+
+(exact) Sparse Reduced Row Echelon Form v0.2.0
 
 Positional arguments:
   input_file              input file in matrix market format
@@ -49,17 +56,17 @@ Positional arguments:
 Optional arguments:
   -h, --help              shows help message and exits
   -v, --version           prints version information and exits
-  -V, --verbose           prints information of calculation
-  -ps, --print_step       print step when --verbose is enabled [default: 100]
   -o, --output            output file in matrix market format [default: "input_file.rref"]
   -k, --kernel            output the kernel
   --output-pivots         output pivots
-  -f, --field             QQ: rational field
+  -F, --field             QQ: rational field
                           Zp or Fp: Z/p for a prime p [default: "QQ"]
   -p, --prime             a prime number, only vaild when field is Zp  [default: "34534567"]
   -t, --threads           the number of threads  [default: 1]
   -pd, --pivot_direction  the direction to select pivots [default: "row"]
   -sd, --search_depth     the depth of search, default is the max of int  [default: 0]
+  -V, --verbose           prints information of calculation
+  -ps, --print_step       print step when --verbose is enabled [default: 100]
 ```
 
 ### BenchMark
@@ -74,7 +81,7 @@ We compare it with [Spasm](https://github.com/cbouilla/spasm). Platform and Conf
 	Prime number: 1073741827 ~ 2^30
 	Configuration: 
 	  - Spasm: Default configuration for Spasm, first spasm_echelonize and then spasm_rref
-	  - SparseRREF: -V -t 16 -f Zp -p 1073741827
+	  - SparseRREF: -V -t 16 -F Zp -p 1073741827
 
 First two test matrices come from https://hpac.imag.fr, bs comes from symbol bootstrap, ibp comes from IBP of Feynman integrals:
 

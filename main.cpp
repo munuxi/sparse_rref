@@ -21,23 +21,17 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	argparse::ArgumentParser program("sparserref", "v0.2.0");
+	std::string version = "v0.2.0";
+	argparse::ArgumentParser program("sparserref", version);
+	program.set_usage_max_line_width(80);
+	program.add_description("(exact) Sparse Reduced Row Echelon Form " + version);
 	program.add_argument("input_file")
 		.help("input file in matrix market format");
-	program.add_argument("-V", "--verbose")
-		.default_value(false)
-		.help("prints information of calculation")
-		.implicit_value(true)
-		.nargs(0);
-	program.add_argument("-ps", "--print_step")
-		.help("print step when --verbose is enabled")
-		.default_value(100)
-		.nargs(1)
-		.scan<'i', int>();
 	program.add_argument("-o", "--output")
 		.help("output file in matrix market format")
 		.default_value("input_file.rref")
 		.nargs(1);
+	program.add_usage_newline();
 	program.add_argument("-k", "--kernel")
 		.default_value(false)
 		.help("output the kernel")
@@ -48,7 +42,8 @@ int main(int argc, char** argv) {
 		.default_value(false)
 		.implicit_value(true)
 		.nargs(0);
-	program.add_argument("-f", "--field")
+	program.add_usage_newline();
+	program.add_argument("-F", "--field")
 		.default_value("QQ")
 		.help("QQ: rational field\nZp or Fp: Z/p for a prime p")
 		.nargs(1);
@@ -68,6 +63,17 @@ int main(int argc, char** argv) {
 	program.add_argument("-sd", "--search_depth")
 		.help("the depth of search, default is the max of int ")
 		.default_value(0)
+		.nargs(1)
+		.scan<'i', int>();
+	program.add_usage_newline();
+	program.add_argument("-V", "--verbose")
+		.default_value(false)
+		.help("prints information of calculation")
+		.implicit_value(true)
+		.nargs(0);
+	program.add_argument("-ps", "--print_step")
+		.default_value(100)
+		.help("print step when --verbose is enabled")
 		.nargs(1)
 		.scan<'i', int>();
 
