@@ -12,6 +12,14 @@ template <typename T> struct sparse_vec_struct {
 	T* entries = NULL;
 };
 
+// entries is useless for bool
+template <>
+struct sparse_vec_struct<bool> {
+	ulong nnz = 0;
+	ulong alloc = 0;
+	slong* indices = NULL;
+};
+
 template <typename T> using sparse_vec_t = struct sparse_vec_struct<T>[1];
 
 typedef sparse_vec_t<ulong> snmod_vec_t;
@@ -81,7 +89,9 @@ inline void sparse_vec_init(sparse_vec_t<T> vec, ulong alloc = 1, ulong rank = 1
 		vec->entries->rank = rank;
 	}
 	else {
-		vec->entries = s_malloc<T>(alloc);
+		if constexpr (!std::is_same_v<T, bool>) {
+			vec->entries = s_malloc<T>(alloc);
+		}
 		if constexpr (std::is_same_v<T, fmpq>) {
 			for (ulong i = 0; i < alloc; i++)
 				fmpq_init(vec->entries + i);
@@ -289,11 +299,6 @@ inline void sparse_vec_compress(sparse_vec_t<T> vec) {
 
 // p should less than 2^(FLINT_BITS-1) (2^63(2^31) on 64(32)-bit machine)
 // scalar and all vec->entries[i] should less than p
-static inline void snmod_vec_rescale(snmod_vec_t vec, ulong scalar, nmod_t p) {
-	_nmod_vec_scalar_mul_nmod_shoup(vec->entries, vec->entries, vec->nnz,
-		scalar, p);
-}
-
 static inline void sparse_vec_rescale(snmod_vec_t vec, const ulong* scalar, const field_t F) {
 	_nmod_vec_scalar_mul_nmod_shoup(vec->entries, vec->entries, vec->nnz,
 		*scalar, *(F->pvec));
@@ -306,13 +311,15 @@ static inline void sparse_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar, cons
 
 // we assume that vec and src are sorted, and the result is also sorted
 static int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
-	const ulong a, nmod_t p) {
+	const ulong a, field_t F) {
 	if (src->nnz == 0)
 		return 0;
 
+	auto p = *(F->pvec);
+
 	if (vec->nnz == 0) {
 		sparse_vec_set(vec, src);
-		snmod_vec_rescale(vec, a, p);
+		sparse_vec_rescale(vec, &a, F);
 	}
 
 	ulong na = a;
@@ -370,7 +377,8 @@ static int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 	return 0;
 }
 
-static int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
+template <bool dir>
+int sfmpq_vec_addsub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
 	if (src->nnz == 0)
 		return 0;
 
@@ -381,7 +389,12 @@ static int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_
 
 	fmpq_t na, entry;
 	scalar_init(na);
-	scalar_set(na, a);
+	if constexpr (dir) {
+		scalar_set(na, a);
+	}
+	else {
+		scalar_neg(na, a, NULL);
+	}
 	scalar_init(entry);
 
 	if (vec->nnz + src->nnz > vec->alloc)
@@ -439,93 +452,28 @@ static int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_
 	return 0;
 }
 
-// we assume that vec and src are sorted, and the result is also sorted
-static int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
-	if (src->nnz == 0)
-		return 0;
-
-	if (vec->nnz == 0) {
-		sparse_vec_set(vec, src);
-		sparse_vec_rescale(vec, a);
-		for (size_t i = 0; i < vec->nnz; i++) {
-			fmpq_neg(vec->entries + i, vec->entries + i);
-		}
-	}
-
-	fmpq_t na, entry;
-	scalar_init(na);
-	scalar_neg(na, a, NULL);
-	scalar_init(entry);
-
-	if (vec->nnz + src->nnz > vec->alloc)
-		sparse_vec_realloc(vec, vec->nnz + src->nnz);
-
-	ulong ptr1 = vec->nnz;
-	ulong ptr2 = src->nnz;
-	ulong ptr = vec->nnz + src->nnz;
-	while (ptr1 > 0 && ptr2 > 0) {
-		if (vec->indices[ptr1 - 1] == src->indices[ptr2 - 1]) {
-			fmpq_mul(entry, na, src->entries + ptr2 - 1);
-			fmpq_add(entry, vec->entries + ptr1 - 1, entry);
-			if (!scalar_is_zero(entry)) {
-				vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
-				fmpq_set(vec->entries + ptr - 1, entry);
-				ptr--;
-			}
-			ptr1--;
-			ptr2--;
-		}
-		else if (vec->indices[ptr1 - 1] < src->indices[ptr2 - 1]) {
-			fmpq_mul(entry, na, src->entries + ptr2 - 1);
-			vec->indices[ptr - 1] = src->indices[ptr2 - 1];
-			fmpq_set(vec->entries + ptr - 1, entry);
-			ptr2--;
-			ptr--;
-		}
-		else {
-			vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
-			fmpq_set(vec->entries + ptr - 1, vec->entries + ptr1 - 1);
-			ptr1--;
-			ptr--;
-		}
-	}
-	while (ptr2 > 0) {
-		fmpq_mul(entry, na, src->entries + ptr2 - 1);
-		vec->indices[ptr - 1] = src->indices[ptr2 - 1];
-		fmpq_set(vec->entries + ptr - 1, entry);
-		ptr2--;
-		ptr--;
-	}
-
-	// if ptr1 > 0, and ptr > 0
-	for (size_t i = ptr1; i < ptr; i++) {
-		fmpq_zero(vec->entries + i);
-	}
-
-	vec->nnz += src->nnz;
-	sparse_vec_canonicalize(vec);
-	if (vec->alloc > 4 * vec->nnz)
-		sparse_vec_realloc(vec, 2 * vec->nnz);
-
-	scalar_clear(na);
-	scalar_clear(entry);
-	return 0;
+static inline int sfmpq_vec_add_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
+	return sfmpq_vec_addsub_mul<true>(vec, src, a);
 }
 
-
-static inline int snmod_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, nmod_t p) {
-	return snmod_vec_add_mul(vec, src, nmod_neg(a, p), p);
+static inline int sfmpq_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
+	return sfmpq_vec_addsub_mul<false>(vec, src, a);
 }
-//static inline int sparse_vec_add(snmod_vec_t vec, const snmod_vec_t src, field_t F) {
-//	return snmod_vec_add_mul(vec, src, (ulong)1, F->pvec[0]);
-//}
-//static inline int sparse_vec_sub(snmod_vec_t vec, const snmod_vec_t src, field_t F) {
-//	return snmod_vec_sub_mul(vec, src, (ulong)1, F->pvec[0]);
-//}
 
+static inline int snmod_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong a, field_t F) {
+	return snmod_vec_add_mul(vec, src, F->pvec[0].n - a, F);
+}
+
+static inline int sparse_vec_add(snmod_vec_t vec, const snmod_vec_t src, field_t F) {
+	return snmod_vec_add_mul(vec, src, (ulong)1, F);
+}
+
+static inline int sparse_vec_sub(snmod_vec_t vec, const snmod_vec_t src, field_t F) {
+	return snmod_vec_add_mul(vec, src, F->pvec[0].n - 1, F);
+}
 
 static inline int sparse_vec_sub_mul(snmod_vec_t vec, const snmod_vec_t src, const ulong* a, field_t F) {
-	return snmod_vec_sub_mul(vec, src, *a, *(F->pvec));
+	return snmod_vec_sub_mul(vec, src, *a, F);
 }
 
 static inline int sparse_vec_sub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a, field_t F = NULL) {
