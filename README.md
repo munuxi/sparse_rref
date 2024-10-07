@@ -74,10 +74,11 @@ Optional arguments:
 We compare it with [Spasm](https://github.com/cbouilla/spasm). Platform and Configuration: 
 
 	CPU: Intel(R) Core(TM) Ultra 9 185H (6P+8E+2LPE)
-	MEM: 24.5G 
+	MEM: 24.5G + SWAP on PCIE4.0 SSD 
 	OS: Arch Linux x86-64
 	Compiler: gcc (GCC) 14.2.1 20240910
 	FLINT: v3.1.2
+	SparseRREF: v0.2.0
 	Prime number: 1073741827 ~ 2^30
 	Configuration: 
 	  - Spasm: Default configuration for Spasm, first spasm_echelonize and then spasm_rref
@@ -87,13 +88,13 @@ First two test matrices come from https://hpac.imag.fr, bs comes from symbol boo
 
 | Matrix   | (#row, #col, #non-zero-values, rank)   | Spasm (echelonize + rref)    | SparseRREF (-pd row) | SparseRREF (-pd col) |
 | -------- | -------------------------------------- | ---------------------------- | -------------------- | -------------------- |
-| GL7d24   | (21074, 105054, 593892, 18549)         | 12.6796s + 52.4s             | 4.53s                | 4.40s                |
-| M0,6-D10 | (1274688, 616320, 5342400, 493432)     | 101.195s + 13.4s             | 147.75s              | 216.86s              |
-| bs-1     | (202552, 64350, 11690309, 62130)       | 5.53596s + 0.9s              | 6.11s                | 4.59s                |
-| bs-2     | (709620, 732600, 48819232, 709620)     | too slow                     | 2311.33s             | 411.16s              |
+| GL7d24   | (21074, 105054, 593892, 18549)         | 10.9765s + 51.0s             | 2.82s                | 3.58s                |
+| M0,6-D10 | (1274688, 616320, 5342400, 493432)     | 101.195s + 13.4s             | 124.91s              | 164.28s              |
+| bs-1     | (202552, 64350, 11690309, 62130)       | 5.53596s + 0.9s              | 2.50s                | 2.27s                |
+| bs-2     | (709620, 732600, 48819232, 709620)     | too slow                     | 2311.33s             | 300.91s              |
 | bs-3     | (10011551, 2958306, 33896262, 2867955) | 484s + 327.1s                | 142.31s              | 88.47s               |
-| ibp-1    | (69153, 73316, 1117324, 58252)         | (rank is wrong) 2543.92s + ? | 9.72s                | 8.69s                |
-| ibp-2    | (169323, 161970, 2801475, 135009)      | too slow                     | 60.13s               | 50.22s               |
+| ibp-1    | (69153, 73316, 1117324, 58252)         | (rank is wrong) 2543.92s + ? | 8.42s                | 7.28s                |
+| ibp-2    | (169323, 161970, 2801475, 135009)      | too slow                     | 55.94s               | 45.21s               |
 
 ### TODO
 

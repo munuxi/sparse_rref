@@ -341,7 +341,7 @@ auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_v
 		bool flag = true;
 
 		for (size_t i = 0; i < therow->nnz; i++) {
-			flag = (pcols.find(indices[i]) == pcols.end());
+			flag = (pcols.count(indices[i]) == 0);
 			if (!flag)
 				break;
 			if (colpivs[indices[i]] != -1)
@@ -391,7 +391,7 @@ auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_v
 			for (size_t j = 0; j < tc->nnz; j++) {
 				if (rowptrs[tc->indices[j]] == end)
 					continue;
-				flag = (pcols.find(tc->indices[j]) == pcols.end());
+				flag = (pcols.count(tc->indices[j]) == 0);
 				if (!flag)
 					break;
 				if (mat->rows[tc->indices[j]].nnz < mnnz) {
@@ -438,7 +438,7 @@ auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
 		auto thecol = tranmat->rows + *col;
 		auto indices = thecol->indices;
 		for (size_t i = 0; i < thecol->nnz; i++) {
-			flag = (prows.find(indices[i]) == prows.end());
+			flag = (prows.count(indices[i]) == 0);
 			if (!flag)
 				break;
 		}
@@ -491,7 +491,7 @@ auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
 		for (size_t j = 0; j < tc->nnz; j++) {
 			if (colptrs[tc->indices[j]] == end)
 				continue;
-			flag = (prows.find(tc->indices[j]) == prows.end());
+			flag = (prows.count(tc->indices[j]) == 0);
 			if (!flag)
 				break;
 			if (tranmat->rows[tc->indices[j]].nnz < mnnz) {
@@ -611,7 +611,7 @@ void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<std::pair<slong,
 		ulong e_pr;
 		scalar_init(entry);
 		for (auto [r, c] : pivots) {
-			if (nonzero_c.find(c) == nonzero_c.end())
+			if (nonzero_c.count(c) == 0)
 				continue;
 			scalar_set(entry, tmpvec + c);
 			if (scalar_is_zero(entry)) {
@@ -804,7 +804,7 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sparse_mat_t<T> mat, fiel
 			result.push_back(*ind.second);
 		}
 		for (auto it = kk; it < mat->ncol; it++) {
-			if (indices.find(it) == indices.end()) {
+			if (indices.count(it) == 0) {
 				result.push_back(colperm[it]);
 			}
 		}
@@ -999,7 +999,7 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_r(sparse_mat_t<T> mat, fiel
 			result.push_back(*ind.second);
 		}
 		for (auto it = kk; it < mat->nrow; it++) {
-			if (indices.find(it) == indices.end()) {
+			if (indices.count(it) == 0) {
 				result.push_back(rowperm[it]);
 			}
 		}
