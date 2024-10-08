@@ -69,10 +69,12 @@ void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
 	}
 }
 
-template <typename T>
-inline T* sparse_vec_entry_pointer(const sparse_vec_t<T> vec, const slong index) {
-	return vec->entries + index;
-}
+//template <typename T>
+//inline T* sparse_vec_entry_pointer(const sparse_vec_t<T> vec, const slong index) {
+//	return vec->entries + index;
+//}
+
+#define sparse_vec_entry_pointer(vec, index) ((vec)->entries + (index))
 
 // alloc at least 1 to make sure that indices and entries are not NULL
 template <typename T>
@@ -100,9 +102,7 @@ inline void sparse_vec_init(sparse_vec_t<T> vec, ulong alloc = 1, ulong rank = 1
 }
 
 // just set vec to zero vector
-template <typename T> inline void sparse_vec_zero(sparse_vec_t<T> vec) {
-	vec->nnz = 0;
-}
+#define sparse_vec_zero(__vec) ((__vec)->nnz = 0)
 
 // set zero and clear memory
 template <typename T> inline void sparse_vec_clear(sparse_vec_t<T> vec) {
@@ -267,23 +267,21 @@ void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
 
 template <typename T>
 void sparse_vec_canonicalize(sparse_vec_t<T> vec) {
-	if constexpr (std::is_same_v<T, bool>) {
-		return;
-	}
+	if constexpr (std::is_same_v<T, bool>) { return; }
 
 	ulong new_nnz = 0;
-	bool is_changed = false;
-	for (size_t i = 0; i < vec->nnz; i++) {
-		if (scalar_is_zero(sparse_vec_entry_pointer(vec, i))) {
-			is_changed = true;
+	ulong i = 0;
+	for (; i < vec->nnz; i++) {
+		if (!scalar_is_zero(sparse_vec_entry_pointer(vec, i)))
+			break;
+	}
+	for (; i < vec->nnz; i++) {
+		if (scalar_is_zero(sparse_vec_entry_pointer(vec, i)))
 			continue;
-		}
-		if (is_changed) { // avoid copy to itself
-			vec->indices[new_nnz] = vec->indices[i];
-			scalar_set(
-				sparse_vec_entry_pointer(vec, new_nnz),
-				sparse_vec_entry_pointer(vec, i));
-		}
+		vec->indices[new_nnz] = vec->indices[i];
+		scalar_set(
+			sparse_vec_entry_pointer(vec, new_nnz),
+			sparse_vec_entry_pointer(vec, i));
 		new_nnz++;
 	}
 	vec->nnz = new_nnz;

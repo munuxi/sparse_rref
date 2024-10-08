@@ -99,4 +99,6 @@ First two test matrices come from https://hpac.imag.fr, bs comes from symbol boo
 ### TODO
 
 * Improve the algorithms.
+* Add more fields/rings.
+* Improve I/O.
 

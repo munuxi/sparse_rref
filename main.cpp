@@ -126,6 +126,10 @@ int main(int argc, char** argv) {
 		std::exit(1);
 	}
 
+	int nthread = program.get<int>("--threads");
+	BS::thread_pool pool(nthread);
+	std::cout << "using " << nthread << " threads" << std::endl;
+
 	field_t F;
 	if (prime == 0)
 		field_init(F, FIELD_QQ, 1, NULL);
@@ -163,13 +167,9 @@ int main(int argc, char** argv) {
 		printmatinfo(mat_Zp);
 	}
 
-	int nthread = program.get<int>("--threads");
-	BS::thread_pool pool(nthread);
-
 	std::cout << "-------------------" << std::endl;
 	std::cout << "RREFing: " << std::endl;
-	std::cout << "using " << nthread << " threads" << std::endl;
-
+	
 	rref_option_t opt;
 	opt->verbose = (program["--verbose"] == true);
 	opt->print_step = program.get<int>("--print_step");
@@ -199,6 +199,7 @@ int main(int argc, char** argv) {
 		printmatinfo(mat_Zp);
 	}
 
+	start = clocknow();
 	std::ofstream file2;
 	std::string outname, outname_add("");
 	if (program.get<std::string>("--output") == "input_file.rref")
@@ -209,15 +210,6 @@ int main(int argc, char** argv) {
 	if (outname == input_file)
 		outname_add = ".rref";
 
-	file2.open(outname + outname_add);
-	if (prime == 0) {
-		sparse_mat_write(mat_Q, file2);
-	}
-	else {
-		sparse_mat_write(mat_Zp, file2);
-	}
-	file2.close();
-
 	if (program["--output-pivots"] == true) {
 		outname_add = ".piv";
 		file2.open(outname + outname_add);
@@ -225,6 +217,19 @@ int main(int argc, char** argv) {
 			file2 << ii.first + 1 << ", " << ii.second + 1 << '\n';
 		file2.close();
 	}
+	
+	file2.open(outname + outname_add);
+	// file2.open(outname + outname_add, std::ios::binary);
+	if (prime == 0) {
+		sparse_mat_write(mat_Q, file2);
+	}
+	else {
+		sparse_mat_write(mat_Zp, file2);
+		// auto buffer = snmod_mat_to_binary(mat_Zp);
+		// file2.write(buffer.second, buffer.first * sizeof(char));
+		// s_free(buffer.second);
+	}
+	file2.close();
 
 	if (program["--kernel"] == true) {
 		outname_add = ".kernel";
@@ -241,6 +246,9 @@ int main(int argc, char** argv) {
 		}
 		file2.close();
 	}
+
+	end = clocknow();
+	printtime("write files");
 
 	field_clear(F);
 
