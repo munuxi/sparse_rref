@@ -245,7 +245,7 @@ void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
 			T* entries = s_malloc<T>(vec->nnz);
 			if constexpr (std::is_same_v<T, fmpq>) {
 				for (size_t i = 0; i < vec->nnz; i++)
-					fmpq_init(entries + i);
+					scalar_init(entries + i);
 			}
 
 			// apply permutation
@@ -257,7 +257,7 @@ void sparse_vec_sort_indices(sparse_vec_t<T> vec) {
 
 			if constexpr (std::is_same_v<T, fmpq>) {
 				for (size_t i = 0; i < vec->nnz; i++)
-					fmpq_clear(entries + i);
+					scalar_clear(entries + i);
 			}
 			s_free(entries);
 		}
@@ -369,7 +369,7 @@ static int snmod_vec_add_mul(snmod_vec_t vec, const snmod_vec_t src,
 
 	vec->nnz += src->nnz;
 	sparse_vec_canonicalize(vec);
-	if (vec->alloc > 4 * vec->nnz)
+	if (vec->alloc > 4 * vec->nnz) 
 		sparse_vec_realloc(vec, 2 * vec->nnz);
 
 	return 0;

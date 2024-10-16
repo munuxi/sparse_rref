@@ -315,10 +315,10 @@ ulong eliminate_row_with_one_nnz_rec(sparse_mat_t<T> mat,
 // }
 
 template <typename T, typename S>
-auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_vec,
+auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_t<S> tranmat,
 	std::vector<slong>& colpivs, std::vector<slong>& rowperm,
 	std::vector<slong>::iterator start,
-	size_t max_depth = ULLONG_MAX, int vec_len = 1) {
+	size_t max_depth = ULLONG_MAX) {
 
 	auto end = rowperm.end();
 	using iter = std::vector<slong>::iterator;
@@ -347,9 +347,7 @@ auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_v
 				break;
 			if (colpivs[indices[i]] != -1)
 				continue;
-			ulong newnnz = 0;
-			for (size_t j = 0; j < vec_len; j++)
-				newnnz += tranmat_vec[j].rows[indices[i]].nnz;
+			ulong newnnz = tranmat->rows[indices[i]].nnz;
 			if (newnnz < mnnz) {
 				col = indices[i];
 				mnnz = newnnz;
@@ -387,25 +385,21 @@ auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_struct<S>* tranmat_v
 		bool flag = true;
 		slong row = 0;
 		ulong mnnz = ULLONG_MAX;
-		for (auto it = 0; it < vec_len; it++) {
-			auto tc = sparse_mat_row(tranmat_vec + it, col);
-			for (size_t j = 0; j < tc->nnz; j++) {
-				if (rowptrs[tc->indices[j]] == end)
-					continue;
-				flag = (pcols.count(tc->indices[j]) == 0);
-				if (!flag)
-					break;
-				if (mat->rows[tc->indices[j]].nnz < mnnz) {
-					mnnz = mat->rows[tc->indices[j]].nnz;
-					row = tc->indices[j];
-				}
-				// make the result stable
-				else if (mat->rows[tc->indices[j]].nnz == mnnz && tc->indices[j] < row) {
-					row = tc->indices[j];
-				}
-			}
+		auto tc = sparse_mat_row(tranmat, col);
+		for (size_t j = 0; j < tc->nnz; j++) {
+			if (rowptrs[tc->indices[j]] == end)
+				continue;
+			flag = (pcols.count(tc->indices[j]) == 0);
 			if (!flag)
 				break;
+			if (mat->rows[tc->indices[j]].nnz < mnnz) {
+				mnnz = mat->rows[tc->indices[j]].nnz;
+				row = tc->indices[j];
+			}
+			// make the result stable
+			else if (mat->rows[tc->indices[j]].nnz == mnnz && tc->indices[j] < row) {
+				row = tc->indices[j];
+			}
 		}
 		if (!flag)
 			continue;
@@ -426,8 +420,8 @@ auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
 	std::vector<slong>::iterator start,
 	size_t max_depth = ULLONG_MAX) {
 
-	using iter = std::vector<slong>::iterator;
 	auto end = colperm.end();
+	using iter = std::vector<slong>::iterator;
 
 	std::list<std::pair<slong, iter>> pivots;
 	std::unordered_set<slong> prows;
@@ -749,8 +743,11 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sparse_mat_t<T> mat, fiel
 		leftrows.push_back(i);
 	}
 
+	// for printing
 	double oldpr = 0;
-	// upper triangle (with respect to row and col perm)
+	int bitlen_nnz = std::floor(std::log(now_nnz) / std::log(10)) + 3;
+	int bitlen_ncol = std::floor(std::log(mat->ncol) / std::log(10)) + 1;
+
 	while (kk < mat->ncol) {
 		auto start = clocknow();
 
@@ -834,14 +831,15 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sparse_mat_t<T> mat, fiel
 			if (verbose && (print_once || pr - oldpr > opt->print_step)) {
 				auto end = clocknow();
 				now_nnz = sparse_mat_nnz(mat);
-				std::cout << "\r-- Col: " << (int)pr << "/"
+				std::cout << "-- Col: " << std::setw(bitlen_ncol) << (int)pr << "/"
 					<< mat->ncol
-					<< "  rank: " << pivots.size() << "  " << "nnz: " << now_nnz
-					<< "  " << "density: "
-					<< 100 * (double)now_nnz / (mat->nrow * mat->ncol)
-					<< "%  " << "speed: " <<
+					<< "  rank: " << std::setw(bitlen_ncol) << pivots.size()
+					<< "  nnz: " << std::setw(bitlen_nnz) << now_nnz
+					<< "  density: " << std::setprecision(6) << std::setw(8)
+					<< 100 * (double)now_nnz / (mat->nrow * mat->ncol) << "%" 
+					<< "  speed: " << std::setprecision(2) << std::setw(8) <<
 					((pr - oldpr) / usedtime(start, end))
-					<< " col/s" << std::flush;
+					<< " col/s    \r" << std::flush;
 				oldpr = pr;
 				start = end;
 				print_once = false;
@@ -958,7 +956,11 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_r(sparse_mat_t<T> mat, fiel
 
 	sparse_mat_transpose_part(tranmat, mat, rowperm);
 
+	// for printing
 	double oldstatus = 0;
+	int bitlen_nnz = std::floor(std::log(now_nnz) / std::log(10)) + 3;
+	int bitlen_nrow = std::floor(std::log(mat->nrow) / std::log(10)) + 1;
+
 	while (kk < mat->nrow) {
 		auto start = clocknow();
 		auto row = rowperm[kk];
@@ -1043,12 +1045,15 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_r(sparse_mat_t<T> mat, fiel
 			if (verbose && status - oldstatus > printstep) {
 				auto end = clocknow();
 				now_nnz = sparse_mat_nnz(mat);
-				std::cout << "\r-- Row: " << (int)std::floor(status) << "/" << mat->nrow
-					<< "  rank: " << pivots.size()
-					<< "  nnz: " << now_nnz << "  " << "density: "
-					<< (double)100 * now_nnz / (mat->nrow * mat->ncol) << "%"
-					<< "  speed: " << (status - oldstatus) / usedtime(start, end)
-					<< " row/s" << std::flush;
+				std::cout << "-- Row: " << std::setw(bitlen_nrow) << (int)std::floor(status)
+					<< "/" << mat->ncol
+					<< "  rank: " << std::setw(bitlen_nrow) << pivots.size()
+					<< "  nnz: " << std::setw(bitlen_nnz) << now_nnz
+					<< "  density: " << std::setprecision(6) << std::setw(8)
+					<< 100 * (double)now_nnz / (mat->nrow * mat->ncol) << "%"
+					<< "  speed: " << std::setprecision(2) << std::setw(8) <<
+					(status - oldstatus) / usedtime(start, end)
+					<< " row/s    \r" << std::flush;
 				oldstatus = status;
 				start = end;
 			}
