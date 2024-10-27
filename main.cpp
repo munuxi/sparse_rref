@@ -214,9 +214,6 @@ int main(int argc, char** argv) {
 	else
 		outname = program.get<std::string>("--output");
 
-	if (outname == input_file)
-		outname_add = ".rref";
-
 	if (program["--output-pivots"] == true) {
 		outname_add = ".piv";
 		file2.open(outname + outname_add);
@@ -225,6 +222,11 @@ int main(int argc, char** argv) {
 		file2.close();
 	}
 	
+	if (outname == input_file)
+		outname_add = ".rref";
+	else 
+		outname_add = "";
+
 	file2.open(outname + outname_add);
 	// file2.open(outname + outname_add, std::ios::binary);
 	if (prime == 0) {
