@@ -46,27 +46,29 @@ Usage: sparserref [--help] [--version] [--output VAR]
                   [--field VAR] [--prime VAR] [--threads VAR]
                   [--pivot_direction VAR] [--search_depth VAR]
                   [--verbose] [--print_step VAR]
+                  [--no-backward-substitution]
                   input_file
 
-(exact) Sparse Reduced Row Echelon Form v0.2.0
+(exact) Sparse Reduced Row Echelon Form v0.2.1
 
 Positional arguments:
-  input_file              input file in matrix market format
+  input_file                  input file in matrix market format
 
 Optional arguments:
-  -h, --help              shows help message and exits
-  -v, --version           prints version information and exits
-  -o, --output            output file in matrix market format [default: "input_file.rref"]
-  -k, --kernel            output the kernel
-  --output-pivots         output pivots
-  -F, --field             QQ: rational field
-                          Zp or Fp: Z/p for a prime p [default: "QQ"]
-  -p, --prime             a prime number, only vaild when field is Zp  [default: "34534567"]
-  -t, --threads           the number of threads  [default: 1]
-  -pd, --pivot_direction  the direction to select pivots [default: "row"]
-  -sd, --search_depth     the depth of search, default is the max of int  [default: 0]
-  -V, --verbose           prints information of calculation
-  -ps, --print_step       print step when --verbose is enabled [default: 100]
+  -h, --help                  shows help message and exits
+  -v, --version               prints version information and exits
+  -o, --output                output file in matrix market format [default: "input_file.rref"]
+  -k, --kernel                output the kernel
+  --output-pivots             output pivots
+  -F, --field                 QQ: rational field
+                              Zp or Fp: Z/p for a prime p [default: "QQ"]
+  -p, --prime                 a prime number, only vaild when field is Zp  [default: "34534567"]
+  -t, --threads               the number of threads  [default: 1]
+  -pd, --pivot_direction      the direction to select pivots [default: "row"]
+  -sd, --search_depth         the depth of search, default is the max of int  [default: 0]
+  -V, --verbose               prints information of calculation
+  -ps, --print_step           print step when --verbose is enabled [default: 100]
+  --no-backward-substitution  no backward substitution
 ```
 
 ### BenchMark

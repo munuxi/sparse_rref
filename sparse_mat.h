@@ -539,7 +539,7 @@ void triangular_solver(sparse_mat_t<T> mat, std::vector<std::pair<slong, slong>>
 			index = pivots.size() - 1 - i;
 		auto pp = pivots[index];
 		auto thecol = tranmat[pp.second];
-		auto start = clocknow();
+		auto start = sparse_base::clocknow();
 		if (thecol.size() > 1) {
 			pool.detach_loop<slong>(0, thecol.size(), [&](slong j) {
 				auto r = thecol[j];
@@ -553,18 +553,20 @@ void triangular_solver(sparse_mat_t<T> mat, std::vector<std::pair<slong, slong>>
 		
 		if (verbose && (i % printstep == 0 || i == pivots.size() - 1) && thecol.size() > 1) {
 			count++;
-			auto end = clocknow();
+			auto end = sparse_base::clocknow();
 			auto now_nnz = sparse_mat_nnz(mat);
 			std::cout << "\r-- Row: " << (i + 1) << "/" << pivots.size()
 				<< "  " << "row to eliminate: " << thecol.size() - 1
 				<< "  " << "nnz: " << now_nnz << "  " << "density: "
 				<< (double)100 * now_nnz / (mat->nrow * mat->ncol)
-				<< "%  " << "speed: " << count / usedtime(start, end)
+				<< "%  " << "speed: " << count / sparse_base::usedtime(start, end)
 				<< " row/s" << std::flush;
-			start = clocknow();
+			start = sparse_base::clocknow();
 			count = 0;
 		}
 	}
+	if (opt->verbose)
+		std::cout << std::endl;
 }
 
 // first write a stupid one
@@ -749,7 +751,7 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sparse_mat_t<T> mat, fiel
 	int bitlen_ncol = std::floor(std::log(mat->ncol) / std::log(10)) + 1;
 
 	while (kk < mat->ncol) {
-		auto start = clocknow();
+		auto start = sparse_base::clocknow();
 
 		auto ps = findmanypivots_c(mat, tranmat, rowpivs, colperm,
 			colperm.begin() + kk, opt->search_depth);
@@ -829,16 +831,16 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sparse_mat_t<T> mat, fiel
 
 			double pr = kk + (1.0 * ps.size() * localcount) / leftrows.size();
 			if (verbose && (print_once || pr - oldpr > opt->print_step)) {
-				auto end = clocknow();
+				auto end = sparse_base::clocknow();
 				now_nnz = sparse_mat_nnz(mat);
-				std::cout << "-- Col: " << std::setw(bitlen_ncol) << (int)pr << "/"
-					<< mat->ncol
+				std::cout << "-- Col: " << std::setw(bitlen_ncol) 
+					<< (int)pr << "/" << mat->ncol
 					<< "  rank: " << std::setw(bitlen_ncol) << pivots.size()
 					<< "  nnz: " << std::setw(bitlen_nnz) << now_nnz
 					<< "  density: " << std::setprecision(6) << std::setw(8)
 					<< 100 * (double)now_nnz / (mat->nrow * mat->ncol) << "%" 
 					<< "  speed: " << std::setprecision(2) << std::setw(8) <<
-					((pr - oldpr) / usedtime(start, end))
+					((pr - oldpr) / sparse_base::usedtime(start, end))
 					<< " col/s    \r" << std::flush;
 				oldpr = pr;
 				start = end;
@@ -853,14 +855,6 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sparse_mat_t<T> mat, fiel
 	if (verbose) {
 		std::cout << "\n** Rank: " << pivots.size() << " nnz: " << sparse_mat_nnz(mat)
 			<< "  " << std::endl;
-		std::cout << "\n>> Reverse solving: " << std::endl;
-	}
-
-	// the matrix is upper triangular
-	triangular_solver(mat, pivots, F, opt, -1, pool);
-
-	if (verbose) {
-		std::cout << std::endl;
 	}
 
 	scalar_clear(scalar);
@@ -962,7 +956,7 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_r(sparse_mat_t<T> mat, fiel
 	int bitlen_nrow = std::floor(std::log(mat->nrow) / std::log(10)) + 1;
 
 	while (kk < mat->nrow) {
-		auto start = clocknow();
+		auto start = sparse_base::clocknow();
 		auto row = rowperm[kk];
 
 		if (mat->rows[row].nnz == 0) {
@@ -1043,16 +1037,16 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_r(sparse_mat_t<T> mat, fiel
 			}
 			auto status = (kk - newpiv + 1) + ((double)tran_count / (mat->nrow - kk)) * newpiv;
 			if (verbose && status - oldstatus > printstep) {
-				auto end = clocknow();
+				auto end = sparse_base::clocknow();
 				now_nnz = sparse_mat_nnz(mat);
-				std::cout << "-- Row: " << std::setw(bitlen_nrow) << (int)std::floor(status)
-					<< "/" << mat->ncol
+				std::cout << "-- Row: " << std::setw(bitlen_nrow) 
+					<< (int)std::floor(status) << "/" << mat->nrow
 					<< "  rank: " << std::setw(bitlen_nrow) << pivots.size()
 					<< "  nnz: " << std::setw(bitlen_nnz) << now_nnz
 					<< "  density: " << std::setprecision(6) << std::setw(8)
 					<< 100 * (double)now_nnz / (mat->nrow * mat->ncol) << "%"
 					<< "  speed: " << std::setprecision(2) << std::setw(8) <<
-					(status - oldstatus) / usedtime(start, end)
+					(status - oldstatus) / sparse_base::usedtime(start, end)
 					<< " row/s    \r" << std::flush;
 				oldstatus = status;
 				start = end;
@@ -1062,15 +1056,7 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_r(sparse_mat_t<T> mat, fiel
 
 	if (verbose) {
 		std::cout << "\n** Rank: " << pivots.size()
-			<< " nnz: " << sparse_mat_nnz(mat) << std::endl
-			<< "\n>> Reverse solving: " << std::endl;
-	}
-
-	// the matrix is upper triangular
-	triangular_solver(mat, pivots, F, opt, -1, pool);
-
-	if (verbose) {
-		std::cout << std::endl;
+			<< " nnz: " << sparse_mat_nnz(mat) << std::endl;
 	}
 
 	scalar_clear(scalar);
@@ -1083,13 +1069,26 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_r(sparse_mat_t<T> mat, fiel
 	return pivots;
 }
 
+////TODO
+//void sparse_mat_rref_uplift(sparse_mat_t<fmpq> mat) {
+//	return;
+//}
+
 template <typename T>
 std::vector<std::pair<slong, slong>> sparse_mat_rref(sparse_mat_t<T> mat, field_t F,
 	BS::thread_pool& pool, rref_option_t opt) {
+	std::vector<std::pair<slong, slong>> pivots;
 	if (opt->pivot_dir)
-		return sparse_mat_rref_r(mat, F, pool, opt);
+		pivots = sparse_mat_rref_r(mat, F, pool, opt);
 	else
-		return sparse_mat_rref_c(mat, F, pool, opt);
+		pivots = sparse_mat_rref_c(mat, F, pool, opt);
+
+	if (opt->is_back_sub) {
+		if (opt->verbose)
+			std::cout << "\n>> Reverse solving: " << std::endl;
+		triangular_solver(mat, pivots, F, opt, -1, pool);
+	}
+	return pivots;
 }
 
 template <typename T>
@@ -1174,7 +1173,7 @@ template <typename T> void sfmpq_mat_read(sfmpq_mat_t mat, T& st) {
 		if (strLine[0] == '%')
 			continue;
 
-		auto tokens = SplitString(strLine, " ");
+		auto tokens = sparse_base::SplitString(strLine, " ");
 		if (is_size) {
 			ulong nrow = std::stoul(tokens[0]);
 			ulong ncol = std::stoul(tokens[1]);
@@ -1184,12 +1183,16 @@ template <typename T> void sfmpq_mat_read(sfmpq_mat_t mat, T& st) {
 			is_size = false;
 		}
 		else {
+			if (tokens.size() != 3) {
+				std::cerr << "Error: wrong format in the matrix file" << std::endl;
+				std::exit(-1);
+			}
 			slong row = std::stoll(tokens[0]) - 1;
 			slong col = std::stoll(tokens[1]) - 1;
 			// SMS stop at 0 0 0
 			if (row < 0 || col < 0)
 				break;
-			DeleteSpaces(tokens[2]);
+			sparse_base::DeleteSpaces(tokens[2]);
 			fmpq_set_str(val, tokens[2].c_str(), 10);
 			_sparse_vec_set_entry(sparse_mat_row(mat, row), col, val);
 		}

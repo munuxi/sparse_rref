@@ -76,6 +76,7 @@ inline void scalar_clear(scalar_s<T>* a) {
 	a->data = NULL;
 }
 
+// TODO: avoid copy
 static inline std::string scalar_to_str(fmpq_t a) {
 	char* cstr = s_malloc<char>(fmpz_sizeinbase(fmpq_numref(a), 10) + fmpz_sizeinbase(fmpq_denref(a), 10) + 3);
 	fmpq_get_str(cstr, 10, a);

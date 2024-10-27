@@ -13,7 +13,7 @@
 
 #define printtime(str)                                                         \
     std::cout << (str) << " spent " << std::fixed << std::setprecision(6)      \
-              << usedtime(start, end) << " seconds." << std::endl
+              << sparse_base::usedtime(start, end) << " seconds." << std::endl
 
 #define printmatinfo(mat)                                                      \
     std::cout << "nnz: " << sparse_mat_nnz(mat) << " ";                        \
@@ -21,7 +21,7 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	std::string version = "v0.2.0";
+	std::string version = "v0.2.1";
 	argparse::ArgumentParser program("sparserref", version);
 	program.set_usage_max_line_width(80);
 	program.add_description("(exact) Sparse Reduced Row Echelon Form " + version);
@@ -76,6 +76,12 @@ int main(int argc, char** argv) {
 		.help("print step when --verbose is enabled")
 		.nargs(1)
 		.scan<'i', int>();
+	program.add_usage_newline();
+	program.add_argument("--no-backward-substitution")
+		.help("no backward substitution")
+		.default_value(false)
+		.implicit_value(true)
+		.nargs(0);
 
 	try {
 		program.parse_args(argc, argv);
@@ -139,7 +145,7 @@ int main(int argc, char** argv) {
 	sparse_mat_t<fmpq> mat_Q;
 	sparse_mat_t<ulong> mat_Zp;
 
-	auto start = clocknow();
+	auto start = sparse_base::clocknow();
 	auto input_file = program.get<std::string>("input_file");
 	std::filesystem::path filePath = input_file;
 	if (!std::filesystem::exists(filePath)) {
@@ -156,7 +162,7 @@ int main(int argc, char** argv) {
 	}
 	file.close();
 
-	auto end = clocknow();
+	auto end = sparse_base::clocknow();
 	std::cout << "-------------------" << std::endl;
 	printtime("read");
 
@@ -172,13 +178,14 @@ int main(int argc, char** argv) {
 	
 	rref_option_t opt;
 	opt->verbose = (program["--verbose"] == true);
+	opt->is_back_sub = (program["--no-backward-substitution"] == false);
 	opt->print_step = program.get<int>("--print_step");
 	opt->search_depth = (ulong)program.get<int>("--search_depth");
 	opt->pivot_dir = (program.get<std::string>("--pivot_direction") == "row");
 	if (opt->search_depth == 0)
 		opt->search_depth = INT_MAX;
 
-	start = clocknow();
+	start = sparse_base::clocknow();
 	std::vector<std::pair<slong, slong>> pivots;
 	if (prime == 0) {
 		pivots = sparse_mat_rref(mat_Q, F, pool, opt);
@@ -187,7 +194,7 @@ int main(int argc, char** argv) {
 		pivots = sparse_mat_rref(mat_Zp, F, pool, opt);
 	}
 
-	end = clocknow();
+	end = sparse_base::clocknow();
 	std::cout << "-------------------" << std::endl;
 	printtime("RREF");
 
@@ -199,7 +206,7 @@ int main(int argc, char** argv) {
 		printmatinfo(mat_Zp);
 	}
 
-	start = clocknow();
+	start = sparse_base::clocknow();
 	std::ofstream file2;
 	std::string outname, outname_add("");
 	if (program.get<std::string>("--output") == "input_file.rref")
@@ -247,7 +254,7 @@ int main(int argc, char** argv) {
 		file2.close();
 	}
 
-	end = clocknow();
+	end = sparse_base::clocknow();
 	printtime("write files");
 
 	field_clear(F);
