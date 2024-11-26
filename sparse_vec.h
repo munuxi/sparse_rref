@@ -188,15 +188,15 @@ template <typename T, typename S>
 inline void sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, const T* val,
 	bool isbinary = false) {
 	// if val = 0, here we only set it as zero, but not remove it
-	T* entry = sparse_vec_entry(vec, index, isbinary);
-	if (entry != NULL) {
-		if constexpr (std::is_same_v<T, fmpq>)
-			scalar_set(entry, val);
-		else
-			*entry = *val;
+	if constexpr (std::is_same_v<T, bool>) {
 		return;
 	}
-	_sparse_vec_set_entry(vec, index, val);
+	else {
+		T* entry = sparse_vec_entry(vec, index, isbinary);
+		if (entry != NULL)
+			scalar_set(entry, val);
+		_sparse_vec_set_entry(vec, index, val);
+	}
 }
 
 // TODO: Implement a better sorting algorithm (sort only once)

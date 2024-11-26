@@ -58,9 +58,9 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     BS::thread_pool pool((int)nthreads);
     rref_option_t opt;
     if (method == 0) 
-		opt->pivot_dir = true;
-	else 
-		opt->pivot_dir = false;
+        opt->pivot_dir = true;
+    else 
+        opt->pivot_dir = false;
 
     // init a sparse matrix
     nmod_t pp;
@@ -81,7 +81,7 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     fmpz_clear(tmp);
 
     field_t F;
-	field_init(F, FIELD_Fp, std::vector<ulong>{(ulong)p});
+    field_init(F, FIELD_Fp, std::vector<ulong>{(ulong)p});
 
     auto pivots = sparse_mat_rref(A, F, pool, opt);
     auto len = sparse_mat_rref_kernel(K, A, pivots, F, pool);

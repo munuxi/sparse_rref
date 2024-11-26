@@ -718,8 +718,7 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sparse_mat_t<T> mat, fiel
 			if (rowpivs[row] != -1)
 				continue;
 			rowpivs[row] = colperm[kk];
-			auto e = sparse_mat_entry(mat, row, rowpivs[row], true);
-			scalar_inv(scalar, e, F);
+			scalar_inv(scalar, sparse_mat_entry(mat, row, rowpivs[row]), F);
 			sparse_vec_rescale(sparse_mat_row(mat, row), scalar, F);
 			pivots.push_back(std::make_pair(row, colperm[kk]));
 		}
@@ -853,7 +852,8 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_c(sparse_mat_t<T> mat, fiel
 	}
 
 	if (verbose) {
-		std::cout << "\n** Rank: " << pivots.size() << " nnz: " << sparse_mat_nnz(mat)
+		std::cout << "\n** Rank: " << pivots.size() 
+			<< " nnz: " << sparse_mat_nnz(mat)
 			<< "  " << std::endl;
 	}
 
@@ -899,8 +899,8 @@ std::vector<std::pair<slong, slong>> sparse_mat_rref_r(sparse_mat_t<T> mat, fiel
 	now_nnz = sparse_mat_nnz(mat);
 	if (verbose) {
 		std::cout << "\n** eliminated " << count
-			<< " rows, and reduce nnz: " << init_nnz << " -> " << now_nnz
-			<< std::endl;
+			<< " rows, and reduce nnz: " << init_nnz 
+			<< " -> " << now_nnz << std::endl;
 	}
 	init_nnz = now_nnz;
 	sparse_mat_clear(tranmatp);
