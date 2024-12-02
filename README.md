@@ -19,7 +19,11 @@ Some algorithms are inspired by [Spasm](https://github.com/cbouilla/spasm), but 
 
 The code mainly depends on [FLINT](https://flintlib.org/) to support arithmetic, and [BS::thread_pool](https://github.com/bshoshany/thread-pool) and [argparse](https://github.com/p-ranav/argparse) (they are included) are also used to support thread pool and parse args.
 
-### How to use this code
+### What to compute?
+
+For a sparse matrix $M$, the code computes its RREF (with row and column permutation) $\Lambda$. Instead of permute the row and column directly, we keep the row and column ordering of the matrix, i.e. the i-th row/column of $\Lambda$ is the i-th row/column of $M$, and the row and column permutation of this RREF is implicitly given by its pivots, which is a list of pairs of (row,col). In the ordering of pivots, the $\Lambda$ is an identity matrix (if `--no-backward-substitution` is enabled, it is upper triangular). 
+
+### How to use compile code
 
 We now only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime less than $2^{\texttt{BIT}-1}$ (it's $2^{63}$ on 64-bit machine), but it is possible to generalize to other fields/rings by some small modification.
 
@@ -27,7 +31,7 @@ It is highly recommended to use [mimalloc](https://github.com/microsoft/mimalloc
 
 We also provide an example, see `mma_link.cpp`, by using the LibraryLink api of Mathematica to compile a library which can used by Mathematica.
 
-Build it, e.g. (also add -lpthread if pthread is required by the compiler)
+Build it, e.g. (also add `-lpthread` if pthread is required by the compiler)
 
 ```bash
 g++ main.cpp -o sparserref -O3 -std=c++17 -Iincludepath -Llibpath -lflint -lgmp
@@ -37,8 +41,9 @@ g++ main.cpp -o sparserref -O3 -std=c++17 -Iincludepath -Llibpath -lflint -lgmp
 g++ mma_link.cpp -fPIC -shared -O3 -std=c++17 -o mathlink.dll -Iincludepath -Llibpath -lflint -lgmp
 ```
 
+### How to use the code
 
-and help is 
+The `main.cpp` is an example to use the head only library, the help is
 
 ```
 Usage: sparserref [--help] [--version] [--output VAR]
@@ -71,6 +76,10 @@ Optional arguments:
   --no-backward-substitution  no backward substitution
 ```
 
+The main function is `sparse_mat_rref`, its output is its pivots `std::vector<std::pair<slong,slong>>` (slong is integer), and it modifies the input matrix $M$ to its RREF $\Lambda$.
+
+One main struct is `sparse_vec_t`, which contains two lists: the first is the list of indices of nonzero entries, and the second is entries. Another main struct is `sparse_mat_t`, which contains an array of `sparse_vec_t` and some other information.
+
 ### BenchMark
 
 We compare it with [Spasm](https://github.com/cbouilla/spasm). Platform and Configuration: 
@@ -101,6 +110,8 @@ First two test matrices come from https://hpac.imag.fr, bs comes from symbol boo
 ### TODO
 
 * Improve the algorithms.
+* Add PLUQ decomposition.
 * Add more fields/rings.
 * Improve I/O.
+* Add document.
 
