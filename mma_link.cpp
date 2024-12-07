@@ -133,11 +133,11 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     ld->MTensor_free(pos);
     ld->MTensor_free(val);
     ld->MTensor_free(dim);
-
-	field_clear(F);
-
+    
+    field_clear(F);
+    
     if (err)
-		return LIBRARY_FUNCTION_ERROR;
+        return LIBRARY_FUNCTION_ERROR;
 
     MArgument_setMSparseArray(Res, result);
     // MArgument_setMTensor(Res, pos);

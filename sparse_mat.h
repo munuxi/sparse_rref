@@ -205,6 +205,7 @@ inline int sparse_mat_dot_sparse_vec(sparse_vec_t<T> result, const sparse_mat_t<
 			_sparse_vec_set_entry(result, i, tmp);
 	}
 	scalar_clear(tmp);
+	return 1;
 }
 
 // A = B * C
@@ -324,194 +325,108 @@ ulong eliminate_row_with_one_nnz_rec(sparse_mat_t<T> mat,
 // }
 
 template <typename T, typename S>
-auto findmanypivots_r(sparse_mat_t<T> mat, const sparse_mat_t<S> tranmat,
-	std::vector<slong>& colpivs, std::vector<slong>& rowperm,
+std::vector<std::pair<slong, std::vector<slong>::iterator>> findmanypivots(const sparse_mat_t<T> mat, const sparse_mat_t<S> tranmat,
+	std::vector<slong>& rdivpivs, std::vector<slong>& dirperm,
 	std::vector<slong>::iterator start,
-	size_t max_depth = ULLONG_MAX) {
+	bool dir, size_t max_depth = ULLONG_MAX) {
 
-	auto end = rowperm.end();
+	if (!dir)
+		return findmanypivots(tranmat, mat, rdivpivs, dirperm, start, true, max_depth);
+
 	using iter = std::vector<slong>::iterator;
+	auto end = dirperm.end();
+
+	auto matdir = mat;
+	auto matrdir = tranmat;
+	auto ndir = matdir->nrow;
+	auto nrdir = matrdir->nrow;
 
 	std::list<std::pair<slong, iter>> pivots;
-	std::unordered_set<slong> pcols;
-	pcols.reserve(std::min((size_t)4096, max_depth));
+	std::unordered_set<slong> pdirs;
+	pdirs.reserve(std::min((size_t)4096, max_depth));
 
 	// rightlook first
-	for (auto row = start; row != end; row++) {
-		if (pivots.size() > max_depth)
+	for (auto dir = start; dir < end; dir++) {
+		if ((ulong)(dir - start) > max_depth)
 			break;
 
-		auto therow = sparse_mat_row(mat, *row);
-		if (therow->nnz == 0)
+		auto thedir = sparse_mat_row(matdir, *dir);
+		if (thedir->nnz == 0)
 			continue;
-		auto indices = therow->indices;
+		auto indices = thedir->indices;
 
-		slong col;
+		slong rdiv;
 		ulong mnnz = ULLONG_MAX;
 		bool flag = true;
 
-		for (size_t i = 0; i < therow->nnz; i++) {
-			flag = (pcols.count(indices[i]) == 0);
+		for (size_t i = 0; i < thedir->nnz; i++) {
+			flag = (pdirs.count(indices[i]) == 0);
 			if (!flag)
 				break;
-			if (colpivs[indices[i]] != -1)
+			if (rdivpivs[indices[i]] != -1)
 				continue;
-			ulong newnnz = tranmat->rows[indices[i]].nnz;
+			ulong newnnz = matrdir->rows[indices[i]].nnz;
 			if (newnnz < mnnz) {
-				col = indices[i];
+				rdiv = indices[i];
 				mnnz = newnnz;
 			}
 			// make the result stable
-			else if (newnnz == mnnz && indices[i] < col) {
-				col = indices[i];
+			else if (newnnz == mnnz && indices[i] < rdiv) {
+				rdiv = indices[i];
 			}
 		}
 		if (!flag)
 			continue;
 		if (mnnz != ULLONG_MAX) {
-			pivots.push_back(std::make_pair(col, row));
-			pcols.insert(col);
-		}
-	}
-	// leftlook then
-	// now pcols will be used as prows to store the rows that have been used
-	pcols.clear();
-	// make a table to help to look for row pointers
-	std::vector<iter> rowptrs(mat->nrow, end);
-	for (auto it = start; it != end; it++)
-		rowptrs[*it] = it;
-
-	for (auto p : pivots) {
-		pcols.insert(*(p.second));
-	}
-
-	for (size_t i = 0; i < mat->ncol; i++) {
-		if (pivots.size() > max_depth)
-			break;
-		auto col = mat->ncol - i - 1; // reverse ordering
-		if (colpivs[col] != -1)
-			continue;
-		bool flag = true;
-		slong row = 0;
-		ulong mnnz = ULLONG_MAX;
-		auto tc = sparse_mat_row(tranmat, col);
-		for (size_t j = 0; j < tc->nnz; j++) {
-			if (rowptrs[tc->indices[j]] == end)
-				continue;
-			flag = (pcols.count(tc->indices[j]) == 0);
-			if (!flag)
-				break;
-			if (mat->rows[tc->indices[j]].nnz < mnnz) {
-				mnnz = mat->rows[tc->indices[j]].nnz;
-				row = tc->indices[j];
-			}
-			// make the result stable
-			else if (mat->rows[tc->indices[j]].nnz == mnnz && tc->indices[j] < row) {
-				row = tc->indices[j];
-			}
-		}
-		if (!flag)
-			continue;
-		if (mnnz != ULLONG_MAX) {
-			pivots.push_front(std::make_pair(col, rowptrs[row]));
-			pcols.insert(row);
-		}
-	}
-
-	std::vector<std::pair<slong, iter>> result(pivots.begin(), pivots.end());
-
-	return result;
-}
-
-template <typename T, typename S>
-auto findmanypivots_c(sparse_mat_t<T> mat, sparse_mat_t<S> tranmat,
-	std::vector<slong>& rowpivs, std::vector<slong>& colperm,
-	std::vector<slong>::iterator start,
-	size_t max_depth = ULLONG_MAX) {
-
-	auto end = colperm.end();
-	using iter = std::vector<slong>::iterator;
-
-	std::list<std::pair<slong, iter>> pivots;
-	std::unordered_set<slong> prows;
-	prows.reserve(std::min((size_t)4096, max_depth));
-	for (auto col = start; col < colperm.end(); col++) {
-		if ((ulong)(col - start) > max_depth)
-			break;
-		bool flag = true;
-		auto thecol = sparse_mat_row(tranmat, *col);
-		auto indices = thecol->indices;
-		for (size_t i = 0; i < thecol->nnz; i++) {
-			flag = (prows.count(indices[i]) == 0);
-			if (!flag)
-				break;
-		}
-		if (!flag)
-			continue;
-
-		if (thecol->nnz == 0)
-			continue;
-		slong row;
-		ulong mnnz = ULLONG_MAX;
-		for (size_t i = 0; i < thecol->nnz; i++) {
-			if (rowpivs[indices[i]] != -1)
-				continue;
-			if (mat->rows[indices[i]].nnz < mnnz) {
-				row = indices[i];
-				mnnz = mat->rows[row].nnz;
-			}
-			// make the result stable
-			else if (mat->rows[indices[i]].nnz == mnnz && indices[i] < row) {
-				row = indices[i];
-			}
-		}
-		if (mnnz != ULLONG_MAX) {
-			pivots.push_back(std::make_pair(row, col));
-			prows.insert(row);
+			pivots.push_back(std::make_pair(rdiv, dir));
+			pdirs.insert(rdiv);
 		}
 	}
 
 	// leftlook then
-	// now prows will be used as pcols to store the cols that have been used
-	prows.clear();
-	// make a table to help to look for row pointers
-	std::vector<iter> colptrs(mat->ncol, end);
+	pdirs.clear();
+	// make a table to help to look for dir pointers
+	std::vector<iter> dirptrs(ndir, end);
 	for (auto it = start; it != end; it++)
-		colptrs[*it] = it;
+		dirptrs[*it] = it;
 
-	for (auto p : pivots)
-		prows.insert(*(p.second));
+	for (auto p : pivots) 
+		pdirs.insert(*(p.second));
 
-	for (size_t i = 0; i < mat->nrow; i++) {
+	for (size_t i = 0; i < nrdir; i++) {
 		if (pivots.size() > max_depth)
 			break;
-		auto row = i;
-		if (rowpivs[row] != -1)
+		auto rdir = i;
+		// auto rdir = nrdir - i - 1; // reverse ordering
+		if (rdivpivs[rdir] != -1)
 			continue;
-		bool flag = true;
-		slong col = 0;
+		
+		slong dir = 0;
 		ulong mnnz = ULLONG_MAX;
-		auto tc = sparse_mat_row(mat, row);
+		bool flag = true;
+
+		auto tc = sparse_mat_row(matrdir, rdir);
+
 		for (size_t j = 0; j < tc->nnz; j++) {
-			if (colptrs[tc->indices[j]] == end)
+			if (dirptrs[tc->indices[j]] == end)
 				continue;
-			flag = (prows.count(tc->indices[j]) == 0);
+			flag = (pdirs.count(tc->indices[j]) == 0);
 			if (!flag)
 				break;
-			if (tranmat->rows[tc->indices[j]].nnz < mnnz) {
-				mnnz = tranmat->rows[tc->indices[j]].nnz;
-				col = tc->indices[j];
+			if (matdir->rows[tc->indices[j]].nnz < mnnz) {
+				mnnz = matdir->rows[tc->indices[j]].nnz;
+				dir = tc->indices[j];
 			}
 			// make the result stable
-			else if (tranmat->rows[tc->indices[j]].nnz == mnnz && tc->indices[j] < col) {
-				col = tc->indices[j];
+			else if (matdir->rows[tc->indices[j]].nnz == mnnz && tc->indices[j] < dir) {
+				dir = tc->indices[j];
 			}
 		}
 		if (!flag)
 			continue;
 		if (mnnz != ULLONG_MAX) {
-			pivots.push_front(std::make_pair(row, colptrs[col]));
-			prows.insert(col);
+			pivots.push_front(std::make_pair(rdir, dirptrs[dir]));
+			pdirs.insert(dir);
 		}
 	}
 
@@ -865,14 +780,14 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 
 	// for printing
 	double oldpr = 0;
-	int bitlen_nnz = std::floor(std::log(now_nnz) / std::log(10)) + 3;
-	int bitlen_ncol = std::floor(std::log(mat->ncol) / std::log(10)) + 1;
+	int bitlen_nnz = (int)std::floor(std::log(now_nnz) / std::log(10)) + 3;
+	int bitlen_ncol = (int)std::floor(std::log(mat->ncol) / std::log(10)) + 1;
 
 	while (kk < mat->ncol) {
 		auto start = sparse_base::clocknow();
 
-		auto ps = findmanypivots_c(mat, tranmat, rowpivs, colperm,
-			colperm.begin() + kk, opt->search_depth);
+		auto ps = findmanypivots(mat, tranmat, rowpivs, colperm,
+			colperm.begin() + kk, false, opt->search_depth);
 		if (ps.size() == 0)
 			break;
 
@@ -1069,15 +984,15 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 		else
 			break;
 	}
+
+	auto rank = n_pivots.size();
 	pivots.push_back(std::move(n_pivots));
 	sparse_mat_transpose_part(tranmat, mat, rowperm);
 
-	auto rank = n_pivots.size();
-
 	// for printing
 	double oldstatus = 0;
-	int bitlen_nnz = std::floor(std::log(now_nnz) / std::log(10)) + 3;
-	int bitlen_nrow = std::floor(std::log(mat->nrow) / std::log(10)) + 1;
+	int bitlen_nnz = (int)std::floor(std::log(now_nnz) / std::log(10)) + 3;
+	int bitlen_nrow = (int)std::floor(std::log(mat->nrow) / std::log(10)) + 1;
 
 	while (kk < mat->nrow) {
 		auto start = sparse_base::clocknow();
@@ -1089,8 +1004,8 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 		}
 
 		pool.wait();
-		auto ps = findmanypivots_r(mat, tranmat, colpivs,
-			rowperm, rowperm.begin() + kk, opt->search_depth);
+		auto ps = findmanypivots(mat, tranmat, colpivs,
+			rowperm, rowperm.begin() + kk, true, opt->search_depth);
 
 		if (ps.size() == 0)
 			break;
