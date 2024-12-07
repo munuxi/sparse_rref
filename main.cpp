@@ -20,7 +20,7 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	std::string version = "v0.2.1";
+	std::string version = "v0.2.2_preview";
 	argparse::ArgumentParser program("sparserref", version);
 	program.set_usage_max_line_width(80);
 	program.add_description("(exact) Sparse Reduced Row Echelon Form " + version);
@@ -184,8 +184,13 @@ int main(int argc, char** argv) {
 	if (opt->search_depth == 0)
 		opt->search_depth = INT_MAX;
 
+	//// check direct rref
+	//sparse_mat_t<ulong> mat_Zp_2;
+	//sparse_mat_init(mat_Zp_2, mat_Zp->nrow, mat_Zp->ncol);
+	//sparse_mat_set(mat_Zp_2, mat_Zp);
+
 	start = sparse_base::clocknow();
-	std::vector<std::pair<slong, slong>> pivots;
+	std::vector<std::vector<pivot_t>> pivots;
 	if (prime == 0) {
 		pivots = sparse_mat_rref(mat_Q, F, pool, opt);
 	}
@@ -197,7 +202,20 @@ int main(int argc, char** argv) {
 	std::cout << "-------------------" << std::endl;
 	printtime("RREF");
 
-	std::cout << "rank: " << pivots.size() << " ";
+	//start = sparse_base::clocknow();
+	//sparse_mat_direct_rref(mat_Zp_2, pivots, F, pool, opt);
+	//if (opt->is_back_sub) {
+	//	triangular_solver(mat_Zp_2, pivots, F, opt, -1, pool);
+	//}
+	//end = sparse_base::clocknow();
+	//std::cout << "-------------------" << std::endl;
+	//printtime("DIRECT RREF");
+
+	size_t rank = 0;
+	for (auto p : pivots) {
+		rank += p.size();
+	}
+	std::cout << "rank: " << rank << " ";
 	if (prime == 0) {
 		printmatinfo(mat_Q);
 	}
@@ -216,8 +234,10 @@ int main(int argc, char** argv) {
 	if (program["--output-pivots"] == true) {
 		outname_add = ".piv";
 		file2.open(outname + outname_add);
-		for (auto& ii : pivots)
-			file2 << ii.first + 1 << ", " << ii.second + 1 << '\n';
+		for (auto p : pivots) {
+			for (auto ii : p)
+				file2 << ii.first + 1 << ", " << ii.second + 1 << '\n';
+		}
 		file2.close();
 	}
 	
@@ -238,6 +258,11 @@ int main(int argc, char** argv) {
 		// s_free(buffer.second);
 	}
 	file2.close();
+
+	//std::ofstream file3;
+	//file3.open(outname + outname_add + "_2");
+	//sparse_mat_write(mat_Zp_2, file3);
+	//file3.close();
 
 	if (program["--kernel"] == true) {
 		outname_add = ".kernel";

@@ -54,7 +54,7 @@ Usage: sparserref [--help] [--version] [--output VAR]
                   [--no-backward-substitution]
                   input_file
 
-(exact) Sparse Reduced Row Echelon Form v0.2.1
+(exact) Sparse Reduced Row Echelon Form v0.2.2_preview
 
 Positional arguments:
   input_file                  input file in matrix market format
@@ -76,7 +76,7 @@ Optional arguments:
   --no-backward-substitution  no backward substitution
 ```
 
-The main function is `sparse_mat_rref`, its output is its pivots `std::vector<std::pair<slong,slong>>` (slong is integer), and it modifies the input matrix $M$ to its RREF $\Lambda$.
+The main function is `sparse_mat_rref`, its output is its pivots, and it modifies the input matrix $M$ to its RREF $\Lambda$.
 
 One main struct is `sparse_vec_t`, which contains two lists: the first is the list of indices of nonzero entries, and the second is entries. Another main struct is `sparse_mat_t`, which contains an array of `sparse_vec_t` and some other information.
 
