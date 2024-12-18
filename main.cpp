@@ -244,13 +244,19 @@ int main(int argc, char** argv) {
 		file2.open(outname + outname_add);
 		if (prime == 0) {
 			sfmpq_mat_t K;
-			sparse_mat_rref_kernel(K, mat_Q, pivots, F, pool);
-			sparse_mat_write(K, file2);
+			int krank = sparse_mat_rref_kernel(K, mat_Q, pivots, F, pool);
+			if (krank > 0)
+				sparse_mat_write(K, file2);
+			else
+				std::cout << "kernel is empty" << std::endl;
 		}
 		else {
 			snmod_mat_t K;
-			sparse_mat_rref_kernel(K, mat_Zp, pivots, F, pool);
-			sparse_mat_write(K, file2);
+			int krank = sparse_mat_rref_kernel(K, mat_Zp, pivots, F, pool);
+			if (krank > 0)
+				sparse_mat_write(K, file2);
+			else 
+				std::cout << "kernel is empty" << std::endl;
 		}
 		file2.close();
 	}

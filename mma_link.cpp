@@ -114,18 +114,20 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
             nownnz++;
         }
     }
-    // output K
-    for (auto i = 0; i < K->nrow; i++) {
-        auto therow = K->rows + i;
-        for (auto j = 0; j < therow->nnz; j++) {
-            posdata[2 * nownnz] = A->nrow + i + 1;
-            posdata[2 * nownnz + 1] = therow->indices[j] + 1;
-            valdata[nownnz] = therow->entries[j];
-            nownnz++;
+    if (len > 0) {
+        // output K
+        for (auto i = 0; i < K->nrow; i++) {
+            auto therow = K->rows + i;
+            for (auto j = 0; j < therow->nnz; j++) {
+                posdata[2 * nownnz] = A->nrow + i + 1;
+                posdata[2 * nownnz + 1] = therow->indices[j] + 1;
+                valdata[nownnz] = therow->entries[j];
+                nownnz++;
+            }
         }
+        sparse_mat_clear(K);
     }
     sparse_mat_clear(A);
-    sparse_mat_clear(K);
 
     MSparseArray result = 0;
     auto err = sf->MSparseArray_fromExplicitPositions(pos, val, dim, 0, &result);
