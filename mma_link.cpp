@@ -87,7 +87,10 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     auto len = sparse_mat_rref_kernel(K, A, pivots, F, pool);
     auto rank = pivots.size();
     
-    nnz = sparse_mat_nnz(A) + sparse_mat_nnz(K);
+	if (len == 0) 
+        nnz = sparse_mat_nnz(A);
+    else 
+        nnz = sparse_mat_nnz(A) + sparse_mat_nnz(K);
 
     MTensor pos, val, dim;
     mint dims_r2[] = {nnz, 2};
