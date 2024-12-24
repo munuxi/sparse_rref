@@ -16,21 +16,6 @@
 #include <unordered_set>
 #include <vector>
 
-// scalar array
-template <typename T> struct scalar_s {
-	size_t rank = 1;
-	T* data = NULL;
-};
-
-template <typename T> struct is_scalar_s : std::false_type {};
-template <typename T> struct is_scalar_s<scalar_s<T>> : std::true_type {};
-template <typename T> struct is_scalar_s<const scalar_s<T>> : std::true_type {};
-
-template <typename T> struct scalar_s_decay { using type = T; };
-template <typename T> struct scalar_s_decay<scalar_s<T>> { using type = T; };
-template <typename T> struct scalar_s_decay<const scalar_s<T>> { using type = T; };
-
-
 // Memory management
 
 template <typename T>
@@ -39,39 +24,13 @@ inline T* s_malloc(const size_t size) {
 }
 
 template <typename T>
-scalar_s<T>* s_malloc(const size_t size, const size_t rank) {
-	scalar_s<T>* s = (scalar_s<T>*)std::malloc(size * sizeof(scalar_s<T>));
-	s->data = (T*)std::malloc(rank * size * sizeof(T));
-	for (size_t i = 0; i < size; i++) {
-		s[i].rank = rank;
-		s[i].data = s->data + i * rank;
-	}
-	return s;
-}
-
-template <typename T>
 inline void s_free(T* s) {
-	if constexpr (is_scalar_s<T>::value) {
-		std::free(s->data);
-		s->data = NULL;
-	}
 	std::free(s);
 }
 
 template <typename T>
 inline T* s_realloc(T* s, const size_t size) {
 	return (T*)std::realloc(s, size * sizeof(T));
-}
-
-template <typename T>
-scalar_s<T>* s_realloc(scalar_s<T>* s, const size_t size, const size_t rank) {
-	auto ptr = (T*)std::realloc(s->data, rank * size * sizeof(T));
-	scalar_s<T>* new_s = (scalar_s<T>*)std::realloc(s, size * sizeof(scalar_s<T>));
-	for (size_t i = 0; i < size; i++) {
-		new_s[i].rank = rank;
-		new_s[i].data = ptr + i * rank;
-	}
-	return new_s;
 }
 
 template <typename T>
@@ -112,6 +71,48 @@ namespace sparse_base {
 		str.erase(std::remove_if(str.begin(), str.end(),
 			[](unsigned char x) { return std::isspace(x); }),
 			str.end());
+	}
+
+	template <typename T> inline T* binarysearch(T* begin, T* end, T val) {
+		auto ptr = std::lower_bound(begin, end, val);
+		if (ptr == end || *ptr == val)
+			return ptr;
+		else
+			return end;
+	}
+
+	template <typename T> inline T* lower_bound(T* begin, T* end, uint16_t rank, T* val) {
+		auto len = (end - begin) / rank;
+		T** vec = s_malloc<T*>(len);
+		for (size_t i = 0; i < len; i++)
+			vec[i] = begin + rank * i;
+		T** ptr_s = std::lower_bound(vec, vec + len, val,
+			[&rank](const T* a, const T* b) {
+				// lex order
+				for (uint16_t i = 0; i < rank; i++) {
+					if (a[i] < b[i])
+						return true;
+					else if (a[i] > b[i])
+						return false;
+				}
+				return false;
+			}
+		);
+		if (ptr_s == vec + len) {
+			s_free(vec);
+			return end;
+		}
+		T* ptr = *ptr_s;
+		s_free(vec);
+		return ptr;
+	}
+
+	template <typename T> inline T* binarysearch(T* begin, T* end, uint16_t rank, T* val) {
+		auto ptr = sparse_base::lower_bound(begin, end, rank, val);
+		if (ptr == end || std::equal(ptr, ptr + rank, val))
+			return ptr;
+		else
+			return end;
 	}
 
 	inline std::vector<std::string> SplitString(const std::string& s, const std::string delim) {

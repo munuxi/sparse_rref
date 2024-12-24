@@ -695,7 +695,7 @@ void triangular_solver_3(sparse_mat_t<T> mat, std::vector<std::vector<pivot_t>>&
 // mode : true: very sparse < SPARSE_BOUND%
 template <typename T>
 void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots,
-	int ordering, field_t F, T* tmpvec, bool mode) {
+	int ordering, field_t F, T* tmpvec, const bool mode) {
 	if (ordering < 0) {
 		std::vector<pivot_t> npivots(pivots.rbegin(), pivots.rend());
 		schur_complete(mat, row, npivots, -ordering, F, tmpvec, mode);
@@ -756,7 +756,7 @@ void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots
 			nonzero_c.erase(c);
 		}
 		scalar_clear(entry);
-		};
+	};
 
 	if (mode) {
 		std::set<slong> nonzero_c;
@@ -964,8 +964,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 			scalar_inv(scalar, sparse_mat_entry(mat, r, *cp), F);
 			sparse_vec_rescale(sparse_mat_row(mat, r), scalar, F);
 		}
-		pivots.push_back(std::move(n_pivots));
-		n_pivots = pivots.back();
+		pivots.push_back(n_pivots);
 		rank += n_pivots.size();
 
 		ulong n_leftrows = 0;
@@ -1182,8 +1181,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 			scalar_inv(scalar, sparse_mat_entry(mat, *rp, c, true), F);
 			sparse_vec_rescale(sparse_mat_row(mat, *rp), scalar, F);
 		}
-		pivots.push_back(std::move(n_pivots));
-		n_pivots = pivots.back();
+		pivots.push_back(n_pivots);
 		rank += n_pivots.size();
 
 		// reorder the rows, move ps to the front
