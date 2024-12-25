@@ -1,27 +1,35 @@
-/* Copyright 2024 Zhenjie Li (Li, Zhen Jie)
- *    To compile the library, WolframLibrary.h and WolframSparseLibrary.h are required,
- *    which are included in the Mathematica installation directory.
- *
- *    The output of modrref is the join of the rref of A and its kernel.
- *
- *    To load it in Mathematica, use the following code (as an example):
- *
- *    ```mathematica
- *
- *    rreflib = LibraryFunctionLoad[
- *        "rreflib.dll", "modrref",
- *        {{LibraryDataType[SparseArray],
- *          "Constant"}, {Integer}, {Integer}, {Integer}}, {LibraryDataType[SparseArray],
- *          "Shared"}
- *    ];
- *    
- *    (* the first matrix is the result of rref, and the second is its kernel *)
- *    modprref[mat_SparseArray, p_Integer, nthread_ : 1, method_ : 1] := 
- *        With[{joinedmat = rreflib[mat, p, nthread, method]},
- *         {joinedmat[[;; Length@mat]], joinedmat[[Length@mat + 1 ;;]]}];
- *
- *    ```
- */
+/*
+    Copyright (C) 2024 Zhenjie Li (Li, Zhenjie)
+
+    This file is part of Sparse_rref. The Sparse_rref is free software:
+    you can redistribute it and/or modify it under the terms of the MIT
+    License.
+*/
+
+/*
+    To compile the library, WolframLibrary.h and WolframSparseLibrary.h are required,
+    which are included in the Mathematica installation directory.
+
+    The output of modrref is the join of the rref of A and its kernel.
+
+    To load it in Mathematica, use the following code (as an example):
+
+    ```mathematica
+
+    rreflib = LibraryFunctionLoad[
+        "rreflib.dll", "modrref",
+        {{LibraryDataType[SparseArray],
+          "Constant"}, {Integer}, {Integer}, {Integer}}, {LibraryDataType[SparseArray],
+          "Shared"}
+    ];
+    
+    (* the first matrix is the result of rref, and the second is its kernel *)
+    modprref[mat_SparseArray, p_Integer, nthread_ : 1, method_ : 1] := 
+        With[{joinedmat = rreflib[mat, p, nthread, method]},
+         {joinedmat[[;; Length@mat]], joinedmat[[Length@mat + 1 ;;]]}];
+
+    ```
+*/
 
 #include <string>
 #include "sparse_mat.h"

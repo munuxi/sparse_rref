@@ -1,3 +1,11 @@
+/*
+	Copyright (C) 2024 Zhenjie Li (Li, Zhenjie)
+
+	This file is part of Sparse_rref. The Sparse_rref is free software:
+	you can redistribute it and/or modify it under the terms of the MIT
+	License.
+*/
+
 #ifndef SPARSE_BASE_H
 #define SPARSE_BASE_H
 

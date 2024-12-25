@@ -1,3 +1,11 @@
+/*
+	Copyright (C) 2024 Zhenjie Li (Li, Zhenjie)
+
+	This file is part of Sparse_rref. The Sparse_rref is free software:
+	you can redistribute it and/or modify it under the terms of the MIT
+	License.
+*/
+
 // // use mimalloc to replace the default malloc
 // #include <cstdlib>
 // #include "mimalloc-override.h"
@@ -20,7 +28,7 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	std::string version = "v0.2.2_preview";
+	std::string version = "v0.2.3_preview";
 	argparse::ArgumentParser program("sparserref", version);
 	program.set_usage_max_line_width(80);
 	program.add_description("(exact) Sparse Reduced Row Echelon Form " + version);

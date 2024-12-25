@@ -1,3 +1,12 @@
+/*
+	Copyright (C) 2024 Zhenjie Li (Li, Zhenjie)
+
+	This file is part of Sparse_rref. The Sparse_rref is free software:
+	you can redistribute it and/or modify it under the terms of the MIT
+	License.
+*/
+
+
 #ifndef SPARSE_TENSOR_H
 #define SPARSE_TENSOR_H
 
@@ -146,10 +155,6 @@ template <typename T> struct sparse_tensor_struct {
 		return rowptr[dims[0]];
 	}
 
-	inline ulong get_rank() {
-		return this->rank;
-	}
-
 	std::vector<ulong> row_nums() {
 		return sparse_base::difference(rowptr);
 	}
@@ -291,18 +296,6 @@ template <typename T> struct sparse_tensor_struct {
 		}
 		return B;
 	}
-
-	// only for test
-	void print_test() {
-		for (ulong i = 0; i < dims[0]; i++) {
-			for (ulong j = rowptr[i]; j < rowptr[i + 1]; j++) {
-				std::cout << i << " ";
-				for (ulong k = 0; k < rank - 1; k++)
-					std::cout << colptr[j * (rank - 1) + k] << " ";
-				std::cout << " : " << scalar_to_str(valptr + j) << std::endl;
-			}
-		}
-	}
 };
 
 enum SPARSE_TYPE {
@@ -321,10 +314,11 @@ template <typename T> struct sparse_tensor_t<T, SPARSE_CSR> {
 	sparse_tensor_t(std::vector<ulong> l, ulong aoc = 8) : csr(l, aoc) {}
 	sparse_tensor_t(const sparse_tensor_t& l) : csr(l.csr) {}
 	sparse_tensor_t(sparse_tensor_t&& l) noexcept : csr(std::move(l.csr)) {}
-
+	sparse_tensor_t& operator=(const sparse_tensor_t& l) { csr = l.csr; return *this; }
+	sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept { csr = std::move(l.csr); return *this; }
 	
-	inline ulong nnz() { return csr.nnz(); }
-	inline ulong get_rank() { return csr.get_rank(); }
+	inline ulong nnz() { return csr.rowptr[csr.dims[0]]; }
+	inline ulong rank() { return csr.rank; }
 	inline void insert(std::vector<ulong> l, T* val, bool mode = true) { csr.insert(l, val, mode); }
 	inline void push_back(std::vector<ulong> l, T* val) { csr.push_back(l, val); }
 	inline void canonicalize() { csr.canonicalize(); }
@@ -334,7 +328,17 @@ template <typename T> struct sparse_tensor_t<T, SPARSE_CSR> {
 		return B;
 	}
 
-	inline void print_test() { csr.print_test(); }
+	// only for test
+	void print_test() {
+		for (ulong i = 0; i < csr.dims[0]; i++) {
+			for (ulong j = csr.rowptr[i]; j < csr.rowptr[i + 1]; j++) {
+				std::cout << i << " ";
+				for (ulong k = 0; k < csr.rank - 1; k++)
+					std::cout << csr.colptr[j * (csr.rank - 1) + k] << " ";
+				std::cout << " : " << scalar_to_str(csr.valptr + j) << std::endl;
+			}
+		}
+	}
 };
 
 template <typename T> struct sparse_tensor_t<T, SPARSE_LIL> {
@@ -351,9 +355,11 @@ template <typename T> struct sparse_tensor_t<T, SPARSE_LIL> {
 	sparse_tensor_t(std::vector<ulong> l, ulong aoc = 8) : csr(prepend_num(l, 1), aoc) {}
 	sparse_tensor_t(const sparse_tensor_t& l) : csr(l.csr) {}
 	sparse_tensor_t(sparse_tensor_t&& l) noexcept : csr(std::move(l.csr)) {}
+	sparse_tensor_t& operator=(const sparse_tensor_t& l) { csr = l.csr; return *this; }
+	sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept { csr = std::move(l.csr); return *this; }
 
-	inline ulong nnz() { return csr.nnz(); }
-	inline ulong get_rank() { return csr.get_rank(); }
+	inline ulong nnz() { return csr.rowptr[csr.dims[0]]; }
+	inline ulong rank() { return csr.rank; }
 	inline void insert(std::vector<ulong> l, T* val, bool mode = true) { csr.insert(prepend_num(l), val, mode); }
 	inline void push_back(std::vector<ulong> l, T* val) { csr.push_back(prepend_num(l), val); }
 	inline void canonicalize() { csr.canonicalize(); }
@@ -367,14 +373,10 @@ template <typename T> struct sparse_tensor_t<T, SPARSE_LIL> {
 	}
 
 	void print_test() {
-		auto rowptr = csr.rowptr;
-		auto colptr = csr.colptr;
-		auto valptr = csr.valptr;
-		auto rank = csr.rank;
-		for (ulong j = 0; j < rowptr[1]; j++) {
-			for (ulong k = 0; k < rank - 1; k++)
-				std::cout << colptr[j * (rank - 1) + k] << " ";
-			std::cout << " : " << scalar_to_str(valptr + j) << std::endl;
+		for (ulong j = 0; j < csr.rowptr[1]; j++) {
+			for (ulong k = 0; k < csr.rank - 1; k++)
+				std::cout << csr.colptr[j * (csr.rank - 1) + k] << " ";
+			std::cout << " : " << scalar_to_str(csr.valptr + j) << std::endl;
 		}
 	}
 };
