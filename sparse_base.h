@@ -16,8 +16,6 @@
 #include <unordered_set>
 #include <vector>
 
-#define NULL nullptr
-
 // Memory management
 
 template <typename T>
@@ -83,7 +81,7 @@ namespace sparse_base {
 			return end;
 	}
 
-	template <typename T> inline T* lower_bound(T* begin, T* end, uint16_t rank, T* val) {
+	template <typename T> inline T* lower_bound(T* begin, T* end, ulong rank, T* val) {
 		auto len = (end - begin) / rank;
 		T** vec = s_malloc<T*>(len);
 		for (size_t i = 0; i < len; i++)
@@ -91,7 +89,7 @@ namespace sparse_base {
 		T** ptr_s = std::lower_bound(vec, vec + len, val,
 			[&rank](const T* a, const T* b) {
 				// lex order
-				for (uint16_t i = 0; i < rank; i++) {
+				for (ulong i = 0; i < rank; i++) {
 					if (a[i] < b[i])
 						return true;
 					else if (a[i] > b[i])
