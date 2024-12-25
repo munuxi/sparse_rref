@@ -16,6 +16,8 @@
 #include <unordered_set>
 #include <vector>
 
+#define NULL nullptr
+
 // Memory management
 
 template <typename T>
