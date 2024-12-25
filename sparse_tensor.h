@@ -9,11 +9,11 @@
 // CSR format for sparse tensor
 template <typename T> struct sparse_tensor_t {
 	ulong rank;
-	std::vector<ulong> dims;
-	std::vector<ulong> rowptr;
 	ulong alloc;
 	ulong* colptr;
 	T* valptr;
+	std::vector<ulong> dims;
+	std::vector<ulong> rowptr;
 
 	//empty constructor
 	sparse_tensor_t() {
@@ -34,7 +34,7 @@ template <typename T> struct sparse_tensor_t {
 		valptr = s_malloc<T>(alloc);
 		if constexpr (std::is_same_v<T, fmpq>) {
 			for (ulong i = 0; i < alloc; i++)
-				fmpq_init(valptr + i);
+				scalar_init(valptr + i);
 		}
 	}
 
@@ -69,7 +69,7 @@ template <typename T> struct sparse_tensor_t {
 			return;
 		if constexpr (std::is_same<T, fmpq>::value) {
 			for (ulong i = 0; i < alloc; i++)
-				fmpq_clear(valptr + i);
+				scalar_clear(valptr + i);
 		}
 		s_free(valptr);
 		s_free(colptr);
@@ -88,13 +88,13 @@ template <typename T> struct sparse_tensor_t {
 			valptr = s_realloc<T>(valptr, size);
 			if constexpr (std::is_same<T, fmpq>::value) {
 				for (ulong i = alloc; i < size; i++)
-					fmpq_init(valptr + i);
+					scalar_init(valptr + i);
 			}
 		}
 		else if (size < alloc) {
 			if constexpr (std::is_same<T, fmpq>::value) {
 				for (ulong i = size; i < alloc; i++)
-					fmpq_clear(valptr + i);
+					scalar_clear(valptr + i);
 			}
 			valptr = s_realloc<T>(valptr, size);
 		}
@@ -144,6 +144,10 @@ template <typename T> struct sparse_tensor_t {
 
 	inline ulong nnz() {
 		return rowptr[dims[0]];
+	}
+
+	std::vector<ulong> row_nums() {
+		return sparse_base::difference(rowptr);
 	}
 
 	// remove zero entries
@@ -265,19 +269,7 @@ template <typename T> struct sparse_tensor_t {
 		scalar_set(valptr + index, val);
 	}
 
-	// only for test
-	void print_test() {
-		for (ulong i = 0; i < dims[0]; i++) {
-			for (ulong j = rowptr[i]; j < rowptr[i + 1]; j++) {
-				std::cout << i << " ";
-				for (ulong k = 0; k < rank - 1; k++)
-					std::cout << colptr[j * (rank - 1) + k] << " ";
-				std::cout << " : " << scalar_to_str(valptr + j) << std::endl;
-			}
-		}
-	}
-
-	sparse_tensor_t<T> transpose(const std::vector<ulong>& perm) {
+	sparse_tensor_t<T> transpose(const std::vector<ulong>& perm, bool mode = true) {
 		std::vector<ulong> l(rank);
 		std::vector<ulong> lperm(rank);
 		for (ulong i = 0; i < rank; i++)
@@ -290,10 +282,22 @@ template <typename T> struct sparse_tensor_t {
 					l[k] = colptr[j * (rank - 1) + k - 1];
 				for (ulong k = 0; k < rank; k++)
 					lperm[k] = l[perm[k]];
-				B.insert(lperm, valptr + j);
+				B.insert(lperm, valptr + j, mode);
 			}
 		}
 		return B;
+	}
+
+	// only for test
+	void print_test() {
+		for (ulong i = 0; i < dims[0]; i++) {
+			for (ulong j = rowptr[i]; j < rowptr[i + 1]; j++) {
+				std::cout << i << " ";
+				for (ulong k = 0; k < rank - 1; k++)
+					std::cout << colptr[j * (rank - 1) + k] << " ";
+				std::cout << " : " << scalar_to_str(valptr + j) << std::endl;
+			}
+		}
 	}
 };
 

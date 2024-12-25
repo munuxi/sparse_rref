@@ -145,6 +145,14 @@ namespace sparse_base {
 		return ((double)duration.count() * std::chrono::microseconds::period::num /
 			std::chrono::microseconds::period::den);
 	}
+
+	template <typename T> std::vector<T> difference(std::vector<T> l) {
+		std::vector<T> result;
+		for (size_t i = 1; i < l.size(); i++) {
+			result.push_back(l[i] - l[i - 1]);
+		}
+		return result;
+	}
 }
 
 #endif
