@@ -24,7 +24,8 @@ template <typename T> struct sparse_tensor_t {
 	}
 
 	// Constructor with dimensions
-	sparse_tensor_t(std::vector<ulong> l, ulong aoc = 8) {
+
+	void init(std::vector<ulong> l, ulong aoc = 8) {
 		dims = l;
 		rank = l.size();
 		rowptr.resize(l[0] + 1);
@@ -36,23 +37,16 @@ template <typename T> struct sparse_tensor_t {
 				fmpq_init(valptr + i);
 		}
 	}
+
+	sparse_tensor_t(std::vector<ulong> l, ulong aoc = 8) {
+		init(l, aoc);
+	}
 	
 	// Copy constructor
 	sparse_tensor_t(const sparse_tensor_t& l) {
-		dims = l.dims;
-		rank = l.rank;
-		rowptr.resize(dims[0] + 1);
-		for (ulong i = 0; i <= dims[0]; i++)
-			rowptr[i] = l.rowptr[i];
-		alloc = l.alloc;
-		colptr = s_malloc<ulong>(alloc * rank);
-		valptr = s_malloc<T>(alloc);
-		if constexpr (std::is_same<T, fmpq>::value) {
-			for (ulong i = 0; i < alloc * rank; i++)
-				fmpq_init(valptr + i);
-		}
-		for (ulong i = 0; i < alloc * rank; i++)
-			colptr[i] = l.colptr[i];
+		init(l.dims, l.alloc);
+		std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
+		std::copy(l.colptr, l.colptr + alloc * rank, colptr);
 		for (ulong i = 0; i < alloc; i++)
 			scalar_set(valptr + i, l.valptr + i);
 	}
@@ -67,9 +61,10 @@ template <typename T> struct sparse_tensor_t {
 		l.colptr = NULL;
 		valptr = l.valptr;
 		l.valptr = NULL;
+		l.alloc = 0; // important for clear
 	}
 
-	~sparse_tensor_t() {
+	void clear() {
 		if (alloc == 0)
 			return;
 		if constexpr (std::is_same<T, fmpq>::value) {
@@ -81,51 +76,39 @@ template <typename T> struct sparse_tensor_t {
 		alloc = 0;
 	}
 
+	~sparse_tensor_t() {
+		clear();
+	}
+
 	// Copy assignment
 	sparse_tensor_t& operator=(const sparse_tensor_t& l) {
 		if (this == &l)
 			return *this;
-		if (colptr != NULL)
-			s_free(colptr);
-		if (valptr != NULL) {
-			if constexpr (std::is_same<T, fmpq>::value) {
-				for (ulong i = 0; i < alloc; i++)
-					fmpq_clear(valptr + i);
-			}
-			s_free(valptr);
+		if (alloc == 0) {
+			init(l.dims, l.alloc);
+			std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
+			std::copy(l.colptr, l.colptr + alloc * rank, colptr);
+			for (ulong i = 0; i < alloc; i++)
+				scalar_set(valptr + i, l.valptr + i);
+			return *this;
 		}
 		dims = l.dims;
 		rank = l.rank;
 		rowptr.resize(dims[0] + 1);
-		for (ulong i = 0; i <= dims[0]; i++)
-			rowptr[i] = l.rowptr[i];
-		alloc = l.alloc;
-		colptr = s_malloc<ulong>(alloc * rank);
-		valptr = s_malloc<T>(alloc);
-		if constexpr (std::is_same<T, fmpq>::value) {
-			for (ulong i = 0; i < alloc * rank; i++)
-				fmpq_init(valptr + i);
-		}
-		for (ulong i = 0; i < alloc * rank; i++)
-			colptr[i] = l.colptr[i];
+		if (alloc < l.alloc)
+			reserve(l.alloc);
+		std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
+		std::copy(l.colptr, l.colptr + alloc * rank, colptr);
 		for (ulong i = 0; i < alloc; i++)
 			scalar_set(valptr + i, l.valptr + i);
 		return *this;
 	}
 
 	// Move assignment
-	sparse_tensor_t& operator=(sparse_tensor_t&& l) {
+	sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept {
 		if (this == &l)
 			return *this;
-		if (colptr != NULL)
-			s_free(colptr);
-		if (valptr != NULL) {
-			if constexpr (std::is_same<T, fmpq>::value) {
-				for (ulong i = 0; i < alloc; i++)
-					fmpq_clear(valptr + i);
-			}
-			s_free(valptr);
-		}
+		clear();
 		dims = l.dims;
 		rank = l.rank;
 		rowptr = std::move(l.rowptr);
@@ -134,6 +117,7 @@ template <typename T> struct sparse_tensor_t {
 		l.colptr = NULL;
 		valptr = l.valptr;
 		l.valptr = NULL;
+		l.alloc = 0; // important
 		return *this;
 	}
 
@@ -173,6 +157,8 @@ template <typename T> struct sparse_tensor_t {
 	}
 
 	void reserve(ulong size) {
+		if (size == alloc)
+			return;
 		colptr = s_realloc<ulong>(colptr, size * rank);
 		if (size > alloc) {
 			valptr = s_realloc<T>(valptr, size);
