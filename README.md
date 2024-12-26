@@ -1,5 +1,5 @@
 # Sparse RREF
-(exact) Sparse Reduced Row Echelon Form (RREF) in C++
+(exact) Sparse Reduced Row Echelon Form (RREF) **with row and column permutations** in C++
 
 ---
 
@@ -7,7 +7,7 @@
 
 ----
 
-This head only library intends to compute the exact RREF of a sparse matrix over finite field or rational field, which is a common problem in linear algebra, and is widely used for number theory, cryptography, theoretical physics, etc.. The code is based on the FLINT library, which is a C library for number theory. 
+This head only library intends to compute the exact RREF with row and column permutations of a sparse matrix over finite field or rational field, which is a common problem in linear algebra, and is widely used for number theory, cryptography, theoretical physics, etc.. The code is based on the FLINT library, which is a C library for number theory. 
 
 Some algorithms are inspired by [Spasm](https://github.com/cbouilla/spasm), but we do not depend on it. The algorithm here is definite (Spasm is random), so once the parameters are given, the result is stable, which is important for some purposes. 
 
@@ -21,11 +21,11 @@ The code mainly depends on [FLINT](https://flintlib.org/) to support arithmetic,
 
 ### What to compute?
 
-For a sparse matrix $M$, the code computes its RREF (with row and column permutation) $\Lambda$. Instead of permute the row and column directly, we keep the row and column ordering of the matrix, i.e. the i-th row/column of $\Lambda$ is the i-th row/column of $M$, and the row and column permutation of this RREF is implicitly given by its pivots, which is a list of pairs of (row,col). In the ordering of pivots, the $\Lambda$ is an identity matrix (if `--no-backward-substitution` is enabled, it is upper triangular). 
+For a sparse matrix $M$, the code computes its RREF  $\Lambda$ with row and column permutations. Instead of permute the row and column directly, we keep the row and column ordering of the matrix, i.e. the i-th row/column of $\Lambda$ is the i-th row/column of $M$, and the row and column permutation of this RREF is implicitly given by its pivots, which is a list of pairs of (row,col). In the ordering of pivots, the submatrix $\Lambda[\text{rows in pivots},\text{cols in pivots}]$ of $\Lambda$ is an identity matrix (if `--no-backward-substitution` is enabled, it is upper triangular). 
 
 ### How to use compile code
 
-We now only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime less than $2^{\texttt{BIT}-1}$ (it's $2^{63}$ on 64-bit machine), but it is possible to generalize to other fields/rings by some small modification.
+We now only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime less than $2^{\texttt{BIT}-1}$ (it's $2^{63}$ on a 64-bit machine), but it is possible to generalize to other fields/rings by some small modification.
 
 It is highly recommended to use [mimalloc](https://github.com/microsoft/mimalloc) (or other similar library) to dynamically override the standard malloc, especially on Windows.
 
