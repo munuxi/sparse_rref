@@ -199,10 +199,6 @@ template <typename T> struct sparse_tensor_struct {
 		return std::make_pair(colptr + rowptr[i] * (rank - 1), valptr + rowptr[i]);
 	}
 
-	std::pair<ulong*, T*> operator[](ulong i) {
-		return row(i);
-	}
-
 	ulong* entry_lower_bound(ulong* l) {
 		auto begin = row(l[0]).first;
 		auto end = row(l[0] + 1).first;
@@ -226,14 +222,6 @@ template <typename T> struct sparse_tensor_struct {
 
 	ulong* entry_ptr(std::vector<ulong> l) {
 		return entry_ptr(l.data());
-	}
-
-	ulong* operator[](std::vector<ulong> l) {
-		return entry_ptr(l);
-	}
-
-	ulong* operator[](ulong* l) {
-		return entry_ptr(l);
 	}
 
 	// unordered, push back on the end of the row
@@ -429,6 +417,51 @@ template <typename T> struct sparse_tensor_t<T, SPARSE_LIL> {
 			for (ulong k = 0; k < data.rank - 1; k++)
 				std::cout << data.colptr[j * (data.rank - 1) + k] << " ";
 			std::cout << " : " << scalar_to_str(data.valptr + j) << std::endl;
+		}
+	}
+};
+
+template <typename T> struct sparse_tensor_t<T, SPARSE_LR> {
+	std::vector<sparse_tensor_t<T, SPARSE_LIL>> data;
+
+	sparse_tensor_t() {}
+	~sparse_tensor_t() {}
+	sparse_tensor_t(std::vector<ulong> l, ulong aoc = 1) {
+		data.resize(l[0]);
+		for (ulong i = 0; i < l[0]; i++)
+			data[i] = sparse_tensor_t<T, SPARSE_LIL>(std::vector<ulong>(l.begin() + 1, l.end()), aoc);
+	}
+	sparse_tensor_t(const sparse_tensor_t& l) : data(l.data) {}
+	sparse_tensor_t(sparse_tensor_t&& l) noexcept : data(std::move(l.data)) {}
+	sparse_tensor_t& operator=(const sparse_tensor_t& l) { data = l.data; return *this; }
+	sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept { data = std::move(l.data); return *this; }
+
+	inline ulong nnz() {
+		ulong nnz = 0;
+		for (auto& a : data)
+			nnz += a.nnz();
+		return nnz;
+	}
+	inline ulong rank() { return data[0].rank() + 1; }
+	inline void set_zero() {
+		for (auto& a : data)
+			a.set_zero();
+	}
+	inline void insert(std::vector<ulong> l, T* val, bool mode = true) {
+		data[l[0]].insert(std::vector<ulong>(l.begin() + 1, l.end()), val, mode);
+	}
+	inline void push_back(std::vector<ulong> l, T* val) {
+		data[l[0]].push_back(std::vector<ulong>(l.begin() + 1, l.end()), val);
+	}
+	inline void canonicalize() {
+		for (auto& a : data)
+			a.canonicalize();
+	}
+
+	void print_test() {
+		for (ulong i = 0; i < data.size(); i++) {
+			std::cout << "Row " << i << std::endl;
+			data[i].print_test();
 		}
 	}
 };
