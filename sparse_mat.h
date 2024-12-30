@@ -632,8 +632,9 @@ void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<std::pair<slong,
 				else if constexpr (std::is_same_v<T, fmpq>) {
 					fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
 				}
+				if (scalar_is_zero(tmpvec + row->indices[i]))
+					nonzero_c.erase(row->indices[i]);
 			}
-			nonzero_c.erase(c);
 		}
 		scalar_clear(entry);
 		};
