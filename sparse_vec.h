@@ -99,7 +99,6 @@ inline void sparse_vec_init(sparse_vec_t<T> vec, ulong alloc = 1) {
 // set zero and clear memory
 template <typename T> inline void sparse_vec_clear(sparse_vec_t<T> vec) {
 	vec->nnz = 0;
-	vec->alloc = 0;
 	s_free(vec->indices);
 	vec->indices = NULL;
 	if constexpr (std::is_same_v<T, fmpq>) {
@@ -110,6 +109,7 @@ template <typename T> inline void sparse_vec_clear(sparse_vec_t<T> vec) {
 		s_free(vec->entries);
 		vec->entries = NULL;
 	}
+	vec->alloc = 0;
 }
 
 template <typename T>
