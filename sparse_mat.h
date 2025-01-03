@@ -576,8 +576,11 @@ void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 	// then do the elimination parallelly
 	int nthreads = pool.get_thread_count();
 	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
+	std::vector<sparse_base::uset> nonzero_c(nthreads);
 	for (size_t i = 0; i < mat->ncol * nthreads; i++)
 		scalar_init(cachedensedmat + i);
+	for (size_t i = 0; i < nthreads; i++)
+		nonzero_c[i].resize(mat->ncol);
 
 	size_t index = 0;
 	while (index < pivots.size()) {
@@ -593,7 +596,7 @@ void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 			auto id = BS::this_thread::get_index().value();
 			for (ulong j = s; j < e; j++) {
 				schur_complete(mat, pivots[j].first, n_pivots, 1,
-					F, cachedensedmat + id * mat->ncol, true);
+					F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 			}
 			}, (((pivots.size() - end) < 20 * nthreads) ? 0 : 10 * nthreads));
 		pool.wait();
@@ -651,10 +654,14 @@ void triangular_solver_3(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 		return;
 	}
 	
+	std::vector<sparse_base::uset> nonzero_c(nthreads);
+
 	if (cachedensedmat == NULL) {
 		cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
 		for (size_t i = 0; i < mat->ncol * nthreads; i++)
 			scalar_init(cachedensedmat + i);
+		for (size_t i = 0; i < nthreads; i++)
+			nonzero_c[i].resize(mat->ncol);
 	}
 
 	auto [n_pivots, left_pivots] = apart_pivots_2(mat, pivots);
@@ -667,7 +674,7 @@ void triangular_solver_3(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 		auto id = BS::this_thread::get_index().value();
 		for (ulong j = s; j < e; j++) {
 			schur_complete(mat, left_pivots[j].first, n_pivots, 1,
-				F, cachedensedmat + id * mat->ncol, true);
+				F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 		}
 		}, ((left_pivots.size() < 20 * nthreads) ? 0 : 10 * nthreads));
 	pool.wait();
@@ -754,13 +761,16 @@ void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots
 	scalar_clear(entry);
 	
 	therow->nnz = 0;
+	auto bitset_size = nonzero_c.bitset_size;
 	for (size_t i = 0; i < nonzero_c.size(); i++) {
 		if (nonzero_c[i].none())
 			continue;
-		auto size = nonzero_c.bitset_size;
-		for (size_t j = 0; j < size; j++) {
-			if (nonzero_c[i][j] && !scalar_is_zero(tmpvec + i * size + j))
-				_sparse_vec_set_entry(therow, i * size + j, tmpvec + i * size + j);
+		// depends on Endian & C++20 & bitset_size <= 64
+		// ulong start = std::countr_zero(nonzero_c[i].to_ullong());
+		// ulong end = size - std::countl_zero(nonzero_c[i].to_ullong());
+		for (size_t j = 0; j < bitset_size; j++) {
+			if (nonzero_c[i][j])
+				_sparse_vec_set_entry(therow, i * bitset_size + j, tmpvec + i * bitset_size + j);
 		}
 	}
 }
@@ -795,8 +805,11 @@ void sparse_mat_direct_rref(sparse_mat_t<T>mat,
 	// then do the elimination parallelly
 	int nthreads = pool.get_thread_count();
 	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
+	std::vector<sparse_base::uset> nonzero_c(nthreads);
 	for (size_t i = 0; i < mat->ncol * nthreads; i++)
 		scalar_init(cachedensedmat + i);
+	for (size_t i = 0; i < nthreads; i++)
+		nonzero_c[i].resize(mat->ncol);
 
 	for (auto i = 0; i < pivots.size(); i++) {
 		auto n_pivots = pivots[i];
@@ -826,7 +839,7 @@ void sparse_mat_direct_rref(sparse_mat_t<T>mat,
 			auto id = BS::this_thread::get_index().value();
 			for (ulong j = s; j < e; j++) {
 				schur_complete(mat, leftrows[j], n_pivots, 1,
-					F, cachedensedmat + id * mat->ncol, true);
+					F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 			}
 			}, ((leftrows.size() < 20 * nthreads) ? 0 : 10 * nthreads));
 		pool.wait();
