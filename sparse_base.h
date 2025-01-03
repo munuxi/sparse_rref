@@ -80,6 +80,14 @@ struct rref_option {
 typedef struct rref_option rref_option_t[1];
 
 namespace sparse_base {
+
+	constexpr static const char version[] = "v0.2.4";
+
+	using thread_pool = BS::thread_pool<>; // thread pool
+	inline size_t thread_id() {
+		return BS::this_thread::get_index().value();
+	}
+
 	// string
 	inline void DeleteSpaces(std::string& str) {
 		str.erase(std::remove_if(str.begin(), str.end(),

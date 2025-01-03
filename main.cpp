@@ -28,10 +28,9 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	std::string version = "v0.2.4";
-	argparse::ArgumentParser program("sparserref", version);
+	argparse::ArgumentParser program("sparserref", sparse_base::version);
 	program.set_usage_max_line_width(80);
-	program.add_description("(exact) Sparse Reduced Row Echelon Form " + version);
+	program.add_description("(exact) Sparse Reduced Row Echelon Form " + std::string(sparse_base::version));
 	program.add_argument("input_file")
 		.help("input file in matrix market format");
 	program.add_argument("-o", "--output")
@@ -140,7 +139,7 @@ int main(int argc, char** argv) {
 	}
 
 	int nthread = program.get<int>("--threads");
-	BS::thread_pool pool(nthread);
+	sparse_base::thread_pool pool(nthread);
 	std::cout << "using " << nthread << " threads" << std::endl;
 
 	field_t F;

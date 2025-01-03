@@ -445,7 +445,7 @@ std::vector<std::pair<slong, std::vector<slong>::iterator>> findmanypivots(const
 // lower solver : ordering = 1
 template <typename T>
 void triangular_solver(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
-	field_t F, rref_option_t opt, int ordering, BS::thread_pool& pool) {
+	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool) {
 	bool verbose = opt->verbose;
 	auto printstep = opt->print_step;
 
@@ -464,6 +464,7 @@ void triangular_solver(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 	}
 
 	size_t count = 0;
+	size_t nthreads = pool.get_thread_count();
 	for (size_t i = 0; i < pivots.size(); i++) {
 		size_t index = i;
 		if (ordering < 0)
@@ -478,7 +479,8 @@ void triangular_solver(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 					return;
 				auto entry = sparse_mat_entry(mat, r, pp.second);
 				sparse_vec_sub_mul(sparse_mat_row(mat, r), sparse_mat_row(mat, pp.first), entry, F);
-				});
+				},
+				((thecol.size() < 20 * nthreads) ? 0 : thecol.size() / 10));
 		}
 		pool.wait();
 		
@@ -502,7 +504,7 @@ void triangular_solver(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 
 template <typename T>
 void triangular_solver(sparse_mat_t<T> mat, std::vector<std::vector<pivot_t>>& pivots,
-	field_t F, rref_option_t opt, int ordering, BS::thread_pool& pool) {
+	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool) {
 	std::vector<pivot_t> n_pivots;
 	for (auto p : pivots)
 		n_pivots.insert(n_pivots.end(), p.begin(), p.end());
@@ -563,7 +565,7 @@ std::pair<std::vector<pivot_t>, std::vector<pivot_t>> apart_pivots_2(sparse_mat_
 // TODO: CHECK!!!
 template <typename T>
 void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
-	field_t F, rref_option_t opt, int ordering, BS::thread_pool& pool) {
+	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool) {
 
 	if (ordering < 0) {
 		std::vector<pivot_t> npivots(pivots.rbegin(), pivots.rend());
@@ -593,12 +595,12 @@ void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 		}
 
 		pool.detach_blocks<ulong>(end, pivots.size(), [&](const ulong s, const ulong e) {
-			auto id = BS::this_thread::get_index().value();
+			auto id = sparse_base::thread_id();
 			for (ulong j = s; j < e; j++) {
 				schur_complete(mat, pivots[j].first, n_pivots, 1,
 					F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 			}
-			}, (((pivots.size() - end) < 20 * nthreads) ? 0 : 10 * nthreads));
+			}, (((pivots.size() - end) < 20 * nthreads) ? 0 : pivots.size() / 10));
 		pool.wait();
 
 		if (opt->verbose) {
@@ -618,7 +620,7 @@ void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 
 template <typename T>
 void triangular_solver_2(sparse_mat_t<T> mat, std::vector<std::vector<pivot_t>>& pivots,
-	field_t F, rref_option_t opt, int ordering, BS::thread_pool& pool) {
+	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool) {
 	std::vector<pivot_t> n_pivots;
 	if (ordering < 0) {
 		for (auto i = pivots.rbegin(); i != pivots.rend(); i++) {
@@ -636,7 +638,7 @@ void triangular_solver_2(sparse_mat_t<T> mat, std::vector<std::vector<pivot_t>>&
 // TODO: CHECK!!!
 template <typename T>
 void triangular_solver_3(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
-	field_t F, rref_option_t opt, int ordering, BS::thread_pool& pool, T* cachedensedmat) {
+	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool, T* cachedensedmat) {
 
 	if (ordering < 0) {
 		std::vector<pivot_t> npivots(pivots.rbegin(), pivots.rend());
@@ -671,12 +673,12 @@ void triangular_solver_3(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 	}
 
 	pool.detach_blocks<ulong>(0, left_pivots.size(), [&](const ulong s, const ulong e) {
-		auto id = BS::this_thread::get_index().value();
+		auto id = sparse_base::thread_id();
 		for (ulong j = s; j < e; j++) {
 			schur_complete(mat, left_pivots[j].first, n_pivots, 1,
 				F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 		}
-		}, ((left_pivots.size() < 20 * nthreads) ? 0 : 10 * nthreads));
+		}, ((left_pivots.size() < 20 * nthreads) ? 0 : left_pivots.size() / 10));
 	pool.wait();
 
 	if (opt->verbose) {
@@ -688,7 +690,7 @@ void triangular_solver_3(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 
 template <typename T>
 void triangular_solver_3(sparse_mat_t<T> mat, std::vector<std::vector<pivot_t>>& pivots,
-	field_t F, rref_option_t opt, int ordering, BS::thread_pool& pool, T* cachedensedmat) {
+	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool, T* cachedensedmat) {
 	std::vector<pivot_t> n_pivots;
 	if (ordering < 0) {
 		for (auto i = pivots.rbegin(); i != pivots.rend(); i++) {
@@ -781,7 +783,7 @@ void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots
 template <typename T>
 void sparse_mat_direct_rref(sparse_mat_t<T>mat,
 	std::vector<std::vector<pivot_t>>& pivots,
-	field_t F, BS::thread_pool& pool, rref_option_t opt) {
+	field_t F, sparse_base::thread_pool& pool, rref_option_t opt) {
 	T scalar[1];
 	scalar_init(scalar);
 
@@ -836,12 +838,12 @@ void sparse_mat_direct_rref(sparse_mat_t<T>mat,
 		// upper solver
 		// TODO: check mode
 		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
-			auto id = BS::this_thread::get_index().value();
+			auto id = sparse_base::thread_id();
 			for (ulong j = s; j < e; j++) {
 				schur_complete(mat, leftrows[j], n_pivots, 1,
 					F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 			}
-			}, ((leftrows.size() < 20 * nthreads) ? 0 : 10 * nthreads));
+			}, ((leftrows.size() < 20 * nthreads) ? 0 : leftrows.size() / 10));
 		pool.wait();
 	}
 
@@ -854,7 +856,7 @@ void sparse_mat_direct_rref(sparse_mat_t<T>mat,
 
 template <typename T>
 std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t F,
-	BS::thread_pool& pool, rref_option_t opt) {
+	sparse_base::thread_pool& pool, rref_option_t opt) {
 	// first canonicalize, sort and compress the matrix
 	sparse_mat_compress(mat);
 
@@ -983,12 +985,12 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 		for (auto i : leftrows)
 			now_nnz += mat->rows[i].nnz;
 		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
-			auto id = BS::this_thread::get_index().value();
+			auto id = sparse_base::thread_id();
 			for (ulong i = s; i < e; i++) {
 				schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 				flags[i] = 1;
 			}
-			}, (leftrows.size() < 20 * nthreads ? 0 : 10 * nthreads));
+			}, (leftrows.size() < 20 * nthreads ? 0 : leftrows.size() / 10));
 
 		// reorder the cols, move ps to the front
 		std::unordered_set<slong> indices(ps.size());
@@ -1068,7 +1070,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 // TODO: unify sparse_mat_rref_c and sparse_mat_rref_r
 template <typename T>
 std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t F,
-	BS::thread_pool& pool, rref_option_t opt) {
+	sparse_base::thread_pool& pool, rref_option_t opt) {
 	// first canonicalize, sort and compress the matrix
 	sparse_mat_compress(mat);
 
@@ -1213,14 +1215,14 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 		for (auto i = rowperm.begin() + kk; i != rowperm.end(); i++)
 			now_nnz += mat->rows[*i].nnz;
 		pool.detach_blocks<ulong>(kk, mat->nrow, [&](const ulong s, const ulong e) {
-			auto id = BS::this_thread::get_index().value();
+			auto id = sparse_base::thread_id();
 			for (ulong i = s; i < e; i++) {
 				if (rowpivs[rowperm[i]] != -1)
 					continue;
 				schur_complete(mat, rowperm[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 				flags[i - kk] = 1;
 			}
-			}, ((mat->nrow - kk) < 20 * nthreads ? 0 : 10 * nthreads));
+			}, ((mat->nrow - kk) < 20 * nthreads ? 0 : mat->nrow / 10));
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
 		for (size_t i = 0; i < tranmat->nrow; i++)
 			tranmat->rows[i].nnz = 0;
@@ -1279,7 +1281,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 
 template <typename T>
 std::vector<std::vector<pivot_t>> sparse_mat_rref(sparse_mat_t<T> mat, field_t F,
-	BS::thread_pool& pool, rref_option_t opt) {
+	sparse_base::thread_pool& pool, rref_option_t opt) {
 	std::vector<std::vector<pivot_t>> pivots;
 	if (opt->pivot_dir)
 		pivots = sparse_mat_rref_r(mat, F, pool, opt);
@@ -1296,7 +1298,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref(sparse_mat_t<T> mat, field_t F
 
 template <typename T>
 ulong sparse_mat_rref_kernel(sparse_mat_t<T> K, const sparse_mat_t<T> M,
-	const std::vector<pivot_t>& pivots, field_t F, BS::thread_pool& pool) {
+	const std::vector<pivot_t>& pivots, field_t F, sparse_base::thread_pool& pool) {
 	auto rank = pivots.size();
 	if (rank == M->ncol) 
 		return 0; // full rank, no kernel
@@ -1357,7 +1359,7 @@ ulong sparse_mat_rref_kernel(sparse_mat_t<T> K, const sparse_mat_t<T> M,
 
 template <typename T>
 ulong sparse_mat_rref_kernel(sparse_mat_t<T> K, const sparse_mat_t<T> M,
-	const std::vector<std::vector<pivot_t>>& pivots, field_t F, BS::thread_pool& pool) {
+	const std::vector<std::vector<pivot_t>>& pivots, field_t F, sparse_base::thread_pool& pool) {
 	std::vector<pivot_t> n_pivots;
 	for (auto& p : pivots)
 		n_pivots.insert(n_pivots.end(), p.begin(), p.end());
