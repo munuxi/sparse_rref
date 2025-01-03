@@ -28,7 +28,7 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	std::string version = "v0.2.3_preview";
+	std::string version = "v0.2.4";
 	argparse::ArgumentParser program("sparserref", version);
 	program.set_usage_max_line_width(80);
 	program.add_description("(exact) Sparse Reduced Row Echelon Form " + version);

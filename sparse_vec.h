@@ -13,7 +13,7 @@
 
 #include "scalar.h"
 
-template <typename T, uint16_t rank = 1> struct sparse_vec_struct {
+template <typename T> struct sparse_vec_struct {
 	ulong nnz = 0;
 	ulong alloc = 0;
 	slong* indices = NULL;
@@ -21,14 +21,14 @@ template <typename T, uint16_t rank = 1> struct sparse_vec_struct {
 };
 
 // entries is useless for bool
-template <uint16_t rank>
-struct sparse_vec_struct<bool, rank> {
+template <>
+struct sparse_vec_struct<bool> {
 	ulong nnz = 0;
 	ulong alloc = 0;
 	slong* indices = NULL;
 };
 
-template <typename T, uint16_t rank = 1> using sparse_vec_t = struct sparse_vec_struct<T, rank>[1];
+template <typename T> using sparse_vec_t = struct sparse_vec_struct<T>[1];
 
 typedef sparse_vec_t<ulong> snmod_vec_t;
 typedef sparse_vec_t<fmpq> sfmpq_vec_t;
@@ -36,8 +36,8 @@ typedef sparse_vec_t<fmpq> sfmpq_vec_t;
 // sparse_vec
 
 // memory management
-template <typename T, uint16_t rank>
-void sparse_vec_realloc(sparse_vec_t<T, rank> vec, ulong alloc) {
+template <typename T>
+void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
 	if (alloc == vec->alloc)
 		return;
 	// so sparse_vec_realloc(vec,vec->alloc) is useless
@@ -45,7 +45,7 @@ void sparse_vec_realloc(sparse_vec_t<T, rank> vec, ulong alloc) {
 	vec->alloc = alloc;
 	if (vec->alloc > old_alloc) {
 		// enlarge: init later
-		vec->indices = s_realloc(vec->indices, rank * vec->alloc);
+		vec->indices = s_realloc(vec->indices, vec->alloc);
 		if constexpr (!std::is_same_v<T, bool>) {
 			vec->entries = s_realloc(vec->entries, vec->alloc);
 		}
@@ -60,7 +60,7 @@ void sparse_vec_realloc(sparse_vec_t<T, rank> vec, ulong alloc) {
 			for (ulong i = vec->alloc; i < old_alloc; i++)
 				fmpq_clear((fmpq*)(vec->entries) + i);
 		}
-		vec->indices = s_realloc(vec->indices, rank * vec->alloc);
+		vec->indices = s_realloc(vec->indices, vec->alloc);
 		if constexpr (!std::is_same_v<T, bool>) {
 			vec->entries = s_realloc(vec->entries, vec->alloc);
 		}
@@ -76,11 +76,11 @@ inline T* sparse_vec_entry_pointer(const sparse_vec_t<T> vec, const slong index)
 }
 
 // alloc at least 1 to make sure that indices and entries are not NULL
-template <typename T, uint16_t rank>
-inline void sparse_vec_init(sparse_vec_t<T, rank> vec, ulong alloc = 1) {
+template <typename T>
+inline void sparse_vec_init(sparse_vec_t<T> vec, ulong alloc = 1) {
 	vec->nnz = 0;
 	vec->alloc = alloc;
-	vec->indices = s_malloc<slong>(rank * vec->alloc);
+	vec->indices = s_malloc<slong>(vec->alloc);
 	if constexpr (std::is_same_v<T, bool>) {
 		return;
 	}
@@ -97,7 +97,7 @@ inline void sparse_vec_init(sparse_vec_t<T, rank> vec, ulong alloc = 1) {
 #define sparse_vec_zero(__vec) ((__vec)->nnz = 0)
 
 // set zero and clear memory
-template <typename T, uint16_t rank> inline void sparse_vec_clear(sparse_vec_t<T, rank> vec) {
+template <typename T> inline void sparse_vec_clear(sparse_vec_t<T> vec) {
 	vec->nnz = 0;
 	vec->alloc = 0;
 	s_free(vec->indices);
@@ -160,26 +160,6 @@ void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, const T* val) {
 		sparse_vec_realloc(vec, new_alloc);
 	}
 	vec->indices[vec->nnz] = index;
-	if constexpr (!std::is_same_v<T, bool>) {
-		if constexpr (std::is_same_v<T, fmpq>) {
-			scalar_set(sparse_vec_entry_pointer(vec, vec->nnz), val);
-		}
-		else {
-			// use scalar_set ??
-			*sparse_vec_entry_pointer(vec, vec->nnz) = *val;
-		}
-	}
-	vec->nnz++;
-}
-
-template <typename T, uint16_t rank>
-void _sparse_vec_set_entry(sparse_vec_t<T, rank> vec, std::array<slong, rank> index, const T* val) {
-	if (vec->nnz == vec->alloc) {
-		ulong new_alloc = 2 * vec->alloc;
-		sparse_vec_realloc(vec, new_alloc);
-	}
-	for (size_t i = 0; i < rank; i++)
-		vec->indices[(vec->nnz) * rank + i] = index[i];
 	if constexpr (!std::is_same_v<T, bool>) {
 		if constexpr (std::is_same_v<T, fmpq>) {
 			scalar_set(sparse_vec_entry_pointer(vec, vec->nnz), val);

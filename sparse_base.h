@@ -11,6 +11,7 @@
 
 #include "thread_pool.hpp"
 #include <algorithm>
+#include <bitset>
 #include <chrono>
 #include <climits>
 #include <cmath>
@@ -85,6 +86,61 @@ namespace sparse_base {
 			[](unsigned char x) { return std::isspace(x); }),
 			str.end());
 	}
+
+	struct uset {
+		constexpr static size_t bitset_size = 0x100; // 256 for avx2, morden cpu should support it?
+		std::vector<std::bitset<bitset_size>> data;
+
+		uset() {}
+
+		void resize(size_t alllen) {
+			auto len = alllen / bitset_size + 1;
+			data.resize(len);
+		}
+
+		uset(size_t alllen) {
+			resize(alllen);
+		}
+
+		~uset() {
+			data.clear();
+		}
+
+		void insert(size_t val) {
+			auto idx = val / bitset_size;
+			auto pos = val % bitset_size;
+			data[idx].set(pos);
+		}
+
+		bool count(size_t val) {
+			auto idx = val / bitset_size;
+			auto pos = val % bitset_size;
+			return data[idx].test(pos);
+		}
+
+		void erase(size_t val) {
+			auto idx = val / bitset_size;
+			auto pos = val % bitset_size;
+			data[idx].reset(pos);
+		}
+
+		void clear() {
+			for (auto& d : data)
+				d.reset();
+		}
+
+		std::bitset<bitset_size>& operator[](size_t idx) {
+			return data[idx];
+		}
+
+		size_t size() {
+			return data.size();
+		}
+
+		size_t length() {
+			return data.size() * bitset_size;
+		}
+	};
 
 	template <typename T> inline T* binarysearch(T* begin, T* end, T val) {
 		auto ptr = std::lower_bound(begin, end, val);

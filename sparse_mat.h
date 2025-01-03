@@ -12,8 +12,6 @@
 
 #include "sparse_vec.h"
 
-constexpr double SPARSE_BOUND = 0.1;
-
 template <typename T> struct sparse_mat_struct {
 	ulong nrow;
 	ulong ncol;
@@ -704,10 +702,10 @@ void triangular_solver_3(sparse_mat_t<T> mat, std::vector<std::vector<pivot_t>>&
 // mode : true: very sparse < SPARSE_BOUND%
 template <typename T>
 void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots,
-	int ordering, field_t F, T* tmpvec, const bool mode) {
+	int ordering, field_t F, T* tmpvec, sparse_base::uset& nonzero_c) {
 	if (ordering < 0) {
 		std::vector<pivot_t> npivots(pivots.rbegin(), pivots.rend());
-		schur_complete(mat, row, npivots, -ordering, F, tmpvec, mode);
+		schur_complete(mat, row, npivots, -ordering, F, tmpvec, nonzero_c);
 	}
 
 	auto therow = sparse_mat_row(mat, row);
@@ -715,78 +713,54 @@ void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots
 	if (therow->nnz == 0)
 		return;
 
-	// if pivots size is small, we can use the sparse vector
-	// to save to cost of converting between sparse and dense
-	// vectors, otherwise we use dense vector
-	if (pivots.size() < 100) {
-		for (auto [r, c] : pivots) {
-			auto entry = sparse_vec_entry(therow, c);
-			if (entry == NULL)
-				continue;
-			auto row = sparse_mat_row(mat, r);
-			sparse_vec_sub_mul(therow, row, entry, F);
-		}
-		return;
-	}
+	// sparse_base::uset nonzero_c(mat->ncol);
+	nonzero_c.clear();
 
-	auto rrefonerow = [&](auto& nonzero_c) {
-		for (size_t i = 0; i < therow->nnz; i++) {
-			nonzero_c.insert(therow->indices[i]);
-			scalar_set(tmpvec + therow->indices[i], therow->entries + i);
+	for (size_t i = 0; i < therow->nnz; i++) {
+		nonzero_c.insert(therow->indices[i]);
+		scalar_set(tmpvec + therow->indices[i], therow->entries + i);
+	}
+	T entry[1];
+	ulong e_pr;
+	scalar_init(entry);
+	for (auto [r, c] : pivots) {
+		if (nonzero_c.count(c) == 0)
+			continue;
+		scalar_set(entry, tmpvec + c);
+		if (scalar_is_zero(entry)) {
+			nonzero_c.erase(c);
+			continue;
 		}
-		T entry[1];
-		ulong e_pr;
-		scalar_init(entry);
-		for (auto [r, c] : pivots) {
-			if (nonzero_c.count(c) == 0)
-				continue;
-			scalar_set(entry, tmpvec + c);
-			if (scalar_is_zero(entry)) {
-				nonzero_c.erase(c);
-				continue;
-			}
-			auto row = sparse_mat_row(mat, r);
-			if constexpr (std::is_same_v<T, ulong>) {
-				e_pr = n_mulmod_precomp_shoup(*entry, F->pvec[0].n);
-			}
-			for (size_t i = 0; i < row->nnz; i++) {
-				auto old_len = nonzero_c.size();
+		auto row = sparse_mat_row(mat, r);
+		if constexpr (std::is_same_v<T, ulong>) {
+			e_pr = n_mulmod_precomp_shoup(*entry, F->pvec[0].n);
+		}
+		for (size_t i = 0; i < row->nnz; i++) {
+			if (!nonzero_c.count(row->indices[i])) {
 				nonzero_c.insert(row->indices[i]);
-				if (nonzero_c.size() != old_len)
-					scalar_zero(tmpvec + row->indices[i]);
-				if constexpr (std::is_same_v<T, ulong>) {
-					tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
-						n_mulmod_shoup(*entry, row->entries[i], e_pr, F->pvec[0].n), F->pvec[0]);
-				}
-				else if constexpr (std::is_same_v<T, fmpq>) {
-					fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
-				}
-				if (scalar_is_zero(tmpvec + row->indices[i]))
-					nonzero_c.erase(row->indices[i]);
+				scalar_zero(tmpvec + row->indices[i]);
 			}
-		}
-		scalar_clear(entry);
-	};
-
-	if (mode) {
-		std::set<slong> nonzero_c;
-		rrefonerow(nonzero_c);
-		therow->nnz = 0;
-		for (auto i : nonzero_c) {
-			if (!scalar_is_zero(tmpvec + i))
-				_sparse_vec_set_entry(therow, i, tmpvec + i);
+			if constexpr (std::is_same_v<T, ulong>) {
+				tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
+					n_mulmod_shoup(*entry, row->entries[i], e_pr, F->pvec[0].n), F->pvec[0]);
+			}
+			else if constexpr (std::is_same_v<T, fmpq>) {
+				fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
+			}
+			if (scalar_is_zero(tmpvec + row->indices[i]))
+				nonzero_c.erase(row->indices[i]);
 		}
 	}
-	else {
-		std::unordered_set<slong> nonzero_c;
-		nonzero_c.reserve(5 * therow->nnz);
-		rrefonerow(nonzero_c);
-		std::vector<slong> indices(nonzero_c.begin(), nonzero_c.end());
-		std::sort(indices.begin(), indices.end());
-		therow->nnz = 0;
-		for (auto i : indices) {
-			if (!scalar_is_zero(tmpvec + i))
-				_sparse_vec_set_entry(therow, i, tmpvec + i);
+	scalar_clear(entry);
+	
+	therow->nnz = 0;
+	for (size_t i = 0; i < nonzero_c.size(); i++) {
+		if (nonzero_c[i].none())
+			continue;
+		auto size = nonzero_c.bitset_size;
+		for (size_t j = 0; j < size; j++) {
+			if (nonzero_c[i][j] && !scalar_is_zero(tmpvec + i * size + j))
+				_sparse_vec_set_entry(therow, i * size + j, tmpvec + i * size + j);
 		}
 	}
 }
@@ -938,8 +912,11 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 
 	int nthreads = pool.get_thread_count();
 	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
+	std::vector<sparse_base::uset> nonzero_c(nthreads);
 	for (size_t i = 0; i < mat->ncol * nthreads; i++) 
 		scalar_init(cachedensedmat + i);
+	for (size_t i = 0; i < nthreads; i++)
+		nonzero_c[i].resize(mat->ncol);
 
 	sparse_mat_t<bool> tranmat;
 	sparse_mat_init(tranmat, mat->ncol, mat->nrow);
@@ -992,11 +969,10 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 		now_nnz = 0;
 		for (auto i : leftrows)
 			now_nnz += mat->rows[i].nnz;
-		bool mode = ((double)100 * now_nnz / (leftrows.size() * mat->ncol) < SPARSE_BOUND);
 		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 			auto id = BS::this_thread::get_index().value();
 			for (ulong i = s; i < e; i++) {
-				schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, mode);
+				schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 				flags[i] = 1;
 			}
 			}, (leftrows.size() < 20 * nthreads ? 0 : 10 * nthreads));
@@ -1137,8 +1113,11 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 
 	int nthreads = pool.get_thread_count();
 	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
+	std::vector<sparse_base::uset> nonzero_c(nthreads);
 	for (size_t i = 0; i < mat->ncol * nthreads; i++)
 		scalar_init(cachedensedmat + i);
+	for (size_t i = 0; i < nthreads; i++)
+		nonzero_c[i].resize(mat->ncol);
 
 	// skip the rows with only one/zero nonzero element
 	std::vector<pivot_t> n_pivots;
@@ -1220,13 +1199,12 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 		now_nnz = 0;
 		for (auto i = rowperm.begin() + kk; i != rowperm.end(); i++)
 			now_nnz += mat->rows[*i].nnz;
-		bool mode = ((double)100 * now_nnz / ((mat->nrow - kk) * mat->ncol) < SPARSE_BOUND);
 		pool.detach_blocks<ulong>(kk, mat->nrow, [&](const ulong s, const ulong e) {
 			auto id = BS::this_thread::get_index().value();
 			for (ulong i = s; i < e; i++) {
 				if (rowpivs[rowperm[i]] != -1)
 					continue;
-				schur_complete(mat, rowperm[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, mode);
+				schur_complete(mat, rowperm[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
 				flags[i - kk] = 1;
 			}
 			}, ((mat->nrow - kk) < 20 * nthreads ? 0 : 10 * nthreads));
