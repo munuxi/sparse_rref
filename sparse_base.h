@@ -21,7 +21,9 @@
 #include <list>
 #include <queue>
 #include <set>
+#include <sstream>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 #include <vector>
 
@@ -80,9 +82,10 @@ struct rref_option {
 typedef struct rref_option rref_option_t[1];
 
 namespace sparse_base {
-
+	// version
 	constexpr static const char version[] = "v0.2.4";
 
+	// thread
 	using thread_pool = BS::thread_pool<>; // thread pool
 	inline size_t thread_id() {
 		return BS::this_thread::get_index().value();
@@ -93,6 +96,40 @@ namespace sparse_base {
 		str.erase(std::remove_if(str.begin(), str.end(),
 			[](unsigned char x) { return std::isspace(x); }),
 			str.end());
+	}
+
+	inline std::vector<std::string> SplitString(const std::string& s, const std::string delim) {
+		auto start = 0ULL;
+		auto end = s.find(delim);
+		std::vector<std::string> result;
+		while (end != std::string::npos) {
+			result.push_back(s.substr(start, end - start));
+			start = end + delim.length();
+			end = s.find(delim, start);
+		}
+		result.push_back(s.substr(start, end));
+		return result;
+	}
+
+	// time
+	inline std::chrono::system_clock::time_point clocknow() {
+		return std::chrono::system_clock::now();
+	}
+
+	inline double usedtime(std::chrono::system_clock::time_point start,
+		std::chrono::system_clock::time_point end) {
+		auto duration =
+			std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+		return ((double)duration.count() * std::chrono::microseconds::period::num /
+			std::chrono::microseconds::period::den);
+	}
+
+	template <typename T> std::vector<T> difference(std::vector<T> l) {
+		std::vector<T> result;
+		for (size_t i = 1; i < l.size(); i++) {
+			result.push_back(l[i] - l[i - 1]);
+		}
+		return result;
 	}
 
 	struct uset {
@@ -192,38 +229,56 @@ namespace sparse_base {
 			return end;
 	}
 
-	inline std::vector<std::string> SplitString(const std::string& s, const std::string delim) {
-		auto start = 0ULL;
-		auto end = s.find(delim);
-		std::vector<std::string> result;
-		while (end != std::string::npos) {
-			result.push_back(s.substr(start, end - start));
-			start = end + delim.length();
-			end = s.find(delim, start);
+	// IO
+	using DataTuple = std::vector<std::tuple<slong, slong, std::string>>;
+
+	std::tuple<ulong, ulong, std::string> read_lines(const std::string& str) {
+		std::istringstream iss(str);
+		char c;
+		std::string token;
+		slong t1 = -1;
+		slong t2 = -1;
+		std::string t3("");
+		int count = 0;
+		bool skip_space = true;
+		while (iss.get(c)) {
+			bool is_space = std::isspace(c);
+			if (skip_space) {
+				if (is_space)
+					continue;
+				else
+					skip_space = false;
+			}
+			if (!is_space) {
+				token.push_back(c);
+			}
+			else {
+				if (count == 0)
+					t1 = std::stoull(token);
+				else if (count == 1)
+					t2 = std::stoull(token);
+				else
+					t3 = token;
+				count++;
+				token.clear();
+				skip_space = true;
+			}
+			if (count == 3)
+				break;
 		}
-		result.push_back(s.substr(start, end));
-		return result;
+		return std::make_tuple(t1, t2, t3);
 	}
 
-	// time
-	inline std::chrono::system_clock::time_point clocknow() {
-		return std::chrono::system_clock::now();
-	}
-
-	inline double usedtime(std::chrono::system_clock::time_point start,
-		std::chrono::system_clock::time_point end) {
-		auto duration =
-			std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-		return ((double)duration.count() * std::chrono::microseconds::period::num /
-			std::chrono::microseconds::period::den);
-	}
-
-	template <typename T> std::vector<T> difference(std::vector<T> l) {
-		std::vector<T> result;
-		for (size_t i = 1; i < l.size(); i++) {
-			result.push_back(l[i] - l[i - 1]);
+	std::string read_file_buffer(std::string filename) {
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			std::cerr << "Failed to open file: " << filename << std::endl;
+			return "";
 		}
-		return result;
+		std::stringstream buffer;
+		buffer << file.rdbuf();
+		file.close();
+		return buffer.str();
 	}
 }
 

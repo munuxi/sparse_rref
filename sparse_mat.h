@@ -562,153 +562,7 @@ std::pair<std::vector<pivot_t>, std::vector<pivot_t>> apart_pivots_2(sparse_mat_
 	return std::make_pair(n_pivots, left_pivots);
 }
 
-// TODO: CHECK!!!
-template <typename T>
-void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
-	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool) {
-
-	if (ordering < 0) {
-		std::vector<pivot_t> npivots(pivots.rbegin(), pivots.rend());
-		triangular_solver_2(mat, npivots, F, opt, -ordering, pool);
-	}
-
-	bool verbose = opt->verbose;
-	auto printstep = opt->print_step;
-
-	// then do the elimination parallelly
-	int nthreads = pool.get_thread_count();
-	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
-	std::vector<sparse_base::uset> nonzero_c(nthreads);
-	for (size_t i = 0; i < mat->ncol * nthreads; i++)
-		scalar_init(cachedensedmat + i);
-	for (size_t i = 0; i < nthreads; i++)
-		nonzero_c[i].resize(mat->ncol);
-
-	size_t index = 0;
-	while (index < pivots.size()) {
-		size_t end = apart_pivots(mat, pivots, index);
-		std::vector<pivot_t> n_pivots(pivots.begin() + index, pivots.begin() + end);
-
-		for (auto [r, c] : n_pivots) {
-			scalar_inv(cachedensedmat, sparse_mat_entry(mat, r, c), F);
-			sparse_vec_rescale(sparse_mat_row(mat, r), cachedensedmat, F);
-		}
-
-		pool.detach_blocks<ulong>(end, pivots.size(), [&](const ulong s, const ulong e) {
-			auto id = sparse_base::thread_id();
-			for (ulong j = s; j < e; j++) {
-				schur_complete(mat, pivots[j].first, n_pivots, 1,
-					F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
-			}
-			}, (((pivots.size() - end) < 20 * nthreads) ? 0 : pivots.size() / 10));
-		pool.wait();
-
-		if (opt->verbose) {
-			std::cout << "\r-- Row: " << end << "/" << pivots.size() << std::flush;
-		}
-		index = end;
-	}
-
-	if (opt->verbose)
-		std::cout << std::endl;
-
-	// clear tmp array
-	for (size_t i = 0; i < mat->ncol * nthreads; i++)
-		scalar_clear(cachedensedmat + i);
-	s_free(cachedensedmat);
-}
-
-template <typename T>
-void triangular_solver_2(sparse_mat_t<T> mat, std::vector<std::vector<pivot_t>>& pivots,
-	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool) {
-	std::vector<pivot_t> n_pivots;
-	if (ordering < 0) {
-		for (auto i = pivots.rbegin(); i != pivots.rend(); i++) {
-			auto& p = *i;
-			n_pivots.insert(n_pivots.end(), p.rbegin(), p.rend());
-		}
-	}
-	else {
-		for (auto p : pivots)
-			n_pivots.insert(n_pivots.end(), p.begin(), p.end());
-	}
-	triangular_solver_2(mat, n_pivots, F, opt, 1, pool);
-}
-
-// TODO: CHECK!!!
-template <typename T>
-void triangular_solver_3(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
-	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool, T* cachedensedmat) {
-
-	if (ordering < 0) {
-		std::vector<pivot_t> npivots(pivots.rbegin(), pivots.rend());
-		triangular_solver_3(mat, npivots, F, opt, -ordering, pool, cachedensedmat);
-	}
-
-	int nthreads = pool.get_thread_count();
-	if (pivots.size() == 0) {
-		// clear tmp array
-		if (cachedensedmat != NULL) {
-			for (size_t i = 0; i < mat->ncol * nthreads; i++)
-				scalar_clear(cachedensedmat + i);
-			s_free(cachedensedmat);
-		}
-		return;
-	}
-	
-	std::vector<sparse_base::uset> nonzero_c(nthreads);
-
-	if (cachedensedmat == NULL) {
-		cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
-		for (size_t i = 0; i < mat->ncol * nthreads; i++)
-			scalar_init(cachedensedmat + i);
-		for (size_t i = 0; i < nthreads; i++)
-			nonzero_c[i].resize(mat->ncol);
-	}
-
-	auto [n_pivots, left_pivots] = apart_pivots_2(mat, pivots);
-	for (auto [r, c] : n_pivots) {
-		scalar_inv(cachedensedmat, sparse_mat_entry(mat, r, c), F);
-		sparse_vec_rescale(sparse_mat_row(mat, r), cachedensedmat, F);
-	}
-
-	pool.detach_blocks<ulong>(0, left_pivots.size(), [&](const ulong s, const ulong e) {
-		auto id = sparse_base::thread_id();
-		for (ulong j = s; j < e; j++) {
-			schur_complete(mat, left_pivots[j].first, n_pivots, 1,
-				F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
-		}
-		}, ((left_pivots.size() < 20 * nthreads) ? 0 : left_pivots.size() / 10));
-	pool.wait();
-
-	if (opt->verbose) {
-		std::cout << "\r-- Row: " << n_pivots.size() << "/" << pivots.size() << std::flush;
-	}
-
-	triangular_solver_3(mat, left_pivots, F, opt, 1, pool, cachedensedmat);
-}
-
-template <typename T>
-void triangular_solver_3(sparse_mat_t<T> mat, std::vector<std::vector<pivot_t>>& pivots,
-	field_t F, rref_option_t opt, int ordering, sparse_base::thread_pool& pool, T* cachedensedmat) {
-	std::vector<pivot_t> n_pivots;
-	if (ordering < 0) {
-		for (auto i = pivots.rbegin(); i != pivots.rend(); i++) {
-			auto& p = *i;
-			n_pivots.insert(n_pivots.end(), p.rbegin(), p.rend());
-		}
-	}
-	else {
-		for (auto p : pivots)
-			n_pivots.insert(n_pivots.end(), p.begin(), p.end());
-	}
-	triangular_solver_3(mat, n_pivots, F, opt, 1, pool, cachedensedmat);
-}
-
 // first write a stupid one
-// TODO: Gilbert-Peierls algorithm for parallel computation 
-// see https://hal.science/hal-01333670/document
-// mode : true: very sparse < SPARSE_BOUND%
 template <typename T>
 void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots,
 	int ordering, field_t F, T* tmpvec, sparse_base::uset& nonzero_c) {
@@ -775,6 +629,92 @@ void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots
 				_sparse_vec_set_entry(therow, i * bitset_size + j, tmpvec + i * bitset_size + j);
 		}
 	}
+}
+
+// TODO: CHECK!!!
+// SLOW!!!
+template <typename T>
+void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
+	field_t F, rref_option_t opt, sparse_base::thread_pool& pool, T* cachedensedmat, 
+	std::vector<sparse_base::uset>& nonzero_c, size_t n_split, int& process) {
+
+	bool verbose = opt->verbose;
+	opt->verbose = false;
+	if (pivots.size() < n_split) {
+		triangular_solver(mat, pivots, F, opt, -1, pool);
+		opt->verbose = verbose;
+		process += pivots.size();
+		return;
+	}
+
+	std::vector<pivot_t> sub_pivots(pivots.end() - n_split, pivots.end());
+	std::vector<pivot_t> left_pivots(pivots.begin(), pivots.end() - n_split);
+
+	std::vector<slong> leftrows;
+	for (auto i : left_pivots)
+		leftrows.push_back(i.first);
+
+	// for printing
+	ulong now_nnz = sparse_mat_nnz(mat);
+	int bitlen_nnz = (int)std::floor(std::log(now_nnz) / std::log(10)) + 3;
+	int bitlen_nrow = (int)std::floor(std::log(mat->nrow) / std::log(10)) + 1;
+
+	std::atomic<size_t> count(0);
+	pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
+		for (size_t i = s; i < e; i++) {
+			auto id = sparse_base::thread_id();
+			schur_complete(mat, leftrows[i], sub_pivots, 1, F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
+			count++;
+		}
+		}, ((n_split < 20 * pool.get_thread_count()) ? 0 : leftrows.size() / 10));
+
+	if (verbose) {
+		// stop for a while
+		// std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		std::cout << "-- Row: " << std::setw(bitlen_nrow)
+			<< process << "/" << mat->nrow
+			<< "  nnz: " << std::setw(bitlen_nnz) << now_nnz
+			<< "  density: " << std::setprecision(6) << std::setw(8)
+			<< 100 * (double)now_nnz / (mat->nrow * mat->ncol) << "%"
+			<< "    \r" << std::flush;
+	}
+	pool.wait();
+
+	triangular_solver(mat, sub_pivots, F, opt, -1, pool);
+	opt->verbose = verbose;
+	process += sub_pivots.size();
+	triangular_solver_2(mat, left_pivots, F, opt, pool, cachedensedmat, nonzero_c, n_split, process);
+}
+
+template <typename t>
+void triangular_solver_2(sparse_mat_t<t> mat, std::vector<std::vector<pivot_t>>& pivots,
+	field_t f, rref_option_t opt, sparse_base::thread_pool& pool) {
+
+	std::vector<pivot_t> n_pivots;
+	for (auto p : pivots) {
+		n_pivots.insert(n_pivots.end(), p.begin(), p.end());
+	}
+
+	// then do the elimination parallelly
+	int nthreads = pool.get_thread_count();
+	t* cachedensedmat = s_malloc<t>(mat->ncol * nthreads);
+	std::vector<sparse_base::uset> nonzero_c(nthreads);
+	for (size_t i = 0; i < mat->ncol * nthreads; i++)
+		scalar_init(cachedensedmat + i);
+	for (size_t i = 0; i < nthreads; i++)
+		nonzero_c[i].resize(mat->ncol);
+
+	int process = 0;
+	size_t n_split = std::max(pivots.size() / 100ULL, 1000ULL);
+	triangular_solver_2(mat, n_pivots, f, opt, pool, cachedensedmat, nonzero_c, n_split, process);
+
+	if (opt->verbose)
+		std::cout << std::endl;
+
+	// clear tmp array
+	for (size_t i = 0; i < mat->ncol * nthreads; i++)
+		scalar_clear(cachedensedmat + i);
+	s_free(cachedensedmat);
 }
 
 // TODO: TEST!!! 
@@ -1292,6 +1232,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref(sparse_mat_t<T> mat, field_t F
 		if (opt->verbose)
 			std::cout << "\n>> Reverse solving: " << std::endl;
 		triangular_solver(mat, pivots, F, opt, -1, pool);
+		//triangular_solver_2(mat, pivots, F, opt, pool);
 	}
 	return pivots;
 }
