@@ -564,14 +564,14 @@ std::pair<std::vector<pivot_t>, std::vector<pivot_t>> apart_pivots_2(sparse_mat_
 
 // first write a stupid one
 template <typename T>
-void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots,
+void schur_complete(sparse_mat_t<T> mat, slong k, std::vector<pivot_t>& pivots,
 	int ordering, field_t F, T* tmpvec, sparse_base::uset& nonzero_c) {
 	if (ordering < 0) {
 		std::vector<pivot_t> npivots(pivots.rbegin(), pivots.rend());
-		schur_complete(mat, row, npivots, -ordering, F, tmpvec, nonzero_c);
+		schur_complete(mat, k, npivots, -ordering, F, tmpvec, nonzero_c);
 	}
 
-	auto therow = sparse_mat_row(mat, row);
+	auto therow = sparse_mat_row(mat, k);
 
 	if (therow->nnz == 0)
 		return;
@@ -587,13 +587,9 @@ void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots
 	ulong e_pr;
 	scalar_init(entry);
 	for (auto [r, c] : pivots) {
-		if (nonzero_c.count(c) == 0)
+		if (!nonzero_c.count(c))
 			continue;
 		scalar_set(entry, tmpvec + c);
-		if (scalar_is_zero(entry)) {
-			nonzero_c.erase(c);
-			continue;
-		}
 		auto row = sparse_mat_row(mat, r);
 		if constexpr (std::is_same_v<T, ulong>) {
 			e_pr = n_mulmod_precomp_shoup(*entry, F->pvec[0].n);
