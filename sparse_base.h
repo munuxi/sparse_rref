@@ -91,6 +91,19 @@ namespace sparse_base {
 		return BS::this_thread::get_index().value();
 	}
 
+	// if c++20, use std::countr_zero
+	// if c++17, use flint_ctz (__builtin_ctzll or _tzcnt_u64)
+#if __cplusplus >= 202002L
+	#include <bit>
+	inline size_t ctz(ulong x) {
+		return std::countr_zero(x);
+	}
+#else
+	inline size_t ctz(ulong x) {
+		return flint_ctz(x);
+	}
+#endif
+
 	// string
 	inline void DeleteSpaces(std::string& str) {
 		str.erase(std::remove_if(str.begin(), str.end(),
@@ -133,7 +146,7 @@ namespace sparse_base {
 	}
 
 	struct uset {
-		constexpr static size_t bitset_size = 0x100; // 256 for avx2, morden cpu should support it?
+		constexpr static size_t bitset_size = std::numeric_limits<unsigned long long>::digits; // 64 or 32
 		std::vector<std::bitset<bitset_size>> data;
 
 		uset() {}
@@ -184,6 +197,24 @@ namespace sparse_base {
 
 		size_t length() {
 			return data.size() * bitset_size;
+		}
+
+		std::vector<size_t> nonzero() {
+			std::vector<size_t> result;
+			for (size_t i = 0; i < data.size(); i++) {
+				if (data[i].any()) {
+					// for (size_t j = 0; j < bitset_size; j++) {
+					// 	if (data[i].test(j))
+					// 		result.push_back(i * bitset_size + j);
+					// }
+					ulong c = data[i].to_ullong();
+					while (c) {
+						result.push_back(i * bitset_size + ctz(c));
+						c &= c - 1;
+					}
+				}
+			}
+			return result;
 		}
 	};
 

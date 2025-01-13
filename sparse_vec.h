@@ -155,10 +155,8 @@ inline void sparse_vec_swap(sparse_vec_t<T> vec, sparse_vec_t<T> src) {
 // equivalent to push_back
 template <typename T>
 void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, const T* val) {
-	if (vec->nnz == vec->alloc) {
-		ulong new_alloc = 2 * vec->alloc;
-		sparse_vec_realloc(vec, new_alloc);
-	}
+	if (vec->nnz == vec->alloc)
+		sparse_vec_realloc(vec, 2 * vec->alloc);
 	vec->indices[vec->nnz] = index;
 	if constexpr (!std::is_same_v<T, bool>) {
 		if constexpr (std::is_same_v<T, fmpq>) {

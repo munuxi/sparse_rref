@@ -617,17 +617,9 @@ void schur_complete(sparse_mat_t<T> mat, slong row, std::vector<pivot_t>& pivots
 	scalar_clear(entry);
 	
 	therow->nnz = 0;
-	auto bitset_size = nonzero_c.bitset_size;
-	for (size_t i = 0; i < nonzero_c.size(); i++) {
-		if (nonzero_c[i].none())
-			continue;
-		// depends on Endian & C++20 & bitset_size <= 64
-		// ulong start = std::countr_zero(nonzero_c[i].to_ullong());
-		// ulong end = size - std::countl_zero(nonzero_c[i].to_ullong());
-		for (size_t j = 0; j < bitset_size; j++) {
-			if (nonzero_c[i][j])
-				_sparse_vec_set_entry(therow, i * bitset_size + j, tmpvec + i * bitset_size + j);
-		}
+	auto pos = nonzero_c.nonzero();
+	for (auto p : pos) {
+		_sparse_vec_set_entry(therow, p, tmpvec + p);
 	}
 }
 
