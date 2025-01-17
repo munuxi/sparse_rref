@@ -622,9 +622,9 @@ void schur_complete(sparse_mat_t<T> mat, slong k, std::vector<pivot_t>& pivots,
 // TODO: CHECK!!!
 // SLOW!!!
 template <typename T>
-void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
+void triangular_solver_2_rec(sparse_mat_t<T> mat, std::vector<std::vector<slong>>& tranmat, std::vector<pivot_t>& pivots,
 	field_t F, rref_option_t opt, sparse_base::thread_pool& pool, T* cachedensedmat, 
-	std::vector<sparse_base::uset>& nonzero_c, size_t n_split, int& process) {
+	std::vector<sparse_base::uset>& nonzero_c, size_t n_split, size_t rank, size_t& process) {
 
 	bool verbose = opt->verbose;
 	opt->verbose = false;
@@ -638,63 +638,87 @@ void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 	std::vector<pivot_t> sub_pivots(pivots.end() - n_split, pivots.end());
 	std::vector<pivot_t> left_pivots(pivots.begin(), pivots.end() - n_split);
 
-	std::vector<slong> leftrows;
-	for (auto i : left_pivots)
-		leftrows.push_back(i.first);
+	std::unordered_set<slong> pre_leftrows;
+	for (auto [r, c] : sub_pivots)
+		pre_leftrows.insert(tranmat[c].begin(), tranmat[c].end());
+	for (auto [r, c] : sub_pivots)
+		pre_leftrows.erase(r);
+	std::vector<slong> leftrows(pre_leftrows.begin(), pre_leftrows.end());
 
 	// for printing
 	ulong now_nnz = sparse_mat_nnz(mat);
 	int bitlen_nnz = (int)std::floor(std::log(now_nnz) / std::log(10)) + 3;
-	int bitlen_nrow = (int)std::floor(std::log(mat->nrow) / std::log(10)) + 1;
+	int bitlen_nrow = (int)std::floor(std::log(rank) / std::log(10)) + 1;
 
-	std::atomic<size_t> count(0);
+	auto clock_begin = sparse_base::clocknow();
+	std::atomic<size_t> cc = 0;
 	pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 		for (size_t i = s; i < e; i++) {
 			auto id = sparse_base::thread_id();
 			schur_complete(mat, leftrows[i], sub_pivots, 1, F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
-			count++;
+			cc++;
 		}
 		}, ((n_split < 20 * pool.get_thread_count()) ? 0 : leftrows.size() / 10));
 
 	if (verbose) {
-		// stop for a while
-		// std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		std::cout << "-- Row: " << std::setw(bitlen_nrow)
-			<< process << "/" << mat->nrow
-			<< "  nnz: " << std::setw(bitlen_nnz) << now_nnz
-			<< "  density: " << std::setprecision(6) << std::setw(8)
-			<< 100 * (double)now_nnz / (mat->nrow * mat->ncol) << "%"
-			<< "    \r" << std::flush;
+		ulong old_cc = cc;
+		while (cc < leftrows.size()) {
+			// stop for a while
+			std::this_thread::sleep_for(std::chrono::microseconds(1000));
+			now_nnz = sparse_mat_nnz(mat);
+			size_t status = (size_t)std::floor(1.0 * sub_pivots.size() * cc / leftrows.size());
+			std::cout << "-- Row: " << std::setw(bitlen_nrow)
+				<< process + status << "/" << rank
+				<< "  nnz: " << std::setw(bitlen_nnz) << now_nnz
+				<< "  density: " << std::setprecision(6) << std::setw(8)
+				<< 100 * (double)now_nnz / (rank * mat->ncol) << "%"
+				<< "  speed: " << std::setprecision(2) << std::setw(6)
+				<< 1.0 * sub_pivots.size() * (cc - old_cc) / leftrows.size() / sparse_base::usedtime(clock_begin, sparse_base::clocknow())
+				<< " row/s    \r" << std::flush;
+			clock_begin = sparse_base::clocknow();
+			old_cc = cc;
+		}
 	}
+
 	pool.wait();
 
 	triangular_solver(mat, sub_pivots, F, opt, -1, pool);
 	opt->verbose = verbose;
 	process += sub_pivots.size();
-	triangular_solver_2(mat, left_pivots, F, opt, pool, cachedensedmat, nonzero_c, n_split, process);
+
+	triangular_solver_2_rec(mat, tranmat, left_pivots, F, opt, pool, cachedensedmat, nonzero_c, n_split, rank, process);
 }
 
-template <typename t>
-void triangular_solver_2(sparse_mat_t<t> mat, std::vector<std::vector<pivot_t>>& pivots,
-	field_t f, rref_option_t opt, sparse_base::thread_pool& pool) {
+template <typename T>
+void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
+	field_t F, rref_option_t opt, sparse_base::thread_pool& pool) {
 
-	std::vector<pivot_t> n_pivots;
-	for (auto p : pivots) {
-		n_pivots.insert(n_pivots.end(), p.begin(), p.end());
-	}
-
-	// then do the elimination parallelly
+	// prepare the tmp array
 	int nthreads = pool.get_thread_count();
-	t* cachedensedmat = s_malloc<t>(mat->ncol * nthreads);
+	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
 	std::vector<sparse_base::uset> nonzero_c(nthreads);
 	for (size_t i = 0; i < mat->ncol * nthreads; i++)
 		scalar_init(cachedensedmat + i);
 	for (size_t i = 0; i < nthreads; i++)
 		nonzero_c[i].resize(mat->ncol);
 
-	int process = 0;
-	size_t n_split = std::max(pivots.size() / 100ULL, 1000ULL);
-	triangular_solver_2(mat, n_pivots, f, opt, pool, cachedensedmat, nonzero_c, n_split, process);
+	// we only need to compute the transpose of the submatrix involving pivots
+	std::vector<std::vector<slong>> tranmat(mat->ncol);
+	for (size_t i = 0; i < pivots.size(); i++) {
+		auto therow = sparse_mat_row(mat, pivots[i].first);
+		for (size_t j = 0; j < therow->nnz; j++) {
+			if (scalar_is_zero(therow->entries + j))
+				continue;
+			auto col = therow->indices[j];
+			tranmat[col].push_back(pivots[i].first);
+		}
+	}
+
+	size_t process = 0;
+	// TODO: better split strategy
+	size_t n_split = std::max(pivots.size() / 128ULL, 1024ULL);
+	size_t rank = pivots.size();
+	triangular_solver_2_rec(mat, tranmat, pivots, F, opt, pool, cachedensedmat, nonzero_c, n_split, rank, process);
 
 	if (opt->verbose)
 		std::cout << std::endl;
@@ -703,6 +727,17 @@ void triangular_solver_2(sparse_mat_t<t> mat, std::vector<std::vector<pivot_t>>&
 	for (size_t i = 0; i < mat->ncol * nthreads; i++)
 		scalar_clear(cachedensedmat + i);
 	s_free(cachedensedmat);
+}
+
+template <typename T>
+void triangular_solver_2(sparse_mat_t<T> mat, std::vector<std::vector<pivot_t>>& pivots,
+	field_t F, rref_option_t opt, sparse_base::thread_pool& pool) {
+
+	std::vector<pivot_t> n_pivots;
+	for (auto p : pivots)
+		n_pivots.insert(n_pivots.end(), p.begin(), p.end());
+
+	triangular_solver_2(mat, n_pivots, F, opt, pool);
 }
 
 // TODO: TEST!!! 
@@ -1219,8 +1254,8 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref(sparse_mat_t<T> mat, field_t F
 	if (opt->is_back_sub) {
 		if (opt->verbose)
 			std::cout << "\n>> Reverse solving: " << std::endl;
-		triangular_solver(mat, pivots, F, opt, -1, pool);
-		//triangular_solver_2(mat, pivots, F, opt, pool);
+		// triangular_solver(mat, pivots, F, opt, -1, pool);
+		triangular_solver_2(mat, pivots, F, opt, pool);
 	}
 	return pivots;
 }
