@@ -98,9 +98,21 @@ namespace sparse_base {
 	inline size_t ctz(ulong x) {
 		return std::countr_zero(x);
 	}
+	inline size_t clz(ulong x) {
+		return std::countl_zero(x);
+	}
+	inline size_t popcount(ulong x) {
+		return std::popcount(x);
+	}
 #else
 	inline size_t ctz(ulong x) {
 		return flint_ctz(x);
+	}
+	inline size_t clz(ulong x) {
+		return flint_clz(x);
+	}
+	inline size_t popcount(ulong x) {
+		return FLINT_BIT_COUNT(x);
 	}
 #endif
 
@@ -200,18 +212,37 @@ namespace sparse_base {
 		}
 
 		std::vector<size_t> nonzero() {
-			std::vector<size_t> result;
+			std::vector<ulong> result;
+			std::vector<ulong> tmp;
+			tmp.reserve(bitset_size);
 			for (size_t i = 0; i < data.size(); i++) {
 				if (data[i].any()) {
+					// naive version
 					// for (size_t j = 0; j < bitset_size; j++) {
 					// 	if (data[i].test(j))
 					// 		result.push_back(i * bitset_size + j);
 					// }
+
+					tmp.clear();
 					ulong c = data[i].to_ullong();
+					
+					// only ctz version
+					// while (c) {
+					// 	auto ctzpos = ctz(c);
+					// 	result.push_back(i * bitset_size + ctzpos);
+					// 	c &= c - 1;
+					// }
+
 					while (c) {
-						result.push_back(i * bitset_size + ctz(c));
-						c &= c - 1;
+						auto ctzpos = ctz(c);
+						auto clzpos = bitset_size - 1 - clz(c);
+						result.push_back(i * bitset_size + ctzpos);
+						if (ctzpos == clzpos) 
+							break;
+						tmp.push_back(i * bitset_size + clzpos);
+						c = c ^ (1ULL << clzpos) ^ (1ULL << ctzpos);
 					}
+					result.insert(result.end(), tmp.rbegin(), tmp.rend());
 				}
 			}
 			return result;
