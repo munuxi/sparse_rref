@@ -942,16 +942,12 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 		}
 		leftrows.resize(n_leftrows);
 
-		std::vector<uint8_t> flags(leftrows.size(), 0);
-
-		now_nnz = 0;
-		for (auto i : leftrows)
-			now_nnz += mat->rows[i].nnz;
+		sparse_base::LockFreeQueue<slong> queue;
 		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 			auto id = sparse_base::thread_id();
 			for (ulong i = s; i < e; i++) {
 				schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
-				flags[i] = 1;
+				queue.enqueue(i);
 			}
 			}, (leftrows.size() < 20 * nthreads ? 0 : leftrows.size() / 10));
 
@@ -979,18 +975,16 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 
 		ulong localcount = 0;
 		while (localcount < leftrows.size()) {
-			for (size_t i = 0; i < leftrows.size(); i++) {
-				if (flags[i]) {
-					auto row = leftrows[i];
-					auto therow = sparse_mat_row(mat, row);
-					for (size_t j = 0; j < therow->nnz; j++) {
-						auto col = therow->indices[j];
-						_sparse_vec_set_entry(sparse_mat_row(tranmat, col), row, (bool*)NULL);
-					}
-					flags[i] = 0;
-					localcount++;
-				}
+			auto ptr = queue.dequeue();
+			if (ptr == NULL)
+				continue;
+			auto row = leftrows[*ptr];
+			auto therow = sparse_mat_row(mat, row);
+			for (size_t j = 0; j < therow->nnz; j++) {
+				auto thecol = sparse_mat_row(tranmat, therow->indices[j]);
+				_sparse_vec_set_entry(thecol, row, (bool*)NULL);
 			}
+			localcount++;
 
 			double pr = kk + (1.0 * ps.size() * localcount) / leftrows.size();
 			if (verbose && (print_once || pr - oldpr > printstep)) {
@@ -1169,40 +1163,36 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 
 		kk += ps.size();
 		slong newpiv = ps.size();
+		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
 
 		ulong tran_count = 0;
-		// flags[i] is true if the i-th row has been computed
-		std::vector<uint8_t> flags(mat->nrow - kk, 0);
+		sparse_base::LockFreeQueue<slong> queue;
 		// and then compute the elimination of the rows asynchronizely
-		now_nnz = 0;
-		for (auto i = rowperm.begin() + kk; i != rowperm.end(); i++)
-			now_nnz += mat->rows[*i].nnz;
-		pool.detach_blocks<ulong>(kk, mat->nrow, [&](const ulong s, const ulong e) {
+		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 			auto id = sparse_base::thread_id();
 			for (ulong i = s; i < e; i++) {
-				if (rowpivs[rowperm[i]] != -1)
+				if (rowpivs[leftrows[i]] != -1)
 					continue;
-				schur_complete(mat, rowperm[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
-				flags[i - kk] = 1;
+				schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat->ncol, nonzero_c[id]);
+				queue.enqueue(i);
 			}
 			}, ((mat->nrow - kk) < 20 * nthreads ? 0 : mat->nrow / 10));
-		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
+		
 		for (size_t i = 0; i < tranmat->nrow; i++)
 			tranmat->rows[i].nnz = 0;
 		// compute the transpose of the submatrix and print the status asynchronizely
 		while (tran_count < leftrows.size()) {
-			for (size_t i = 0; i < leftrows.size(); i++) {
-				if (flags[i]) {
-					auto row = leftrows[i];
-					auto therow = sparse_mat_row(mat, row);
-					for (size_t j = 0; j < therow->nnz; j++) {
-						auto col = therow->indices[j];
-						_sparse_vec_set_entry(sparse_mat_row(tranmat, col), row, (bool*)NULL);
-					}
-					tran_count++;
-					flags[i] = 0;
-				}
+			auto ptr = queue.dequeue();
+			if (ptr == NULL)
+				continue;
+			auto row = leftrows[*ptr];
+			auto therow = sparse_mat_row(mat, row);
+			for (size_t j = 0; j < therow->nnz; j++) {
+				auto thecol = sparse_mat_row(tranmat, therow->indices[j]);
+				_sparse_vec_set_entry(thecol, row, (bool*)NULL);
 			}
+			tran_count++;
+
 			auto status = (kk - newpiv + 1) + ((double)tran_count / (mat->nrow - kk)) * newpiv;
 			if (verbose && status - oldstatus > printstep) {
 				auto end = sparse_base::clocknow();

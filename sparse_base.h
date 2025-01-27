@@ -16,6 +16,7 @@
 #include <climits>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <list>
@@ -290,6 +291,83 @@ namespace sparse_base {
 		else
 			return end;
 	}
+
+	// LockFreeQueue
+	template <typename T>
+	class LockFreeQueue {
+	private:
+		struct Node {
+			std::shared_ptr<T> data;
+			std::atomic<Node*> next;
+
+			Node(T const& value) : data(std::make_shared<T>(value)), next(nullptr) {}
+		};
+
+		std::atomic<Node*> head;
+		std::atomic<Node*> tail;
+
+	public:
+		LockFreeQueue() {
+			Node* dummy = new Node(T());  
+			head.store(dummy);
+			tail.store(dummy);
+		}
+
+		~LockFreeQueue() {
+			while (Node* old_head = head.load()) {
+				head.store(old_head->next);
+				delete old_head;
+			}
+		}
+
+		void enqueue(T const& value) {
+			Node* new_node = new Node(value);
+			Node* old_tail = tail.load();
+			Node* null_ptr = nullptr;
+
+			while (true) {
+				Node* old_next = old_tail->next.load();
+
+				if (old_next == nullptr) {
+					if (old_tail->next.compare_exchange_weak(null_ptr, new_node)) {
+						tail.compare_exchange_weak(old_tail, new_node);
+						break;
+					}
+				}
+				else {
+					tail.compare_exchange_weak(old_tail, old_next);
+				}
+			}
+		}
+
+		std::shared_ptr<T> dequeue() {
+			Node* old_head;
+			Node* old_tail;
+			std::shared_ptr<T> result;
+
+			while (true) {
+				old_head = head.load();
+				old_tail = tail.load();
+				Node* next = old_head->next.load();
+
+				if (old_head == head.load()) {
+					if (old_head == old_tail) {
+						if (next == nullptr) {
+							return std::shared_ptr<T>();  
+						}
+						tail.compare_exchange_weak(old_tail, next);
+					}
+					else {
+						result = next->data;
+						if (head.compare_exchange_weak(old_head, next)) {
+							delete old_head;
+							return result;
+						}
+					}
+				}
+			}
+		}
+	};
 
 	// IO
 	using DataTuple = std::vector<std::tuple<slong, slong, std::string>>;
