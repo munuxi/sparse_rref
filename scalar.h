@@ -15,7 +15,7 @@
 #include "flint/nmod.h"
 #include "flint/ulong_extras.h"
 
-#include "sparse_base.h"
+#include "sparse_rref.h"
 
 // field
 
