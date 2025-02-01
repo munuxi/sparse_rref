@@ -17,6 +17,8 @@
 
 #include "sparse_rref.h"
 
+using namespace sparse_rref;
+
 // field
 
 static inline void field_init(field_t field, const enum RING ring, const ulong rank = 1, const ulong* pvec = NULL) {

@@ -6,8 +6,8 @@
 	License.
 */
 
-#ifndef SPARSE_BASE_H
-#define SPARSE_BASE_H
+#ifndef SPARSE_RREF_H
+#define SPARSE_RREF_H
 
 #include "thread_pool.hpp"
 #include <algorithm>
@@ -37,56 +37,57 @@
 #endif
 #define NULL nullptr
 
-// Memory management
+namespace sparse_rref {
+	// Memory management
 
-template <typename T>
-inline T* s_malloc(const size_t size) {
-	return (T*)std::malloc(size * sizeof(T));
-}
+	template <typename T>
+	inline T* s_malloc(const size_t size) {
+		return (T*)std::malloc(size * sizeof(T));
+	}
 
-template <typename T>
-inline void s_free(T* s) {
-	std::free(s);
-}
+	template <typename T>
+	inline void s_free(T* s) {
+		std::free(s);
+	}
 
-template <typename T>
-inline T* s_realloc(T* s, const size_t size) {
-	return (T*)std::realloc(s, size * sizeof(T));
-}
+	template <typename T>
+	inline T* s_realloc(T* s, const size_t size) {
+		return (T*)std::realloc(s, size * sizeof(T));
+	}
 
-template <typename T>
-void s_memset(T* s, const T val, const T size) {
-	std::fill(s, s + size, val);
-}
+	template <typename T>
+	void s_memset(T* s, const T val, const T size) {
+		std::fill(s, s + size, val);
+	}
 
-// field
+	// field
 
-enum RING {
-	FIELD_QQ,    // fmpq
-	FIELD_Fp,    // ulong
-	RING_MulitFp // not implemented now
-};
+	enum RING {
+		FIELD_QQ,    // fmpq
+		FIELD_Fp,    // ulong
+		RING_MulitFp // not implemented now
+	};
 
-struct field_struct {
-	enum RING ring;
-	ulong rank = 1; // the rank of the product ring
-	nmod_t* pvec = NULL;
-};
-typedef struct field_struct field_t[1];
+	struct field_struct {
+		enum RING ring;
+		ulong rank = 1; // the rank of the product ring
+		nmod_t* pvec = NULL;
+	};
+	typedef struct field_struct field_t[1];
 
-// rref_option
+	// rref_option
 
-struct rref_option {
-	bool verbose = false;
-	bool is_back_sub = true;
-	bool pivot_dir = true; // true: row, false: col
-	uint8_t method = 0;
-	int print_step = 100;
-	int search_depth = INT_MAX;
-};
-typedef struct rref_option rref_option_t[1];
+	struct rref_option {
+		bool verbose = false;
+		bool is_back_sub = true;
+		bool pivot_dir = true; // true: row, false: col
+		uint8_t method = 0;
+		int print_step = 100;
+		int search_depth = INT_MAX;
+	};
+	typedef struct rref_option rref_option_t[1];
 
-namespace sparse_base {
+
 	// version
 	constexpr static const char version[] = "v0.2.4";
 
@@ -289,7 +290,7 @@ namespace sparse_base {
 	}
 
 	template <typename T> inline T* binarysearch(T* begin, T* end, uint16_t rank, T* val) {
-		auto ptr = sparse_base::lower_bound(begin, end, rank, val);
+		auto ptr = sparse_rref::lower_bound(begin, end, rank, val);
 		if (ptr == end || std::equal(ptr, ptr + rank, val))
 			return ptr;
 		else
@@ -455,16 +456,16 @@ namespace sparse_base {
 		sparse_vec& operator=(const sparse_vec& l) {
 			if (this == &l)
 				return *this;
-			if (alloc == 0) 
+			if (alloc == 0)
 				init(l.alloc);
-			else if (alloc < l.nnz) 
+			else if (alloc < l.nnz)
 				realloc(l.nnz);
 
 			copy(l);
 			return *this;
 		}
 
-		sparse_vec& operator=(sparse_vec&& l) noexcept { 
+		sparse_vec& operator=(sparse_vec&& l) noexcept {
 			if (this == &l)
 				return *this;
 			clear();
@@ -575,31 +576,6 @@ namespace sparse_base {
 			canonicalize();
 			sort_indices();
 		}
-	};
-
-	// sparse matrix
-	template <typename T> struct sparse_mat {
-		ulong nrow;
-		ulong ncol;
-		std::vector<sparse_vec<T>> rows;
-
-		void init(ulong r, ulong c) {
-			nrow = r;
-			ncol = c;
-			rows.resize(r);
-		}
-
-		sparse_mat() { nrow = 0; ncol = 0; }
-		sparse_mat(ulong r, ulong c) { init(r, c); }
-
-		void clear() {
-			for (auto& row : rows)
-				row.clear();
-			rows.clear();
-			nrow = 0;
-			ncol = 0;
-		}
-		~sparse_mat() { clear(); }
 	};
 }
 

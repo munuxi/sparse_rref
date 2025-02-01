@@ -20,7 +20,7 @@
 
 #define printtime(str)                                                         \
     std::cout << (str) << " spent " << std::fixed << std::setprecision(6)      \
-              << sparse_base::usedtime(start, end) << " seconds." << std::endl
+              << sparse_rref::usedtime(start, end) << " seconds." << std::endl
 
 #define printmatinfo(mat)                                                      \
     std::cout << "nnz: " << sparse_mat_nnz(mat) << " ";                        \
@@ -28,9 +28,9 @@
     std::cout << "ncol: " << (mat)->ncol << std::endl
 
 int main(int argc, char** argv) {
-	argparse::ArgumentParser program("sparserref", sparse_base::version);
+	argparse::ArgumentParser program("sparserref", sparse_rref::version);
 	program.set_usage_max_line_width(80);
-	program.add_description("(exact) Sparse Reduced Row Echelon Form " + std::string(sparse_base::version));
+	program.add_description("(exact) Sparse Reduced Row Echelon Form " + std::string(sparse_rref::version));
 	program.add_argument("input_file")
 		.help("input file in matrix market format");
 	program.add_argument("-o", "--output")
@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
 	}
 
 	int nthread = program.get<int>("--threads");
-	sparse_base::thread_pool pool(nthread);
+	sparse_rref::thread_pool pool(nthread);
 	std::cout << "using " << nthread << " threads" << std::endl;
 
 	field_t F;
@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
 	sparse_mat_t<fmpq> mat_Q;
 	sparse_mat_t<ulong> mat_Zp;
 
-	auto start = sparse_base::clocknow();
+	auto start = sparse_rref::clocknow();
 	auto input_file = program.get<std::string>("input_file");
 	std::filesystem::path filePath = input_file;
 	if (!std::filesystem::exists(filePath)) {
@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
 	}
 	file.close();
 
-	auto end = sparse_base::clocknow();
+	auto end = sparse_rref::clocknow();
 	std::cout << "-------------------" << std::endl;
 	printtime("read");
 
@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
 	//sparse_mat_init(mat_Zp_2, mat_Zp->nrow, mat_Zp->ncol);
 	//sparse_mat_set(mat_Zp_2, mat_Zp);
 
-	start = sparse_base::clocknow();
+	start = sparse_rref::clocknow();
 	std::vector<std::vector<pivot_t>> pivots;
 	if (prime == 0) {
 		pivots = sparse_mat_rref(mat_Q, F, pool, opt);
@@ -205,16 +205,16 @@ int main(int argc, char** argv) {
 		pivots = sparse_mat_rref(mat_Zp, F, pool, opt);
 	}
 
-	end = sparse_base::clocknow();
+	end = sparse_rref::clocknow();
 	std::cout << "-------------------" << std::endl;
 	printtime("RREF");
 
-	//start = sparse_base::clocknow();
+	//start = sparse_rref::clocknow();
 	//sparse_mat_direct_rref(mat_Zp_2, pivots, F, pool, opt);
 	//if (opt->is_back_sub) {
 	//	triangular_solver(mat_Zp_2, pivots, F, opt, -1, pool);
 	//}
-	//end = sparse_base::clocknow();
+	//end = sparse_rref::clocknow();
 	//std::cout << "-------------------" << std::endl;
 	//printtime("DIRECT RREF");
 
@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
 		printmatinfo(mat_Zp);
 	}
 
-	start = sparse_base::clocknow();
+	start = sparse_rref::clocknow();
 	std::ofstream file2;
 	std::string outname, outname_add("");
 	if (program.get<std::string>("--output") == "input_file.rref")
@@ -293,7 +293,7 @@ int main(int argc, char** argv) {
 		file2.close();
 	}
 
-	end = sparse_base::clocknow();
+	end = sparse_rref::clocknow();
 	printtime("write files");
 
 	field_clear(F);

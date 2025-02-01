@@ -161,7 +161,7 @@ template <typename T> struct sparse_tensor_struct {
 	}
 
 	std::vector<ulong> row_nums() {
-		return sparse_base::difference(rowptr);
+		return sparse_rref::difference(rowptr);
 	}
 
 	// remove zero entries
@@ -204,7 +204,7 @@ template <typename T> struct sparse_tensor_struct {
 		auto end = row(l[0] + 1).first;
 		if (begin == end)
 			return end;
-		return sparse_base::lower_bound(begin, end, rank - 1, l + 1);
+		return sparse_rref::lower_bound(begin, end, rank - 1, l + 1);
 	}
 
 	ulong* entry_lower_bound(std::vector<ulong> l) {

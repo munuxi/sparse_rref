@@ -13,6 +13,8 @@
 
 #include "scalar.h"
 
+using namespace sparse_rref;
+
 template <typename T> struct sparse_vec_struct {
 	ulong nnz = 0;
 	ulong alloc = 0;
@@ -118,7 +120,7 @@ inline T* sparse_vec_entry(sparse_vec_t<T> vec, slong index, const bool isbinary
 		return NULL;
 	slong* ptr;
 	if (isbinary)
-		ptr = sparse_base::binarysearch(vec->indices, vec->indices + vec->nnz, index);
+		ptr = sparse_rref::binarysearch(vec->indices, vec->indices + vec->nnz, index);
 	else
 		ptr = std::find(vec->indices, vec->indices + vec->nnz, index);
 	if (ptr == vec->indices + vec->nnz)
@@ -517,6 +519,206 @@ template <typename T> void print_vec_info(const sparse_vec_t<T> vec) {
 	for (size_t i = 0; i < vec->nnz; i++)
 		std::cout << scalar_to_str(vec->entries + i) << " ";
 	std::cout << std::endl;
+}
+
+// new sparse matrix
+template <typename T> struct sparse_mat {
+	ulong nrow;
+	ulong ncol;
+	sparse_vec_struct<T>* rows;
+
+	void init(ulong r, ulong c, ulong alloc = 1) {
+		nrow = r;
+		ncol = c;
+		rows = s_malloc<sparse_vec_struct<T>>(r);
+		for (size_t i = 0; i < r; i++)
+			sparse_vec_init(rows + i, alloc);
+	}
+
+	sparse_mat() { nrow = 0; ncol = 0; rows = NULL; }
+	sparse_mat(ulong r, ulong c, ulong alloc = 1) { init(r, c, alloc); }
+
+	sparse_vec_struct<T>* row(ulong i) {
+		return rows + i;
+	}
+
+	sparse_vec_struct<T>* operator[](ulong i) {
+		return rows + i;
+	}
+
+	void realloc(ulong r, ulong c, ulong alloc = 1) {
+		if (rows == NULL) {
+			init(r, c, alloc);
+			return;
+		}
+		if (nrow == r)
+			return;
+		if (nrow < r) {
+			rows = s_realloc(rows, r);
+			for (size_t i = nrow; i < r; i++)
+				sparse_vec_init(this->row(i), alloc);
+		}
+		else {
+			for (size_t i = r; i < nrow; i++)
+				sparse_vec_clear(this->row(i));
+			rows = s_realloc(rows, r);
+		}
+	}
+
+	void clear() {
+		for (size_t i = 0; i < nrow; i++)
+			sparse_vec_clear(this->row(i));
+		s_free(rows);
+		nrow = 0;
+		ncol = 0;
+		rows = NULL;
+	}
+	~sparse_mat() { clear(); }
+
+	void copy(const sparse_mat& src) {
+		realloc(src.nrow, src.ncol);
+		for (size_t i = 0; i < nrow; i++)
+			sparse_vec_set(this->row(i), src[i]);
+	}
+
+	sparse_mat& operator=(const sparse_mat& l) {
+		if (this == &l)
+			return *this;
+		copy(l);
+		return *this;
+	}
+
+	sparse_mat& operator=(sparse_mat&& l) noexcept {
+		if (this == &l)
+			return *this;
+		clear();
+		nrow = l.nrow;
+		ncol = l.ncol;
+		rows = l.rows;
+		l.rows = NULL;
+		return *this;
+	}
+
+	ulong nnz() {
+		ulong nnz = 0;
+		for (size_t i = 0; i < nrow; i++)
+			nnz += this->row(i)->nnz;
+		return nnz;
+	}
+
+	ulong alloc() {
+		ulong alloc = 0;
+		for (size_t i = 0; i < nrow; i++)
+			alloc += this->row(i)->alloc;
+		return alloc;
+	}
+
+	void compress() {
+		for (size_t i = 0; i < nrow; i++) {
+			auto r = this->row(i);
+			sparse_vec_canonicalize(r);
+			sparse_vec_sort_indices(r);
+			sparse_vec_realloc(r, r->nnz);
+		}
+	}
+
+	void clear_zero_row() {
+		ulong new_nrow = 0;
+		for (size_t i = 0; i < nrow; i++) {
+			if (this->row(i)->nnz != 0) {
+				sparse_vec_swap(this->row(new_nrow), this->row(i));
+				new_nrow++;
+			}
+			else
+				sparse_vec_clear(this->row(i));
+		}
+		nrow = new_nrow;
+		s_realloc(rows, new_nrow);
+	}
+
+	T* entry(ulong r, ulong c, bool isbinary = true) {
+		return sparse_vec_entry(this->row(r), c, isbinary);
+	}
+
+	sparse_mat<T> transpose() {
+		sparse_mat<T> res(ncol, nrow);
+		for (size_t i = 0; i < nrow; i++)
+			res[i]->nnz = 0;
+
+		for (size_t i = 0; i < nrow; i++) {
+			auto therow = this->row(i);
+			for (size_t j = 0; j < therow->nnz; j++) {
+				auto col = therow->indices[j];
+				auto entry = therow->entries + j;
+				_sparse_vec_set_entry(res[col], i, entry);
+			}
+		}
+		return std::move(res);
+	}
+};
+
+template <typename T>
+sparse_mat<T> sparse_mat_transpose(const sparse_mat<T>& mat) {
+	return mat.transpose();
+}
+
+template <typename T>
+sparse_mat<T*> sparse_mat_transpose(const sparse_mat<T>& mat) {
+	sparse_mat<T*> res(mat.ncol, mat.nrow);
+	for (size_t i = 0; i < mat.nrow; i++)
+		res[i]->nnz = 0;
+
+	for (size_t i = 0; i < mat.nrow; i++) {
+		auto therow = mat[i];
+		for (size_t j = 0; j < therow->nnz; j++) {
+			auto col = therow->indices[j];
+			auto entry = therow->entries + j;
+			_sparse_vec_set_entry(res[col], i, &entry);
+		}
+	}
+	return std::move(res);
+}
+
+template <typename T>
+sparse_mat<bool> sparse_mat_transpose(const sparse_mat<T>& mat) {
+	sparse_mat<bool> res(mat.ncol, mat.nrow);
+	for (size_t i = 0; i < mat.nrow; i++)
+		res[i]->nnz = 0;
+	for (size_t i = 0; i < mat.nrow; i++) {
+		auto therow = mat[i];
+		for (size_t j = 0; j < therow->nnz; j++) {
+			auto col = therow->indices[j];
+			_sparse_vec_set_entry(res[col], i, (bool*)NULL);
+		}
+	}
+	return std::move(res);
+}
+
+template <typename T, typename S>
+sparse_mat<S> sparse_mat_transpose_part(const sparse_mat<T>& mat, const std::vector<slong>& rows) {
+	sparse_mat<S> res(mat.ncol, mat.nrow);
+	for (size_t i = 0; i < mat.nrow; i++)
+		res[i]->nnz = 0;
+
+	for (size_t i = 0; i < rows.size(); i++) {
+		auto therow = mat[rows[i]];
+		for (size_t j = 0; j < therow->nnz; j++) {
+			auto col = therow->indices[j];
+			S* entry;
+			if constexpr (std::is_same_v<S, T>) {
+				entry = therow->entries + j;
+			}
+			else if constexpr (std::is_same_v<S, T*>) {
+				auto ptr = therow->entries + j;
+				entry = &ptr;
+			}
+			else {
+				entry = NULL;
+			}
+			_sparse_vec_set_entry(res[col], rows[i], entry);
+		}
+	}
+	return std::move(res);
 }
 
 #endif
