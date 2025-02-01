@@ -943,7 +943,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 		}
 		leftrows.resize(n_leftrows);
 
-		sparse_base::LockFreeQueue<slong> queue;
+		sparse_rref::LockFreeQueue<slong> queue;
 		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 			auto id = sparse_rref::thread_id();
 			for (ulong i = s; i < e; i++) {
@@ -1166,10 +1166,10 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
 
 		ulong tran_count = 0;
-		sparse_base::LockFreeQueue<slong> queue;
+		sparse_rref::LockFreeQueue<slong> queue;
 		// and then compute the elimination of the rows asynchronizely
 		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
-			auto id = sparse_base::thread_id();
+			auto id = sparse_rref::thread_id();
 			for (ulong i = s; i < e; i++) {
 				if (rowpivs[leftrows[i]] != -1)
 					continue;
@@ -1255,7 +1255,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref(sparse_mat_t<T> mat, field_t F
 // parallel version !!!
 // output some information !!!
 std::vector<std::vector<pivot_t>> sparse_mat_rref_reconstruct(sparse_mat_t<fmpq> mat,
-	sparse_base::thread_pool& pool, rref_option_t opt) {
+	sparse_rref::thread_pool& pool, rref_option_t opt) {
 	std::vector<std::vector<pivot_t>> pivots;
 
 	ulong prime = n_nextprime(1ULL << 50, 0);
