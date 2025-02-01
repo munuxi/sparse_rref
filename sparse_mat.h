@@ -694,7 +694,7 @@ void triangular_solver_2(sparse_mat_t<T> mat, std::vector<pivot_t>& pivots,
 	field_t F, rref_option_t opt, sparse_base::thread_pool& pool) {
 
 	// prepare the tmp array
-	int nthreads = pool.get_thread_count();
+	auto nthreads = pool.get_thread_count();
 	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
 	std::vector<sparse_base::uset> nonzero_c(nthreads);
 	for (size_t i = 0; i < mat->ncol * nthreads; i++)
@@ -768,7 +768,7 @@ void sparse_mat_direct_rref(sparse_mat_t<T>mat,
 	sparse_mat_clear(tranmatp);
 
 	// then do the elimination parallelly
-	int nthreads = pool.get_thread_count();
+	auto nthreads = pool.get_thread_count();
 	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
 	std::vector<sparse_base::uset> nonzero_c(nthreads);
 	for (size_t i = 0; i < mat->ncol * nthreads; i++)
@@ -888,7 +888,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 	sparse_mat_clear(tranmatp);
 	auto rank = pivots[0].size();
 
-	int nthreads = pool.get_thread_count();
+	auto nthreads = pool.get_thread_count();
 	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
 	std::vector<sparse_base::uset> nonzero_c(nthreads);
 	for (size_t i = 0; i < mat->ncol * nthreads; i++) 
@@ -916,8 +916,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat_t<T> mat, field_t
 	while (kk < mat->ncol) {
 		auto start = sparse_base::clocknow();
 
-		auto ps = findmanypivots(mat, tranmat, rowpivs, colperm,
-			colperm.begin() + kk, false, opt->search_depth);
+		auto ps = findmanypivots(mat, tranmat, rowpivs, colperm, colperm.begin() + kk, false);
 		if (ps.size() == 0)
 			break;
 
@@ -1083,7 +1082,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 	sparse_mat_t<bool> tranmat;
 	sparse_mat_init(tranmat, mat->ncol, mat->nrow);
 
-	int nthreads = pool.get_thread_count();
+	auto nthreads = pool.get_thread_count();
 	T* cachedensedmat = s_malloc<T>(mat->ncol * nthreads);
 	std::vector<sparse_base::uset> nonzero_c(nthreads);
 	for (size_t i = 0; i < mat->ncol * nthreads; i++)
@@ -1128,8 +1127,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 		}
 
 		pool.wait();
-		auto ps = findmanypivots(mat, tranmat, colpivs,
-			rowperm, rowperm.begin() + kk, true, opt->search_depth);
+		auto ps = findmanypivots(mat, tranmat, colpivs, rowperm, rowperm.begin() + kk, true);
 
 		if (ps.size() == 0)
 			break;
@@ -1227,19 +1225,20 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat_t<T> mat, field_t
 	return pivots;
 }
 
-////TODO
-//void sparse_mat_rref_uplift(sparse_mat_t<fmpq> mat) {
-//	return;
-//}
+// convert
+static inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src, nmod_t p) {
+	for (size_t i = 0; i < src->nrow; i++)
+		snmod_vec_from_sfmpq(sparse_mat_row(mat, i), sparse_mat_row(src, i), p);
+}
 
 template <typename T>
 std::vector<std::vector<pivot_t>> sparse_mat_rref(sparse_mat_t<T> mat, field_t F,
 	sparse_base::thread_pool& pool, rref_option_t opt) {
 	std::vector<std::vector<pivot_t>> pivots;
 	if (opt->pivot_dir)
-		pivots = sparse_mat_rref_r(mat, F, pool, opt);
-	else
 		pivots = sparse_mat_rref_c(mat, F, pool, opt);
+	else
+		pivots = sparse_mat_rref_r(mat, F, pool, opt);
 
 	if (opt->is_back_sub) {
 		if (opt->verbose)
@@ -1247,6 +1246,105 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref(sparse_mat_t<T> mat, field_t F
 		// triangular_solver(mat, pivots, F, opt, -1, pool);
 		triangular_solver_2(mat, pivots, F, opt, pool);
 	}
+	return pivots;
+}
+
+// TODO: check!!! 
+// parallel version !!!
+// output some information !!!
+std::vector<std::vector<pivot_t>> sparse_mat_rref_reconstruct(sparse_mat_t<fmpq> mat,
+	sparse_base::thread_pool& pool, rref_option_t opt) {
+	std::vector<std::vector<pivot_t>> pivots;
+
+	ulong prime = n_nextprime(1ULL << 50, 0);
+	field_t F;
+	field_init(F, FIELD_Fp, 1, &prime);
+
+	sparse_mat_t<ulong> matul;
+	sparse_mat_init(matul, mat->nrow, mat->ncol);
+	snmod_mat_from_sfmpq(matul, mat, F->pvec[0]);
+
+	if (opt->pivot_dir)
+		pivots = sparse_mat_rref_c(matul, F, pool, opt);
+	else
+		pivots = sparse_mat_rref_r(matul, F, pool, opt);
+
+	if (opt->is_back_sub)
+		triangular_solver_2(matul, pivots, F, opt, pool);
+
+	fmpz_t mod, mod1;
+	scalar_init(mod);  scalar_init(mod1);
+
+	fmpz_set_ui(mod, prime);
+
+	int isok = 1;
+	sparse_mat_t<fmpq> matq;
+	sparse_mat_init(matq, mat->nrow, mat->ncol);
+
+	// we use mod1 here as a temp variable
+	for (auto i = 0; i < mat->nrow; i++) {
+		sparse_vec_realloc(sparse_mat_row(matq, i), sparse_mat_row(matul, i)->nnz);
+		auto therow = sparse_mat_row(matul, i);
+		auto therowq = sparse_mat_row(matq, i);
+		therowq->nnz = therow->nnz;
+		for (size_t j = 0; j < therow->nnz; j++) {
+			therowq->indices[j] = therow->indices[j];
+			fmpz_set_ui(mod1, therow->entries[j]);
+			if (isok)
+				isok = fmpq_reconstruct_fmpz(therowq->entries + j, mod1, mod);
+		}
+	}
+
+	sparse_mat_t<fmpz> matz;
+	sparse_mat_init(matz, mat->nrow, mat->ncol);
+	if (!isok) {
+		for (auto i = 0; i < mat->nrow; i++) {
+			auto therow = sparse_mat_row(matul, i);
+			auto therowz = sparse_mat_row(matz, i);
+			sparse_vec_realloc(therowz, therow->nnz);
+			therowz->nnz = therow->nnz;
+			for (size_t j = 0; j < therow->nnz; j++) {
+				therowz->indices[j] = therow->indices[j];
+				fmpz_set_ui(therowz->entries + j, therow->entries[j]);
+			}
+		}
+	}
+
+	while (!isok) {
+		isok = 1;
+		prime = n_nextprime(prime, 0);
+		fmpz_mul_ui(mod1, mod, prime);
+		nmod_init(F->pvec, prime);
+		snmod_mat_from_sfmpq(matul, mat, F->pvec[0]);
+		sparse_mat_direct_rref(matul, pivots, F, pool, opt);
+		if (opt->is_back_sub) {
+			opt->verbose = false;
+			triangular_solver_2(matul, pivots, F, opt, pool);
+		}
+		for (auto i = 0; i < mat->nrow; i++) {
+			auto therow = sparse_mat_row(matul, i);
+			auto therowz = sparse_mat_row(matz, i);
+			auto therowq = sparse_mat_row(matq, i);
+			for (size_t j = 0; j < therow->nnz; j++) {
+				fmpz_CRT_ui(therowz->entries + j, therowz->entries + j, mod, therow->entries[j], prime, 0);
+				if (isok)
+					isok = fmpq_reconstruct_fmpz(therowq->entries + j, therowz->entries + j, mod1);
+			}
+		}
+		fmpz_set(mod, mod1);
+	}
+	opt->verbose = true;
+
+	for (size_t i = 0; i < mat->nrow; i++) 
+		sparse_vec_swap(sparse_mat_row(mat, i), sparse_mat_row(matq, i));
+
+	field_clear(F);
+	scalar_clear(mod);
+	scalar_clear(mod1);
+	sparse_mat_clear(matz);
+	sparse_mat_clear(matul);
+	sparse_mat_clear(matq);
+	
 	return pivots;
 }
 
@@ -1318,13 +1416,6 @@ ulong sparse_mat_rref_kernel(sparse_mat_t<T> K, const sparse_mat_t<T> M,
 	for (auto& p : pivots)
 		n_pivots.insert(n_pivots.end(), p.begin(), p.end());
 	return sparse_mat_rref_kernel(K, M, n_pivots, F, pool);
-}
-
-// convert
-static inline void snmod_mat_from_sfmpq(snmod_mat_t mat, const sfmpq_mat_t src,
-	nmod_t p) {
-	for (size_t i = 0; i < src->nrow; i++) 
-		snmod_vec_from_sfmpq(sparse_mat_row(mat, i), sparse_mat_row(src, i), p);
 }
 
 // IO

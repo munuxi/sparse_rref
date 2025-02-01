@@ -75,7 +75,7 @@ typedef struct field_struct field_t[1];
 struct rref_option {
 	bool verbose = false;
 	bool is_back_sub = true;
-	bool pivot_dir = true; // true: row, false: col
+	bool pivot_dir = true; // true: col, false: row
 	uint8_t method = 0;
 	int print_step = 100;
 	int search_depth = INT_MAX;
@@ -84,7 +84,7 @@ typedef struct rref_option rref_option_t[1];
 
 namespace sparse_base {
 	// version
-	constexpr static const char version[] = "v0.2.4";
+	constexpr static const char version[] = "v0.2.5";
 
 	// thread
 	using thread_pool = BS::thread_pool<>; // thread pool

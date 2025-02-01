@@ -57,9 +57,11 @@ static inline void field_set(field_t field, const field_t ff) {
 // scalar
 
 static inline void scalar_init(fmpq_t a) { fmpq_init(a); }
+static inline void scalar_init(fmpz_t a) { fmpz_init(a); }
 static inline void scalar_init(ulong* a) { return; } // do nothing
 
 static inline void scalar_clear(fmpq_t a) { fmpq_clear(a); }
+static inline void scalar_clear(fmpz_t a) { fmpz_clear(a); }
 static inline void scalar_clear(ulong* a) { return; } // do nothing
 
 // TODO: avoid copy
@@ -73,12 +75,15 @@ static inline std::string scalar_to_str(fmpq_t a) {
 static inline std::string scalar_to_str(ulong* a) { return std::to_string(*a); }
 
 static inline bool scalar_is_zero(const fmpq_t a) { return fmpq_is_zero(a); }
+static inline bool scalar_is_zero(const fmpz_t a) { return fmpz_is_zero(a); }
 static inline bool scalar_is_zero(const ulong* a) { return (*a) == 0; }
 
 static inline bool scalar_equal(const fmpq_t a, const fmpq_t b) { return fmpq_equal(a, b); }
+static inline bool scalar_equal(const fmpz_t a, const fmpz_t b) { return fmpz_equal(a, b); }
 static inline bool scalar_equal(const ulong* a, const ulong* b) { return (*a) == (*b); }
 
 static inline void scalar_set(fmpq_t a, const fmpq_t b) { fmpq_set(a, b); }
+static inline void scalar_set(fmpz_t a, const fmpz_t b) { fmpz_set(a, b); }
 static inline void scalar_set(ulong* a, const ulong* b) { *a = *b; }
 template <typename T>
 inline void scalar_set(T* a, const T* b, const ulong len) {
@@ -87,9 +92,11 @@ inline void scalar_set(T* a, const T* b, const ulong len) {
 }
 
 static inline void scalar_zero(fmpq_t a) { fmpq_zero(a); }
+static inline void scalar_zero(fmpz_t a) { fmpz_zero(a); }
 static inline void scalar_zero(ulong* a) { *a = 0; }
 
 static inline void scalar_one(fmpq_t a) { fmpq_one(a); }
+static inline void scalar_one(fmpz_t a) { fmpz_one(a); }
 static inline void scalar_one(ulong* a) { *a = 1; }
 
 // arithmetic

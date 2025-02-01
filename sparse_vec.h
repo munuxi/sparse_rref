@@ -53,12 +53,20 @@ void sparse_vec_realloc(sparse_vec_t<T> vec, ulong alloc) {
 			for (ulong i = old_alloc; i < vec->alloc; i++)
 				fmpq_init((fmpq*)(vec->entries) + i);
 		}
+		if constexpr (std::is_same_v<T, fmpz>) {
+			for (ulong i = old_alloc; i < vec->alloc; i++)
+				fmpz_init((fmpz*)(vec->entries) + i);
+		}
 	}
 	else {
 		// shrink: clear first
 		if constexpr (std::is_same_v<T, fmpq>) {
 			for (ulong i = vec->alloc; i < old_alloc; i++)
 				fmpq_clear((fmpq*)(vec->entries) + i);
+		}
+		if constexpr (std::is_same_v<T, fmpz>) {
+			for (ulong i = vec->alloc; i < old_alloc; i++)
+				fmpz_clear((fmpz*)(vec->entries) + i);
 		}
 		vec->indices = s_realloc(vec->indices, vec->alloc);
 		if constexpr (!std::is_same_v<T, bool>) {
