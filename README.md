@@ -49,12 +49,12 @@ The `main.cpp` is an example to use the head only library, the help is
 Usage: sparserref [--help] [--version] [--output VAR]
                   [--kernel] [--output-pivots]
                   [--field VAR] [--prime VAR] [--threads VAR]
-                  [--pivot_direction VAR] [--search_depth VAR]
+                  [--pivot_direction VAR]
                   [--verbose] [--print_step VAR]
                   [--no-backward-substitution]
                   input_file
 
-(exact) Sparse Reduced Row Echelon Form v0.2.4
+(exact) Sparse Reduced Row Echelon Form v0.2.5
 
 Positional arguments:
   input_file                  input file in matrix market format
@@ -69,8 +69,7 @@ Optional arguments:
                               Zp or Fp: Z/p for a prime p [default: "QQ"]
   -p, --prime                 a prime number, only vaild when field is Zp  [default: "34534567"]
   -t, --threads               the number of threads  [default: 1]
-  -pd, --pivot_direction      the direction to select pivots [default: "row"]
-  -sd, --search_depth         the depth of search, default is the max of int  [default: 0]
+  -pd, --pivot_direction      the direction to select pivots [default: "col"]
   -V, --verbose               prints information of calculation
   -ps, --print_step           print step when --verbose is enabled [default: 100]
   --no-backward-substitution  no backward substitution

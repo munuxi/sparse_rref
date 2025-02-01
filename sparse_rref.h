@@ -16,6 +16,7 @@
 #include <climits>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <fstream>
@@ -80,16 +81,15 @@ namespace sparse_rref {
 	struct rref_option {
 		bool verbose = false;
 		bool is_back_sub = true;
-		bool pivot_dir = true; // true: row, false: col
+		bool pivot_dir = true; // true: col, false: row
 		uint8_t method = 0;
 		int print_step = 100;
 		int search_depth = INT_MAX;
 	};
 	typedef struct rref_option rref_option_t[1];
 
-
 	// version
-	constexpr static const char version[] = "v0.2.4";
+	constexpr static const char version[] = "v0.3.0";
 
 	// thread
 	using thread_pool = BS::thread_pool<>; // thread pool
@@ -107,18 +107,12 @@ namespace sparse_rref {
 	inline size_t clz(ulong x) {
 		return std::countl_zero(x);
 	}
-	inline size_t popcount(ulong x) {
-		return std::popcount(x);
-	}
 #else
 	inline size_t ctz(ulong x) {
 		return flint_ctz(x);
 	}
 	inline size_t clz(ulong x) {
 		return flint_clz(x);
-	}
-	inline size_t popcount(ulong x) {
-		return FLINT_BIT_COUNT(x);
 	}
 #endif
 
@@ -223,12 +217,13 @@ namespace sparse_rref {
 			tmp.reserve(bitset_size);
 			for (size_t i = 0; i < data.size(); i++) {
 				if (data[i].any()) {
+#ifndef flint_ctz
 					// naive version
-					// for (size_t j = 0; j < bitset_size; j++) {
-					// 	if (data[i].test(j))
-					// 		result.push_back(i * bitset_size + j);
-					// }
-
+					 for (size_t j = 0; j < bitset_size; j++) {
+					 	if (data[i].test(j))
+					 		result.push_back(i * bitset_size + j);
+					 }
+#else
 					tmp.clear();
 					ulong c = data[i].to_ullong();
 
@@ -249,6 +244,7 @@ namespace sparse_rref {
 						c = c ^ (1ULL << clzpos) ^ (1ULL << ctzpos);
 					}
 					result.insert(result.end(), tmp.rbegin(), tmp.rend());
+#endif
 				}
 			}
 			return result;
@@ -296,6 +292,83 @@ namespace sparse_rref {
 		else
 			return end;
 	}
+
+	// LockFreeQueue
+	template <typename T>
+	class LockFreeQueue {
+	private:
+		struct Node {
+			std::shared_ptr<T> data;
+			std::atomic<Node*> next;
+
+			Node(T const& value) : data(std::make_shared<T>(value)), next(nullptr) {}
+		};
+
+		std::atomic<Node*> head;
+		std::atomic<Node*> tail;
+
+	public:
+		LockFreeQueue() {
+			Node* dummy = new Node(T());  
+			head.store(dummy);
+			tail.store(dummy);
+		}
+
+		~LockFreeQueue() {
+			while (Node* old_head = head.load()) {
+				head.store(old_head->next);
+				delete old_head;
+			}
+		}
+
+		void enqueue(T const& value) {
+			Node* new_node = new Node(value);
+			Node* old_tail = tail.load();
+			Node* null_ptr = nullptr;
+
+			while (true) {
+				Node* old_next = old_tail->next.load();
+
+				if (old_next == nullptr) {
+					if (old_tail->next.compare_exchange_weak(null_ptr, new_node)) {
+						tail.compare_exchange_weak(old_tail, new_node);
+						break;
+					}
+				}
+				else {
+					tail.compare_exchange_weak(old_tail, old_next);
+				}
+			}
+		}
+
+		std::shared_ptr<T> dequeue() {
+			Node* old_head;
+			Node* old_tail;
+			std::shared_ptr<T> result;
+
+			while (true) {
+				old_head = head.load();
+				old_tail = tail.load();
+				Node* next = old_head->next.load();
+
+				if (old_head == head.load()) {
+					if (old_head == old_tail) {
+						if (next == nullptr) {
+							return std::shared_ptr<T>();  
+						}
+						tail.compare_exchange_weak(old_tail, next);
+					}
+					else {
+						result = next->data;
+						if (head.compare_exchange_weak(old_head, next)) {
+							delete old_head;
+							return result;
+						}
+					}
+				}
+			}
+		}
+	};
 
 	// IO
 	using DataTuple = std::vector<std::tuple<slong, slong, std::string>>;

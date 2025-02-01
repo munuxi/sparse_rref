@@ -64,13 +64,8 @@ int main(int argc, char** argv) {
 		.scan<'i', int>();
 	program.add_argument("-pd", "--pivot_direction")
 		.help("the direction to select pivots")
-		.default_value("row")
+		.default_value("col")
 		.nargs(1);
-	program.add_argument("-sd", "--search_depth")
-		.help("the depth of search, default is the max of int ")
-		.default_value(0)
-		.nargs(1)
-		.scan<'i', int>();
 	program.add_usage_newline();
 	program.add_argument("-V", "--verbose")
 		.default_value(false)
@@ -186,20 +181,13 @@ int main(int argc, char** argv) {
 	opt->verbose = (program["--verbose"] == true);
 	opt->is_back_sub = (program["--no-backward-substitution"] == false);
 	opt->print_step = program.get<int>("--print_step");
-	opt->search_depth = (ulong)program.get<int>("--search_depth");
-	opt->pivot_dir = (program.get<std::string>("--pivot_direction") == "row");
-	if (opt->search_depth == 0)
-		opt->search_depth = INT_MAX;
-
-	//// check direct rref
-	//sparse_mat_t<ulong> mat_Zp_2;
-	//sparse_mat_init(mat_Zp_2, mat_Zp->nrow, mat_Zp->ncol);
-	//sparse_mat_set(mat_Zp_2, mat_Zp);
+	opt->pivot_dir = (program.get<std::string>("--pivot_direction") == "col");
 
 	start = sparse_rref::clocknow();
 	std::vector<std::vector<pivot_t>> pivots;
 	if (prime == 0) {
-		pivots = sparse_mat_rref(mat_Q, F, pool, opt);
+		// pivots = sparse_mat_rref(mat_Q, F, pool, opt);
+		pivots = sparse_mat_rref_reconstruct(mat_Q, pool, opt);
 	}
 	else {
 		pivots = sparse_mat_rref(mat_Zp, F, pool, opt);
@@ -208,15 +196,6 @@ int main(int argc, char** argv) {
 	end = sparse_rref::clocknow();
 	std::cout << "-------------------" << std::endl;
 	printtime("RREF");
-
-	//start = sparse_rref::clocknow();
-	//sparse_mat_direct_rref(mat_Zp_2, pivots, F, pool, opt);
-	//if (opt->is_back_sub) {
-	//	triangular_solver(mat_Zp_2, pivots, F, opt, -1, pool);
-	//}
-	//end = sparse_rref::clocknow();
-	//std::cout << "-------------------" << std::endl;
-	//printtime("DIRECT RREF");
 
 	size_t rank = 0;
 	for (auto p : pivots) {
@@ -254,29 +233,20 @@ int main(int argc, char** argv) {
 		outname_add = "";
 
 	file2.open(outname + outname_add);
-	// file2.open(outname + outname_add, std::ios::binary);
 	if (prime == 0) {
 		sparse_mat_write(mat_Q, file2);
 	}
 	else {
 		sparse_mat_write(mat_Zp, file2);
-		// auto buffer = snmod_mat_to_binary(mat_Zp);
-		// file2.write(buffer.second, buffer.first * sizeof(char));
-		// s_free(buffer.second);
 	}
 	file2.close();
-
-	//std::ofstream file3;
-	//file3.open(outname + outname_add + "_2");
-	//sparse_mat_write(mat_Zp_2, file3);
-	//file3.close();
 
 	if (program["--kernel"] == true) {
 		outname_add = ".kernel";
 		file2.open(outname + outname_add);
 		if (prime == 0) {
 			sfmpq_mat_t K;
-			int krank = sparse_mat_rref_kernel(K, mat_Q, pivots, F, pool);
+			auto krank = sparse_mat_rref_kernel(K, mat_Q, pivots, F, pool);
 			if (krank > 0)
 				sparse_mat_write(K, file2);
 			else
@@ -284,7 +254,7 @@ int main(int argc, char** argv) {
 		}
 		else {
 			snmod_mat_t K;
-			int krank = sparse_mat_rref_kernel(K, mat_Zp, pivots, F, pool);
+			auto krank = sparse_mat_rref_kernel(K, mat_Zp, pivots, F, pool);
 			if (krank > 0)
 				sparse_mat_write(K, file2);
 			else 
