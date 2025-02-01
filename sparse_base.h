@@ -102,18 +102,12 @@ namespace sparse_base {
 	inline size_t clz(ulong x) {
 		return std::countl_zero(x);
 	}
-	inline size_t popcount(ulong x) {
-		return std::popcount(x);
-	}
 #else
 	inline size_t ctz(ulong x) {
 		return flint_ctz(x);
 	}
 	inline size_t clz(ulong x) {
 		return flint_clz(x);
-	}
-	inline size_t popcount(ulong x) {
-		return FLINT_BIT_COUNT(x);
 	}
 #endif
 
@@ -218,12 +212,13 @@ namespace sparse_base {
 			tmp.reserve(bitset_size);
 			for (size_t i = 0; i < data.size(); i++) {
 				if (data[i].any()) {
+#ifndef flint_ctz
 					// naive version
-					// for (size_t j = 0; j < bitset_size; j++) {
-					// 	if (data[i].test(j))
-					// 		result.push_back(i * bitset_size + j);
-					// }
-
+					 for (size_t j = 0; j < bitset_size; j++) {
+					 	if (data[i].test(j))
+					 		result.push_back(i * bitset_size + j);
+					 }
+#else
 					tmp.clear();
 					ulong c = data[i].to_ullong();
 					
@@ -244,6 +239,7 @@ namespace sparse_base {
 						c = c ^ (1ULL << clzpos) ^ (1ULL << ctzpos);
 					}
 					result.insert(result.end(), tmp.rbegin(), tmp.rend());
+#endif
 				}
 			}
 			return result;
