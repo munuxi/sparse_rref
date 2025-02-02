@@ -24,8 +24,8 @@
 
 #define printmatinfo(mat)                                                      \
     std::cout << "nnz: " << sparse_mat_nnz(mat) << " ";                        \
-    std::cout << "nrow: " << (mat)->nrow << " ";                               \
-    std::cout << "ncol: " << (mat)->ncol << std::endl
+    std::cout << "nrow: " << (mat).nrow << " ";                                \
+    std::cout << "ncol: " << (mat).ncol << std::endl
 
 int main(int argc, char** argv) {
 	argparse::ArgumentParser program("sparserref", sparse_rref::version);
@@ -143,8 +143,8 @@ int main(int argc, char** argv) {
 	else
 		field_init(F, FIELD_Fp, std::vector<ulong>{prime});
 
-	sparse_mat_t<fmpq> mat_Q;
-	sparse_mat_t<ulong> mat_Zp;
+	sparse_mat<fmpq> mat_Q;
+	sparse_mat<ulong> mat_Zp;
 
 	auto start = sparse_rref::clocknow();
 	auto input_file = program.get<std::string>("input_file");
@@ -157,9 +157,8 @@ int main(int argc, char** argv) {
 	std::ifstream file(filePath);
 	sfmpq_mat_read(mat_Q, file);
 	if (prime != 0) {
-		sparse_mat_init(mat_Zp, mat_Q->nrow, mat_Q->ncol);
+		mat_Zp.init(mat_Q.nrow, mat_Q.ncol);
 		snmod_mat_from_sfmpq(mat_Zp, mat_Q, p);
-		sparse_mat_clear(mat_Q);
 	}
 	file.close();
 
@@ -245,17 +244,15 @@ int main(int argc, char** argv) {
 		outname_add = ".kernel";
 		file2.open(outname + outname_add);
 		if (prime == 0) {
-			sfmpq_mat_t K;
-			auto krank = sparse_mat_rref_kernel(K, mat_Q, pivots, F, pool);
-			if (krank > 0)
+			auto K = sparse_mat_rref_kernel(mat_Q, pivots, F, pool);
+			if (K.nrow > 0)
 				sparse_mat_write(K, file2);
 			else
 				std::cout << "kernel is empty" << std::endl;
 		}
 		else {
-			snmod_mat_t K;
-			auto krank = sparse_mat_rref_kernel(K, mat_Zp, pivots, F, pool);
-			if (krank > 0)
+			auto K = sparse_mat_rref_kernel( mat_Zp, pivots, F, pool);
+			if (K.nrow > 0)
 				sparse_mat_write(K, file2);
 			else 
 				std::cout << "kernel is empty" << std::endl;
@@ -268,9 +265,5 @@ int main(int argc, char** argv) {
 
 	field_clear(F);
 
-	// clean is very expansive, leave to OS :(
-	// sparse_mat_clear(mat_Q);
-	// sparse_mat_clear(mat_Zp);
-	// sparse_mat_clear(K);
 	return 0;
 }
