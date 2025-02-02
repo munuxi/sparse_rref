@@ -18,6 +18,8 @@
 #include "argparse.hpp"
 #include "sparse_mat.h"
 
+using namespace sparse_rref;
+
 #define printtime(str)                                                         \
     std::cout << (str) << " spent " << std::fixed << std::setprecision(6)      \
               << sparse_rref::usedtime(start, end) << " seconds." << std::endl

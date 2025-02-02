@@ -36,6 +36,8 @@
 #include "mma/WolframLibrary.h"
 #include "mma/WolframSparseLibrary.h"
 
+using namespace sparse_rref;
+
 EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args, MArgument Res) {
     auto mat = MArgument_getMSparseArray(Args[0]);
     auto p = MArgument_getInteger(Args[1]);
