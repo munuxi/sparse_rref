@@ -965,12 +965,12 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat<T>& mat, field_t 
 		}
 		leftrows.resize(n_leftrows);
 
-		sparse_rref::LockFreeQueue<slong> queue;
+		std::vector<int> flags(leftrows.size(), 0);
 		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 			auto id = sparse_rref::thread_id();
 			for (ulong i = s; i < e; i++) {
 				schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
-				queue.enqueue(i);
+				flags[i] = 1;
 			}
 			}, (leftrows.size() < 20 * nthreads ? 0 : leftrows.size() / 10));
 
@@ -992,21 +992,23 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_c(sparse_mat<T>& mat, field_t 
 		std::vector<slong> donelist(rowpivs);
 
 		bool print_once = true; // print at least once
-		// we need first clear the transpose matrix
+		// we need first set the transpose matrix zero
 		tranmat.zero();
 
 		ulong localcount = 0;
 		while (localcount < leftrows.size()) {
-			auto ptr = queue.dequeue();
-			if (ptr == NULL)
-				continue;
-			auto row = leftrows[*ptr];
-			auto therow = sparse_mat_row(mat, row);
-			for (size_t j = 0; j < therow->nnz; j++) {
-				auto thecol = sparse_mat_row(tranmat, therow->indices[j]);
-				_sparse_vec_set_entry(thecol, row, (bool*)NULL);
+			for (size_t i = 0; i < leftrows.size(); i++) {
+				if (flags[i]) {
+					auto row = leftrows[i];
+					auto therow = mat[row];
+					for (size_t j = 0; j < therow->nnz; j++) {
+						auto col = therow->indices[j];
+						_sparse_vec_set_entry(tranmat[col], row, (bool*)NULL);
+					}
+					flags[i] = 0;
+					localcount++;
+				}
 			}
-			localcount++;
 
 			double pr = kk + (1.0 * ps.size() * localcount) / leftrows.size();
 			if (verbose && (print_once || pr - oldpr > printstep)) {
@@ -1183,7 +1185,7 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat<T>& mat, field_t 
 		std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
 
 		ulong tran_count = 0;
-		sparse_rref::LockFreeQueue<slong> queue;
+		std::vector<int> flags(leftrows.size(), 0);
 		// and then compute the elimination of the rows asynchronizely
 		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 			auto id = sparse_rref::thread_id();
@@ -1191,23 +1193,25 @@ std::vector<std::vector<pivot_t>> sparse_mat_rref_r(sparse_mat<T>& mat, field_t 
 				if (rowpivs[leftrows[i]] != -1)
 					continue;
 				schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
-				queue.enqueue(i);
+				flags[i] = 1;
 			}
 			}, ((mat.nrow - kk) < 20 * nthreads ? 0 : mat.nrow / 10));
 		
 		tranmat.zero();
 		// compute the transpose of the submatrix and print the status asynchronizely
 		while (tran_count < leftrows.size()) {
-			auto ptr = queue.dequeue();
-			if (ptr == NULL)
-				continue;
-			auto row = leftrows[*ptr];
-			auto therow = sparse_mat_row(mat, row);
-			for (size_t j = 0; j < therow->nnz; j++) {
-				auto thecol = sparse_mat_row(tranmat, therow->indices[j]);
-				_sparse_vec_set_entry(thecol, row, (bool*)NULL);
+			for (size_t i = 0; i < leftrows.size(); i++) {
+				if (flags[i]) {
+					auto row = leftrows[i];
+					auto therow = mat[row];
+					for (size_t j = 0; j < therow->nnz; j++) {
+						auto col = therow->indices[j];
+						_sparse_vec_set_entry(tranmat[col], row, (bool*)NULL);
+					}
+					tran_count++;
+					flags[i] = 0;
+				}
 			}
-			tran_count++;
 
 			auto status = (kk - newpiv + 1) + ((double)tran_count / (mat.nrow - kk)) * newpiv;
 			if (verbose && status - oldstatus > printstep) {
