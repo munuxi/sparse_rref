@@ -586,11 +586,7 @@ namespace sparse_rref {
 	// first write a stupid one
 	template <typename T>
 	void schur_complete(sparse_mat<T>& mat, slong k, std::vector<pivot_t>& pivots,
-		int ordering, field_t F, T* tmpvec, sparse_rref::uset& nonzero_c) {
-		if (ordering < 0) {
-			std::vector<pivot_t> npivots(pivots.rbegin(), pivots.rend());
-			schur_complete(mat, k, npivots, -ordering, F, tmpvec, nonzero_c);
-		}
+		field_t F, T* tmpvec, sparse_rref::uset& nonzero_c) {
 
 		auto therow = mat[k];
 
@@ -674,9 +670,9 @@ namespace sparse_rref {
 		auto clock_begin = sparse_rref::clocknow();
 		std::atomic<size_t> cc = 0;
 		pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
+			auto id = sparse_rref::thread_id();
 			for (size_t i = s; i < e; i++) {
-				auto id = sparse_rref::thread_id();
-				schur_complete(mat, leftrows[i], sub_pivots, 1, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
+				schur_complete(mat, leftrows[i], sub_pivots, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
 				cc++;
 			}
 			}, ((n_split < 20 * pool.get_thread_count()) ? 0 : leftrows.size() / 10));
@@ -787,6 +783,14 @@ namespace sparse_rref {
 		eliminate_row_with_one_nnz_rec(mat, tranmatp, tmplist, false);
 		tranmatp.clear();
 
+		//auto n_pivots = pivots[0];
+		//for (auto [r, c] : n_pivots) {
+		//	auto therow = mat[r];
+		//	therow->nnz = 1;
+		//	therow->indices[0] = c;
+		//	scalar_one(therow->entries);
+		//}
+
 		// then do the elimination parallelly
 		auto nthreads = pool.get_thread_count();
 		T* cachedensedmat = s_malloc<T>(mat.ncol * nthreads);
@@ -823,8 +827,7 @@ namespace sparse_rref {
 			pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 				auto id = sparse_rref::thread_id();
 				for (ulong j = s; j < e; j++) {
-					schur_complete(mat, leftrows[j], n_pivots, 1,
-						F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
+					schur_complete(mat, leftrows[j], n_pivots, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
 				}
 				}, ((leftrows.size() < 20 * nthreads) ? 0 : leftrows.size() / 10));
 			pool.wait();
@@ -962,7 +965,7 @@ namespace sparse_rref {
 			pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 				auto id = sparse_rref::thread_id();
 				for (ulong i = s; i < e; i++) {
-					schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
+					schur_complete(mat, leftrows[i], n_pivots, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
 					flags[i] = 1;
 				}
 				}, (leftrows.size() < 20 * nthreads ? 0 : leftrows.size() / 10));
@@ -1184,7 +1187,7 @@ namespace sparse_rref {
 				for (ulong i = s; i < e; i++) {
 					if (rowpivs[leftrows[i]] != -1)
 						continue;
-					schur_complete(mat, leftrows[i], n_pivots, 1, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
+					schur_complete(mat, leftrows[i], n_pivots, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
 					flags[i] = 1;
 				}
 				}, ((mat.nrow - kk) < 20 * nthreads ? 0 : mat.nrow / 10));
