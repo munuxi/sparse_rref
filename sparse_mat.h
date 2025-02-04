@@ -321,16 +321,16 @@ namespace sparse_rref {
 	// 	return 3;
 	// }
 
-	template <typename T, typename S>
-	std::vector<std::pair<slong, std::vector<slong>::iterator>> findmanypivots(const sparse_mat<T>& mat, const sparse_mat<S>& tranmat,
-		std::vector<slong>& rdivpivs, std::vector<slong>& dirperm,
-		std::vector<slong>::iterator start,
-		bool dir, size_t max_depth = ULLONG_MAX) {
+	using iter = std::vector<slong>::iterator;
 
-		if (!dir)
+	template <typename T, typename S>
+	std::vector<std::pair<slong, iter>> findmanypivots(const sparse_mat<T>& mat, const sparse_mat<S>& tranmat,
+		std::vector<slong>& rdivpivs, std::vector<slong>& dirperm,
+		iter start, bool mat_dir, size_t max_depth = ULLONG_MAX) {
+
+		if (!mat_dir)
 			return findmanypivots(tranmat, mat, rdivpivs, dirperm, start, true, max_depth);
 
-		using iter = std::vector<slong>::iterator;
 		auto end = dirperm.end();
 
 		auto ndir = mat.nrow;
@@ -1518,6 +1518,8 @@ namespace sparse_rref {
 			std::memcpy(therow->indices, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
 			std::memcpy(therow->entries, ptr, therow->nnz * sizeof(ulong)); ptr += therow->nnz * ratio;
 		}
+
+		return mat;
 	}
 
 } // namespace sparse_rref

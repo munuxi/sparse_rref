@@ -609,7 +609,7 @@ namespace sparse_rref {
 				for (size_t i = 0; i < nnz; i++)
 					perm[i] = i;
 
-				std::sort(perm.begin(), perm.end(), [&indices](slong a, slong b) {
+				std::sort(perm.begin(), perm.end(), [&](slong a, slong b) {
 					return indices[a] < indices[b];
 					});
 
