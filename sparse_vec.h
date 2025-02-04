@@ -163,10 +163,10 @@ namespace sparse_rref {
 
 	// this raw version assumes that the vec[index] = 0
 	// equivalent to push_back
-	template <typename T>
+	template <typename T, uint8_t scale = 2>
 	void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, const T* val) {
 		if (vec->nnz == vec->alloc)
-			sparse_vec_realloc(vec, 2 * vec->alloc);
+			sparse_vec_realloc(vec, scale * vec->alloc);
 		vec->indices[vec->nnz] = index;
 		if constexpr (!std::is_same_v<T, bool>) {
 			if constexpr (std::is_same_v<T, fmpq>) {
@@ -177,6 +177,14 @@ namespace sparse_rref {
 				*sparse_vec_entry_pointer(vec, vec->nnz) = *val;
 			}
 		}
+		vec->nnz++;
+	}
+
+	template <uint8_t scale = 2>
+	void _sparse_vec_set_entry(sparse_vec_t<bool> vec, slong index) {
+		if (vec->nnz == vec->alloc)
+			sparse_vec_realloc(vec, scale * vec->alloc);
+		vec->indices[vec->nnz] = index;
 		vec->nnz++;
 	}
 

@@ -999,7 +999,7 @@ namespace sparse_rref {
 						auto therow = mat[row];
 						for (size_t j = 0; j < therow->nnz; j++) {
 							auto col = therow->indices[j];
-							_sparse_vec_set_entry(tranmat[col], row, (bool*)NULL);
+							_sparse_vec_set_entry(tranmat[col], row);
 						}
 						flags[i] = 0;
 						localcount++;
