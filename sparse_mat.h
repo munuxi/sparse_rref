@@ -198,11 +198,11 @@ namespace sparse_rref {
 			for (size_t j = 0; j < therow->nnz; j++) {
 				auto col = therow->indices[j];
 				S* entry;
+				T* ptr = therow->entries + j;
 				if constexpr (std::is_same_v<S, T>) {
-					entry = therow->entries + j;
+					entry = ptr;
 				}
 				else if constexpr (std::is_same_v<S, T*>) {
-					auto ptr = therow->entries + j;
 					entry = &ptr;
 				}
 				else {
