@@ -257,10 +257,10 @@ namespace sparse_rref {
 			auto thecol = tranmat[pivlist[i]];
 			for (size_t j = 0; j < thecol->nnz; j++) {
 				if (thecol->indices[j] == i) {
-					scalar_one(thecol->entries[j]);
+					scalar_one(thecol->entries + j);
 				}
 				else
-					scalar_zero(thecol->entries[j]);
+					scalar_zero(thecol->entries + j);
 			}
 		}
 
