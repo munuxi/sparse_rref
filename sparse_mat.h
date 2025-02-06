@@ -337,12 +337,12 @@ namespace sparse_rref {
 
 	template <typename T, typename S>
 	std::vector<std::pair<slong, iter>> findmanypivots(const sparse_mat<T>& mat, const sparse_mat<S>& tranmat,
-		std::vector<slong>& rdivpivs, std::vector<slong>& dirperm,
-		iter start, bool mat_dir, size_t max_depth = ULLONG_MAX) {
+		std::vector<slong>& rdivpivs, std::vector<slong>& dirperm, bool mat_dir, size_t max_depth = ULLONG_MAX) {
 
 		if (!mat_dir)
-			return findmanypivots(tranmat, mat, rdivpivs, dirperm, start, true, max_depth);
+			return findmanypivots(tranmat, mat, rdivpivs, dirperm, true, max_depth);
 
+		auto start = dirperm.begin();
 		auto end = dirperm.end();
 
 		auto ndir = mat.nrow;
@@ -862,9 +862,9 @@ namespace sparse_rref {
 		scalar_init(scalar);
 
 		// perm the col
-		std::vector<slong> colperm(mat.ncol);
+		std::vector<slong> leftcols(mat.ncol);
 		for (size_t i = 0; i < mat.ncol; i++)
-			colperm[i] = i;
+			leftcols[i] = i;
 
 		auto printstep = opt->print_step;
 		bool verbose = opt->verbose;
@@ -887,7 +887,7 @@ namespace sparse_rref {
 		sparse_mat_transpose_replace(tranmatp, mat);
 
 		// sort pivots by nnz, it will be faster
-		std::stable_sort(colperm.begin(), colperm.end(),
+		std::stable_sort(leftcols.begin(), leftcols.end(),
 			[&tranmatp](slong a, slong b) {
 				return tranmatp[a]->nnz < tranmatp[b]->nnz;
 			});
@@ -897,21 +897,22 @@ namespace sparse_rref {
 		std::fill(rowpivs.begin(), rowpivs.end(), -1);
 		std::vector<pivot_t> n_pivots;
 		for (; kk < mat.ncol; kk++) {
-			auto nnz = tranmatp[colperm[kk]]->nnz;
+			auto nnz = tranmatp[leftcols[kk]]->nnz;
 			if (nnz == 0)
 				continue;
 			if (nnz == 1) {
-				auto row = tranmatp[colperm[kk]]->indices[0];
+				auto row = tranmatp[leftcols[kk]]->indices[0];
 				if (rowpivs[row] != -1)
 					continue;
-				rowpivs[row] = colperm[kk];
+				rowpivs[row] = leftcols[kk];
 				scalar_inv(scalar, sparse_mat_entry(mat, row, rowpivs[row]), F);
 				sparse_vec_rescale(mat[row], scalar, F);
-				n_pivots.push_back(std::make_pair(row, colperm[kk]));
+				n_pivots.push_back(std::make_pair(row, leftcols[kk]));
 			}
 			else if (nnz > 1)
 				break; // since it's sorted
 		}
+		leftcols.erase(leftcols.begin(), leftcols.begin() + kk);
 		pivots.push_back(std::move(n_pivots));
 		auto rank = pivots[0].size();
 
@@ -942,7 +943,7 @@ namespace sparse_rref {
 		while (kk < mat.ncol) {
 			auto start = sparse_rref::clocknow();
 
-			auto ps = findmanypivots(mat, tranmat, rowpivs, colperm, colperm.begin() + kk, false);
+			auto ps = findmanypivots(mat, tranmat, rowpivs, leftcols, false);
 			if (ps.size() == 0)
 				break;
 
@@ -977,20 +978,16 @@ namespace sparse_rref {
 				}, (leftrows.size() < 20 * nthreads ? 0 : leftrows.size() / 10));
 
 			// reorder the cols, move ps to the front
-			std::unordered_set<slong> indices(ps.size());
-			for (size_t i = 0; i < ps.size(); i++)
-				indices.insert(ps[i].second - colperm.begin());
-			std::vector<slong> result(colperm.begin(), colperm.begin() + kk);
-			result.reserve(colperm.size());
-			for (auto ind : ps) {
-				result.push_back(*ind.second);
+			std::unordered_set<slong> indices(mat.ncol);
+			for (auto [r, c] : ps)
+				indices.insert(*c);
+			std::vector<slong> result;
+			result.reserve(leftcols.size());
+			for (auto it : leftcols) {
+				if (indices.count(it) == 0)
+					result.push_back(it);
 			}
-			for (auto it = kk; it < mat.ncol; it++) {
-				if (indices.count(it) == 0) {
-					result.push_back(colperm[it]);
-				}
-			}
-			colperm = std::move(result);
+			leftcols = std::move(result);
 			std::vector<slong> donelist(rowpivs);
 
 			bool print_once = true; // print at least once
@@ -1058,9 +1055,9 @@ namespace sparse_rref {
 		T scalar[1];
 		scalar_init(scalar);
 
-		std::vector<slong> rowperm(mat.nrow);
+		std::vector<slong> leftrows(mat.nrow);
 		for (size_t i = 0; i < mat.nrow; i++)
-			rowperm[i] = i;
+			leftrows[i] = i;
 
 		auto printstep = opt->print_step;
 		bool verbose = opt->verbose;
@@ -1078,7 +1075,7 @@ namespace sparse_rref {
 		now_nnz = mat.nnz();
 
 		// sort rows by nnz
-		std::stable_sort(rowperm.begin(), rowperm.end(),
+		std::stable_sort(leftrows.begin(), leftrows.end(),
 			[&mat](slong a, slong b) {
 				if (mat.rows[a].nnz < mat.rows[b].nnz) {
 					return true;
@@ -1109,7 +1106,7 @@ namespace sparse_rref {
 		std::vector<pivot_t> n_pivots;
 		ulong kk;
 		for (kk = 0; kk < mat.nrow; kk++) {
-			auto row = rowperm[kk];
+			auto row = leftrows[kk];
 			auto therow = mat[row];
 			if (therow->nnz == 0)
 				continue;
@@ -1125,7 +1122,8 @@ namespace sparse_rref {
 
 		auto rank = n_pivots.size();
 		pivots.push_back(std::move(n_pivots));
-		sparse_mat_transpose_part_replace(tranmat, mat, rowperm);
+		leftrows.erase(leftrows.begin(), leftrows.begin() + kk);
+		sparse_mat_transpose_part_replace(tranmat, mat, leftrows);
 
 		// for printing
 		double oldstatus = 0;
@@ -1134,15 +1132,16 @@ namespace sparse_rref {
 
 		while (kk < mat.nrow) {
 			auto start = sparse_rref::clocknow();
-			auto row = rowperm[kk];
+			auto row = leftrows[0];
 
 			if (mat.rows[row].nnz == 0) {
 				kk++;
+				leftrows.erase(leftrows.begin());
 				continue;
 			}
 
 			pool.wait();
-			auto ps = findmanypivots(mat, tranmat, colpivs, rowperm, rowperm.begin() + kk, true);
+			auto ps = findmanypivots(mat, tranmat, colpivs, leftrows, true);
 
 			if (ps.size() == 0)
 				break;
@@ -1159,24 +1158,19 @@ namespace sparse_rref {
 			rank += n_pivots.size();
 
 			// reorder the rows, move ps to the front
-			std::unordered_set<slong> indices(ps.size());
-			for (size_t i = 0; i < ps.size(); i++)
-				indices.insert(ps[i].second - rowperm.begin());
-			std::vector<slong> result(rowperm.begin(), rowperm.begin() + kk);
-			result.reserve(rowperm.size());
-			for (auto ind : ps) {
-				result.push_back(*ind.second);
+			std::unordered_set<slong> indices(mat.nrow);
+			for (auto [c, r] : ps)
+				indices.insert(*r);
+			std::vector<slong> result;
+			result.reserve(leftrows.size());
+			for (auto it : leftrows) {
+				if (indices.count(it) == 0) 
+					result.push_back(it);
 			}
-			for (auto it = kk; it < mat.nrow; it++) {
-				if (indices.count(it) == 0) {
-					result.push_back(rowperm[it]);
-				}
-			}
-			rowperm = std::move(result);
+			leftrows = std::move(result);
 
 			kk += ps.size();
 			slong newpiv = ps.size();
-			std::vector<slong> leftrows(rowperm.begin() + kk, rowperm.end());
 
 			ulong tran_count = 0;
 			std::vector<int> flags(leftrows.size(), 0);
