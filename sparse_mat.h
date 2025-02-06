@@ -277,20 +277,32 @@ namespace sparse_rref {
 	template <typename T>
 	ulong eliminate_row_with_one_nnz_rec(sparse_mat<T>& mat,
 		sparse_mat<T*>& tranmat,
-		std::vector<slong>& donelist, bool verbose,
+		std::vector<slong>& donelist, rref_option_t opt,
 		slong max_depth = INT_MAX) {
 		slong depth = 0;
-		ulong oldnnz = 0;
 		ulong localcounter = 0;
 		ulong count = 0;
+		bool verbose = opt->verbose;
+		bool dir = opt->pivot_dir;
+
+		std::string dirstr = (dir) ? "Col" : "Row";
+		ulong ndir = (dir) ? mat.ncol : mat.nrow;
+
+		ulong oldnnz = mat.nnz();
+		int bitlen_nnz = (int)std::floor(std::log(oldnnz) / std::log(10)) + 3;
+		int bitlen_ndir = (int)std::floor(std::log(ndir) / std::log(10)) + 1;
 
 		do {
-			if (verbose)
-				oldnnz = mat.nnz();
 			localcounter = eliminate_row_with_one_nnz(mat, tranmat, donelist);
 			if (verbose) {
-				std::cout << "\r-- eliminating rows with only one element, depth: "
-					<< depth << ", eliminated row: " << count << std::flush;
+				oldnnz = mat.nnz();
+				std::cout << "-- " << dirstr << ": " << std::setw(bitlen_ndir)
+					<< localcounter << "/" << ndir
+					<< "  rank: " << std::setw(bitlen_ndir) << count
+					<< "  nnz: " << std::setw(bitlen_nnz) << oldnnz
+					<< "  density: " << std::setprecision(6) << std::setw(8)
+					<< 100 * (double)oldnnz / (mat.nrow * mat.ncol) << "%"
+					<< "    \r" << std::flush;
 			}
 			count += localcounter;
 			depth++;
@@ -780,7 +792,7 @@ namespace sparse_rref {
 
 		sparse_mat<T*> tranmatp(mat.ncol, mat.nrow);
 		std::vector<slong> tmplist(mat.nrow, -1);
-		eliminate_row_with_one_nnz_rec(mat, tranmatp, tmplist, false);
+		eliminate_row_with_one_nnz_rec(mat, tranmatp, tmplist, opt);
 		tranmatp.clear();
 
 		//auto n_pivots = pivots[0];
@@ -857,8 +869,7 @@ namespace sparse_rref {
 		auto printstep = opt->print_step;
 		bool verbose = opt->verbose;
 
-		ulong init_nnz = mat.nnz();
-		ulong now_nnz = init_nnz;
+		ulong now_nnz = mat.nnz();
 
 		// store the pivots that have been used
 		// -1 is not used
@@ -870,13 +881,8 @@ namespace sparse_rref {
 		// compute the transpose of pointers of the matrix
 		sparse_mat<T*> tranmatp(mat.ncol, mat.nrow);
 		ulong count =
-			eliminate_row_with_one_nnz_rec(mat, tranmatp, rowpivs, verbose);
+			eliminate_row_with_one_nnz_rec(mat, tranmatp, rowpivs, opt);
 		now_nnz = mat.nnz();
-		if (verbose) {
-			std::cout << "\n** eliminated " << count
-				<< " rows, and reduce nnz: " << init_nnz << " -> " << now_nnz
-				<< std::endl;
-		}
 
 		sparse_mat_transpose_replace(tranmatp, mat);
 
@@ -1059,8 +1065,7 @@ namespace sparse_rref {
 		auto printstep = opt->print_step;
 		bool verbose = opt->verbose;
 
-		ulong init_nnz = mat.nnz();
-		ulong now_nnz = init_nnz;
+		ulong now_nnz = mat.nnz();
 
 		// store the pivots that have been used
 		// -1 is not used
@@ -1069,14 +1074,8 @@ namespace sparse_rref {
 
 		sparse_mat<T*> tranmatp(mat.ncol, mat.nrow);
 		ulong count =
-			eliminate_row_with_one_nnz_rec(mat, tranmatp, rowpivs, verbose);
+			eliminate_row_with_one_nnz_rec(mat, tranmatp, rowpivs, opt);
 		now_nnz = mat.nnz();
-		if (verbose) {
-			std::cout << "\n** eliminated " << count
-				<< " rows, and reduce nnz: " << init_nnz
-				<< " -> " << now_nnz << std::endl;
-		}
-		init_nnz = now_nnz;
 
 		// sort rows by nnz
 		std::stable_sort(rowperm.begin(), rowperm.end(),

@@ -174,15 +174,17 @@ int main(int argc, char** argv) {
 	else {
 		printmatinfo(mat_Zp);
 	}
-
-	std::cout << "-------------------" << std::endl;
-	std::cout << "RREFing: " << std::endl;
 	
 	rref_option_t opt;
 	opt->verbose = (program["--verbose"] == true);
 	opt->is_back_sub = (program["--no-backward-substitution"] == false);
 	opt->print_step = program.get<int>("--print_step");
 	opt->pivot_dir = (program.get<std::string>("--pivot_direction") == "col");
+
+	if (opt->verbose) {
+		std::cout << "-------------------" << std::endl;
+		std::cout << ">> RREFing: " << std::endl;
+	}
 
 	start = sparse_rref::clocknow();
 	std::vector<std::vector<pivot_t>> pivots;
