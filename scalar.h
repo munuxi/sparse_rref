@@ -21,39 +21,9 @@ namespace sparse_rref {
 
 	// field
 
-	static inline void field_init(field_t field, const enum RING ring, const ulong rank = 1, const ulong* pvec = NULL) {
+	static inline void field_init(field_t field, const enum RING ring, ulong p) {
 		field->ring = ring;
-		field->rank = rank;
-		if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-			field->pvec = s_malloc<nmod_t>(rank);
-			for (ulong i = 0; i < rank; i++)
-				nmod_init(field->pvec + i, pvec[i]);
-		}
-	}
-
-	static inline void field_init(field_t field, const enum RING ring, const std::vector<ulong>& pvec) {
-		field->ring = ring;
-		field->rank = pvec.size();
-		if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-			field->pvec = s_malloc<nmod_t>(field->rank);
-			for (ulong i = 0; i < field->rank; i++)
-				nmod_init(field->pvec + i, pvec[i]);
-		}
-	}
-
-	static inline void field_clear(field_t field) {
-		s_free(field->pvec);
-		field->pvec = NULL;
-	}
-
-	static inline void field_set(field_t field, const field_t ff) {
-		field->ring = ff->ring;
-		field->rank = ff->rank;
-		if (field->ring == FIELD_Fp || field->ring == RING_MulitFp) {
-			field->pvec = s_realloc(field->pvec, field->rank);
-			for (ulong i = 0; i < field->rank; i++)
-				nmod_init(field->pvec + i, ff->pvec[i].n);
-		}
+		nmod_init(&(field->mod), p);
 	}
 
 	// scalar
@@ -104,32 +74,32 @@ namespace sparse_rref {
 	// arithmetic
 
 	static inline void scalar_neg(ulong* a, const ulong* b, const field_t field) {
-		*a = field->pvec[0].n - *b;
+		*a = field->mod.n - *b;
 	}
 	static inline void scalar_neg(fmpq_t a, const fmpq_t b, const field_t field) { fmpq_neg(a, b); }
 
 	static inline void scalar_inv(ulong* a, const ulong* b, const field_t field) {
-		*a = nmod_inv(*b, field->pvec[0]);
+		*a = nmod_inv(*b, field->mod);
 	}
 	static inline void scalar_inv(fmpq_t a, const fmpq_t b, const field_t field) { fmpq_inv(a, b); }
 
 	static inline void scalar_add(ulong* a, const ulong* b, const ulong* c, const field_t field) {
-		*a = _nmod_add(*b, *c, field->pvec[0]);
+		*a = _nmod_add(*b, *c, field->mod);
 	}
 	static inline void scalar_add(fmpq_t a, const fmpq_t b, const fmpq_t c, const field_t field) { fmpq_add(a, b, c); }
 
 	static inline void scalar_sub(ulong* a, const ulong* b, const ulong* c, const field_t field) {
-		*a = _nmod_sub(*b, *c, field->pvec[0]);
+		*a = _nmod_sub(*b, *c, field->mod);
 	}
 	static inline void scalar_sub(fmpq_t a, const fmpq_t b, const fmpq_t c, const field_t field) { fmpq_sub(a, b, c); }
 
 	static inline void scalar_mul(ulong* a, const ulong* b, const ulong* c, const field_t field) {
-		*a = nmod_mul(*b, *c, field->pvec[0]);
+		*a = nmod_mul(*b, *c, field->mod);
 	}
 	static inline void scalar_mul(fmpq_t a, const fmpq_t b, const fmpq_t c, const field_t field) { fmpq_mul(a, b, c); }
 
 	static inline void scalar_div(ulong* a, const ulong* b, const ulong* c, const field_t field) {
-		*a = nmod_div(*b, *c, field->pvec[0]);
+		*a = nmod_div(*b, *c, field->mod);
 	}
 	static inline void scalar_div(fmpq_t a, const fmpq_t b, const fmpq_t c, const field_t field) { fmpq_div(a, b, c); }
 

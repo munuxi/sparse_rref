@@ -141,9 +141,9 @@ int main(int argc, char** argv) {
 
 	field_t F;
 	if (prime == 0)
-		field_init(F, FIELD_QQ, 1, NULL);
+		field_init(F, FIELD_QQ, 1);
 	else
-		field_init(F, FIELD_Fp, std::vector<ulong>{prime});
+		field_init(F, FIELD_Fp, prime);
 
 	sparse_mat<fmpq> mat_Q;
 	sparse_mat<ulong> mat_Zp;
@@ -264,8 +264,6 @@ int main(int argc, char** argv) {
 
 	end = sparse_rref::clocknow();
 	printtime("write files");
-
-	field_clear(F);
 
 	return 0;
 }

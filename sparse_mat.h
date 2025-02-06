@@ -609,7 +609,7 @@ namespace sparse_rref {
 			scalar_set(entry, tmpvec + c);
 			auto row = mat[r];
 			if constexpr (std::is_same_v<T, ulong>) {
-				e_pr = n_mulmod_precomp_shoup(*entry, F->pvec[0].n);
+				e_pr = n_mulmod_precomp_shoup(*entry, F->mod.n);
 			}
 			for (size_t i = 0; i < row->nnz; i++) {
 				if (!nonzero_c.count(row->indices[i])) {
@@ -618,7 +618,7 @@ namespace sparse_rref {
 				}
 				if constexpr (std::is_same_v<T, ulong>) {
 					tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
-						n_mulmod_shoup(*entry, row->entries[i], e_pr, F->pvec[0].n), F->pvec[0]);
+						n_mulmod_shoup(*entry, row->entries[i], e_pr, F->mod.n), F->mod);
 				}
 				else if constexpr (std::is_same_v<T, fmpq>) {
 					fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
@@ -1274,10 +1274,10 @@ namespace sparse_rref {
 
 		ulong prime = n_nextprime(1ULL << 50, 0);
 		field_t F;
-		field_init(F, FIELD_Fp, 1, &prime);
+		field_init(F, FIELD_Fp, prime);
 
 		sparse_mat<ulong> matul(mat.nrow, mat.ncol);
-		snmod_mat_from_sfmpq(matul, mat, F->pvec[0]);
+		snmod_mat_from_sfmpq(matul, mat, F->mod);
 
 		if (opt->pivot_dir)
 			pivots = sparse_mat_rref_c(matul, F, pool, opt);
@@ -1327,8 +1327,8 @@ namespace sparse_rref {
 			isok = 1;
 			prime = n_nextprime(prime, 0);
 			fmpz_mul_ui(mod1, mod, prime);
-			nmod_init(F->pvec, prime);
-			snmod_mat_from_sfmpq(matul, mat, F->pvec[0]);
+			field_init(F, FIELD_Fp, prime);
+			snmod_mat_from_sfmpq(matul, mat, F->mod);
 			sparse_mat_direct_rref(matul, pivots, F, pool, opt);
 			if (opt->is_back_sub) {
 				opt->verbose = false;
@@ -1350,7 +1350,6 @@ namespace sparse_rref {
 
 		std::swap(mat, matq);
 
-		field_clear(F);
 		scalar_clear(mod);
 		scalar_clear(mod1);
 
