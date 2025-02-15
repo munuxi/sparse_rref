@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
 		.help("input file in matrix market format");
 	program.add_argument("-o", "--output")
 		.help("output file in matrix market format")
-		.default_value("input_file.rref")
+		.default_value("<input_file>.rref")
 		.nargs(1);
 	program.add_usage_newline();
 	program.add_argument("-k", "--kernel")
@@ -215,7 +215,7 @@ int main(int argc, char** argv) {
 	start = sparse_rref::clocknow();
 	std::ofstream file2;
 	std::string outname, outname_add("");
-	if (program.get<std::string>("--output") == "input_file.rref")
+	if (program.get<std::string>("--output") == "<input_file>.rref")
 		outname = input_file;
 	else
 		outname = program.get<std::string>("--output");
