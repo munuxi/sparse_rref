@@ -15,6 +15,8 @@
 #include "flint/nmod.h"
 #include "flint/ulong_extras.h"
 
+#include "flint_wrapper.h"
+
 #include "sparse_rref.h"
 
 namespace sparse_rref {
@@ -31,8 +33,10 @@ namespace sparse_rref {
 	static inline void scalar_init(fmpq_t a) { fmpq_init(a); }
 	static inline void scalar_init(fmpz_t a) { fmpz_init(a); }
 	static inline void scalar_init(ulong* a) { return; } // do nothing
+	static inline void scalar_init(Flint::rational a) { return; } // managed by c++
 
 	static inline void scalar_clear(fmpq_t a) { fmpq_clear(a); }
+	static inline void scalar_clear(Flint::rational a) { return; } // managed by c++
 	static inline void scalar_clear(fmpz_t a) { fmpz_clear(a); }
 	static inline void scalar_clear(ulong* a) { return; } // do nothing
 
@@ -44,11 +48,13 @@ namespace sparse_rref {
 		s_free(cstr);
 		return str;
 	}
+	static inline std::string scalar_to_str(Flint::rational a) { return a.to_string(); }
 	static inline std::string scalar_to_str(ulong* a) { return std::to_string(*a); }
 
 	static inline bool scalar_is_zero(const fmpq_t a) { return fmpq_is_zero(a); }
 	static inline bool scalar_is_zero(const fmpz_t a) { return fmpz_is_zero(a); }
 	static inline bool scalar_is_zero(const ulong* a) { return (*a) == 0; }
+	static inline bool scalar_is_zero(const Flint::rational a) { return a == 0; }
 
 	static inline bool scalar_equal(const fmpq_t a, const fmpq_t b) { return fmpq_equal(a, b); }
 	static inline bool scalar_equal(const fmpz_t a, const fmpz_t b) { return fmpz_equal(a, b); }
@@ -66,10 +72,12 @@ namespace sparse_rref {
 	static inline void scalar_zero(fmpq_t a) { fmpq_zero(a); }
 	static inline void scalar_zero(fmpz_t a) { fmpz_zero(a); }
 	static inline void scalar_zero(ulong* a) { *a = 0; }
+	static inline bool scalar_zero(Flint::rational& a) { a = 0; }
 
 	static inline void scalar_one(fmpq_t a) { fmpq_one(a); }
 	static inline void scalar_one(fmpz_t a) { fmpz_one(a); }
 	static inline void scalar_one(ulong* a) { *a = 1; }
+	static inline bool scalar_one(Flint::rational& a) { a = 1; }
 
 	// arithmetic
 
