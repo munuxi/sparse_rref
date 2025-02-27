@@ -3,10 +3,35 @@
 #include <string>
 #include "flint/fmpz.h"
 #include "flint/fmpq.h"
-#include "flint/arb.h"
-#include "flint/acb.h"
 
 namespace Flint {
+    // for to_string, get_str and output, caution: the buffer is shared
+    // multi-threading should be careful
+    constexpr size_t MAX_STR_LEN = 1024;
+    static char _buf[MAX_STR_LEN];
+
+    // some concepts
+    template<typename T, typename... Ts>
+    concept IsOneOf = (std::same_as<T, Ts> || ...);
+
+    template<typename T>
+    concept flint_bare_type = IsOneOf<T, fmpz, fmpq>;
+
+    template<typename T>
+    concept flint_pointer_type = IsOneOf<T, fmpz_t, fmpq_t>;
+
+    // builtin number types
+    template <typename T>
+    concept builtin_number = std::is_arithmetic_v<T>;
+
+    template <typename T>
+    concept builtin_integral = std::is_integral_v<T>;
+
+    template <typename T>
+    concept signed_builtin_integral = builtin_integral<T> && std::is_signed_v<T>;
+
+    template <typename T>
+    concept unsigned_builtin_integral = builtin_integral<T> && std::is_unsigned_v<T>;
 
 #define NUM_INIT(type1, type2, fh, fd)                            \
     type1(const type2 a) {                                        \
@@ -133,98 +158,122 @@ namespace Flint {
     MACRO(type1, unsigned long, type2, _ui);                      \
     MACRO(type1, ulong, type2, _ui)
 
-#define NUM_MACRO_d(MACRO, type1, type2)                          \
-    MACRO(type1, float, type2, _d);                               \
-    MACRO(type1, double, type2, _d)
-
-    static char _buf[1024];
-
-    struct integer {
+    struct int_t {
         fmpz_t _data;
 
-        integer() { fmpz_init(_data); }
-        ~integer() { fmpz_clear(_data); }
-        integer(const integer& other) { fmpz_init(_data); fmpz_set(_data, other._data); }
-        integer(integer&& other) noexcept { fmpz_init(_data); fmpz_swap(_data, other._data); }
+        void init() { fmpz_init(_data); }
+        int_t() { fmpz_init(_data); }
+		void clear() { fmpz_clear(_data); }
+        ~int_t() { fmpz_clear(_data); }
+        int_t(const int_t& other) { fmpz_init(_data); fmpz_set(_data, other._data); }
+        int_t(int_t&& other) noexcept { fmpz_init(_data); fmpz_swap(_data, other._data); }
 
-        NUM_INIT(integer, fmpz_t, fmpz);
-        NUM_MACRO_s(NUM_INIT, integer, fmpz);
-        NUM_MACRO_u(NUM_INIT, integer, fmpz);
+        NUM_INIT(int_t, fmpz_t, fmpz);
+        NUM_MACRO_s(NUM_INIT, int_t, fmpz);
+        NUM_MACRO_u(NUM_INIT, int_t, fmpz);
 
-        integer(const std::string& str) { fmpz_init(_data); fmpz_set_str(_data, str.c_str(), 10); }
+        int_t(const std::string& str) { fmpz_init(_data); fmpz_set_str(_data, str.c_str(), 10); }
+        void set_str(const std::string& str, int base = 10) { fmpz_set_str(_data, str.c_str(), base); }
 
-        integer& operator=(const integer& other) { fmpz_set(_data, other._data); return *this; }
-        integer& operator=(integer&& other) noexcept { fmpz_swap(_data, other._data); return *this; }
-        NUM_MACRO_s(NUM_SET_0, integer, fmpz);
-        NUM_MACRO_u(NUM_SET_0, integer, fmpz);
+        int_t& operator=(const int_t& other) { if (this != &other) fmpz_set(_data, other._data); return *this; }
+        int_t& operator=(int_t&& other) noexcept { if (this != &other) fmpz_swap(_data, other._data); return *this; }
+        NUM_MACRO_s(NUM_SET_0, int_t, fmpz);
+        NUM_MACRO_u(NUM_SET_0, int_t, fmpz);
 
-        NUM_EQUAL_0(integer&, fmpz_equal, ._data);
+        NUM_EQUAL_0(int_t&, fmpz_equal, ._data);
         NUM_MACRO_s(NUM_EQUAL_1, , fmpz);
         NUM_MACRO_u(NUM_EQUAL_1, , fmpz);
 
-        NUM_CMP_01(, integer&, fmpz, , ._data);
+        NUM_CMP_01(, int_t&, fmpz, , ._data);
         NUM_MACRO_s(NUM_CMP_01, , fmpz);
         NUM_MACRO_u(NUM_CMP_01, , fmpz);
 
-        NUM_OP_00(integer, integer&, fmpz, , ._data);
-        NUM_MACRO_s(NUM_OP_00, integer, fmpz);
-        NUM_MACRO_u(NUM_OP_00, integer, fmpz);
+        NUM_OP_00(int_t, int_t&, fmpz, , ._data);
+        NUM_MACRO_s(NUM_OP_00, int_t, fmpz);
+        NUM_MACRO_u(NUM_OP_00, int_t, fmpz);
 
-        NUM_SELF_OP_00(integer, integer&, fmpz, , ._data);
-        NUM_MACRO_s(NUM_SELF_OP_00, integer, fmpz);
-        NUM_MACRO_u(NUM_SELF_OP_00, integer, fmpz);
+        NUM_SELF_OP_00(int_t, int_t&, fmpz, , ._data);
+        NUM_MACRO_s(NUM_SELF_OP_00, int_t, fmpz);
+        NUM_MACRO_u(NUM_SELF_OP_00, int_t, fmpz);
 
-        integer pow(const ulong n) const { integer result; fmpz_pow_ui(result._data, _data, n); return result; }
-        NUM_FUNC_0(integer, fmpz, abs);
-        NUM_FUNC_0(integer, fmpz, neg);
+        template <unsigned_builtin_integral T>
+        int_t pow(const T n) const { int_t result; fmpz_pow_ui(result._data, _data, n); return result; }
+        int_t pow(const int_t& n) const { int_t result; fmpz_pow_fmpz(result._data, _data, n._data); return result; }
+        NUM_FUNC_0(int_t, fmpz, abs);
+        NUM_FUNC_0(int_t, fmpz, neg);
 
-        integer operator-() const { return neg(); }
+		ulong operator%(const nmod_t other) const { return fmpz_get_nmod(_data, other); }
+		int_t operator%(const int_t& other) const { int_t result; fmpz_mod(result._data, _data, other._data); return result; }
+
+        int_t operator-() const { return neg(); }
+
+        std::string get_str(int base = 10, bool thread_safe = false) const {
+            auto len = fmpz_sizeinbase(_data, base) + 3;
+
+            if (thread_safe || len > MAX_STR_LEN - 4) {
+                char* str = (char*)malloc(len * sizeof(char));
+                fmpz_get_str(str, base, _data);
+                std::string result(str);
+                free(str);
+                return result;
+            }
+            else {
+                fmpz_get_str(_buf, base, _data);
+                std::string result(_buf);
+                return result;
+            }
+        }
     };
 
-    struct rational {
+    struct rat_t {
         fmpq_t _data;
 
-        rational() { fmpq_init(_data); }
-        ~rational() { fmpq_clear(_data); }
+		void init() { fmpq_init(_data); }
+        rat_t() { fmpq_init(_data); }
+        void clear() { fmpq_clear(_data); }
+        ~rat_t() { fmpq_clear(_data); }
 
-        rational(const rational& other) { fmpq_init(_data); fmpq_set(_data, other._data); }
-        rational(rational&& other) noexcept { fmpq_init(_data); fmpq_swap(_data, other._data); }
-        NUM_INIT(rational, fmpq_t, fmpq);
+        rat_t(const rat_t& other) { fmpq_init(_data); fmpq_set(_data, other._data); }
+        rat_t(rat_t&& other) noexcept { fmpq_init(_data); fmpq_swap(_data, other._data); }
+        NUM_INIT(rat_t, fmpq_t, fmpq);
 
-        rational(const slong a, const slong b) { fmpq_init(_data); fmpq_set_si(_data, a, b); }
-        rational(const int a, const int b) { fmpq_init(_data); fmpq_set_si(_data, a, b); }
-        rational(const long a, const long b) { fmpq_init(_data); fmpq_set_si(_data, a, b); }
-        rational(const ulong a, const ulong b) { fmpq_init(_data); fmpq_set_ui(_data, a, b); }
-        rational(const unsigned int a, const unsigned int b) { fmpq_init(_data); fmpq_set_ui(_data, a, b); }
-        rational(const unsigned long a, const unsigned long b) { fmpq_init(_data); fmpq_set_ui(_data, a, b); }
+        template <signed_builtin_integral T> rat_t(const T a, const T b) { fmpq_init(_data); fmpq_set_si(_data, a, b); }
+        template <signed_builtin_integral T> rat_t(const T a) { fmpq_init(_data); fmpq_set_si(_data, a, 1); }
+        template <unsigned_builtin_integral T> rat_t(const T a, const T b) { fmpq_init(_data); fmpq_set_ui(_data, a, b); }
+        template <unsigned_builtin_integral T> rat_t(const T a) { fmpq_init(_data); fmpq_set_ui(_data, a, 1); }
 
-        rational& operator=(const rational& other) { fmpq_set(_data, other._data); return *this; }
-        rational& operator=(rational&& other) noexcept { fmpq_swap(_data, other._data); return *this; }
-        rational& operator=(const int a) { fmpq_set_si(_data, a, 1); return *this; }
-        rational& operator=(const long a) { fmpq_set_si(_data, a, 1); return *this; }
-        rational& operator=(const slong a) { fmpq_set_si(_data, a, 1); return *this; }
-        rational& operator=(const ulong a) { fmpq_set_ui(_data, a, 1); return *this; }
-        rational& operator=(const unsigned int a) { fmpq_set_ui(_data, a, 1); return *this; }
-        rational& operator=(const unsigned long a) { fmpq_set_ui(_data, a, 1); return *this; }
+        rat_t(const std::string& str) { fmpq_init(_data); fmpq_set_str(_data, str.c_str(), 10); }
+        void set_str(const std::string& str, int base = 10) { fmpq_set_str(_data, str.c_str(), base); }
 
-        NUM_OP_01(rational, rational&, fmpq, , ._data);
-        NUM_OP_01(rational, integer&, fmpq, _fmpz, ._data);
-        NUM_MACRO_s(NUM_OP_00, rational, fmpq);
-        NUM_MACRO_u(NUM_OP_00, rational, fmpq);
+        int_t num() const { return fmpq_numref(_data); }
+        int_t den() const { return fmpq_denref(_data); }
 
-        NUM_SELF_OP_01(rational, rational&, fmpq, , ._data);
-        NUM_SELF_OP_01(rational, integer&, fmpq, _fmpz, ._data);
-        NUM_MACRO_s(NUM_SELF_OP_00, rational, fmpq);
-        NUM_MACRO_u(NUM_SELF_OP_00, rational, fmpq);
+        rat_t& operator=(const rat_t& other) { if (this != &other) fmpq_set(_data, other._data); return *this; }
+        rat_t& operator=(rat_t&& other) noexcept { if (this != &other) fmpq_swap(_data, other._data); return *this; }
 
-        NUM_CMP_01(, rational&, fmpq, , ._data);
-        NUM_CMP_01(, integer&, fmpq, _fmpz, ._data);
+        template <signed_builtin_integral T>
+        rat_t& operator=(const T a) { fmpq_set_si(_data, a, 1); return *this; }
+        template <unsigned_builtin_integral T>
+        rat_t& operator=(const T a) { fmpq_set_ui(_data, a, 1); return *this; }
+
+        NUM_OP_01(rat_t, rat_t&, fmpq, , ._data);
+        NUM_OP_01(rat_t, int_t&, fmpq, _fmpz, ._data);
+        NUM_MACRO_s(NUM_OP_00, rat_t, fmpq);
+        NUM_MACRO_u(NUM_OP_00, rat_t, fmpq);
+
+        NUM_SELF_OP_01(rat_t, rat_t&, fmpq, , ._data);
+        NUM_SELF_OP_01(rat_t, int_t&, fmpq, _fmpz, ._data);
+        NUM_MACRO_s(NUM_SELF_OP_00, rat_t, fmpq);
+        NUM_MACRO_u(NUM_SELF_OP_00, rat_t, fmpq);
+
+        NUM_CMP_01(, rat_t&, fmpq, , ._data);
+        NUM_CMP_01(, int_t&, fmpq, _fmpz, ._data);
         NUM_MACRO_s(NUM_CMP_01, , fmpq);
         NUM_MACRO_u(NUM_CMP_01, , fmpq);
 
-        bool operator==(const rational& other) const { return fmpq_equal(_data, other._data); }
-        bool operator==(const integer& other) const { return fmpq_equal_fmpz((fmpq*)_data, (fmpz*)other._data); }
-        template <typename T> bool operator==(const T other) const {
+        bool operator==(const rat_t& other) const { return fmpq_equal(_data, other._data); }
+        bool operator==(const int_t& other) const { return fmpq_equal_fmpz((fmpq*)_data, (fmpz*)other._data); }
+        template <builtin_integral T> bool operator==(const T other) const {
             if (other == 0) {
                 return fmpq_is_zero(_data);
             } if (other == 1) {
@@ -233,233 +282,42 @@ namespace Flint {
         };
         template<typename T> bool operator!=(const T other) const { return !operator==(other); }
 
-        rational pow(const integer& n) const { rational result; fmpq_pow_fmpz(result._data, _data, n._data); return result; }
-        rational pow(const slong n) const { rational result; fmpq_pow_si(result._data, _data, n); return result; }
-        NUM_FUNC_0(rational, fmpq, abs);
-        NUM_FUNC_0(rational, fmpq, neg);
+        rat_t pow(const int_t& n) const { rat_t result; fmpq_pow_fmpz(result._data, _data, n._data); return result; }
+        template <signed_builtin_integral T>
+        rat_t pow(const T n) const { rat_t result; fmpq_pow_si(result._data, _data, n); return result; }
+        NUM_FUNC_0(rat_t, fmpq, abs);
+        NUM_FUNC_0(rat_t, fmpq, neg);
+        NUM_FUNC_0(rat_t, fmpq, inv);
 
-        rational operator-() const { return neg(); }
+        rat_t operator-() const { return neg(); }
 
-        std::string to_string() {
-            auto len = fmpz_sizeinbase(fmpq_numref(_data), 10) +
-                fmpz_sizeinbase(fmpq_denref(_data), 10) + 3;
+        std::string get_str(int base = 10, bool thread_safe = false) const {
+            auto len = fmpz_sizeinbase(fmpq_numref(_data), base) +
+                fmpz_sizeinbase(fmpq_denref(_data), base) + 3;
 
-            if (len > 1020) {
-                char* str = fmpq_get_str(nullptr, 10, _data);
+            if (thread_safe || len > MAX_STR_LEN - 4) {
+                char* str = (char*)malloc(len * sizeof(char));
+                fmpq_get_str(nullptr, base, _data);
                 std::string result(str);
-                flint_free(str);
+                free(str);
                 return result;
             }
             else {
-                fmpq_get_str(_buf, 10, _data);
+                fmpq_get_str(_buf, base, _data);
                 std::string result(_buf);
                 return result;
             }
         }
     };
 
-    // use FLOAT_PARA::prec to set the precision of real and complex
-    namespace FLOAT_PARA {
-        static ulong prec = 52;
-    }
-
-    void set_prec(ulong prec) { FLOAT_PARA::prec = prec; }
-    ulong get_prec() { return FLOAT_PARA::prec; }
-
-    struct real {
-        arb_t _data;
-
-        real() { arb_init(_data); }
-        ~real() { arb_clear(_data); }
-        real(const real& other) { arb_init(_data); arb_set(_data, other._data); }
-        real(real&& other) noexcept { arb_init(_data); arb_swap(_data, other._data); }
-
-        NUM_INIT(real, arb_t, arb);
-        NUM_MACRO_s(NUM_INIT, real, arb);
-        NUM_MACRO_u(NUM_INIT, real, arb);
-        NUM_MACRO_d(NUM_INIT, real, arb);
-
-        real(std::string str) { arb_init(_data); arb_set_str(_data, str.c_str(), FLOAT_PARA::prec); }
-        real(const integer& a) { arb_init(_data); arb_set_fmpz(_data, a._data); }
-        real(const rational& a) { arb_init(_data); arb_set_fmpq(_data, a._data, FLOAT_PARA::prec); }
-
-        real& operator=(const real& other) { arb_set(_data, other._data); return *this; }
-        real& operator=(real&& other) noexcept { arb_swap(_data, other._data); return *this; }
-        NUM_MACRO_s(NUM_SET_0, real, arb);
-        NUM_MACRO_u(NUM_SET_0, real, arb);
-
-        NUM_EQUAL_0(real&, arb_equal, ._data);
-        NUM_MACRO_s(NUM_EQUAL_1, , arb);
-
-        template<typename T> bool operator!=(const T other) const { return !operator==(other); }
-
-        bool operator<(const real& other) const { return arb_lt(_data, other._data); }
-        bool operator>(const real& other) const { return arb_gt(_data, other._data); }
-        bool operator<=(const real& other) const { return arb_le(_data, other._data); }
-        bool operator>=(const real& other) const { return arb_ge(_data, other._data); }
-
-        real operator-() const { return neg(); }
-
-        NUM_OP_11(real, real&, arb, , ._data);
-        NUM_OP_11(real, integer&, arb, _fmpz, ._data);
-        NUM_MACRO_u(NUM_OP_11, real, arb);
-        NUM_MACRO_s(NUM_OP_11, real, arb);
-
-        NUM_SELF_OP_11(real, real&, arb, , ._data);
-        NUM_SELF_OP_11(real, integer&, arb, _fmpz, ._data);
-        NUM_MACRO_u(NUM_SELF_OP_11, real, arb);
-        NUM_MACRO_s(NUM_SELF_OP_11, real, arb);
-
-        void set_str(std::string str) {
-            arb_set_str(_data, str.c_str(), FLOAT_PARA::prec);
-        }
-
-        std::string get_str() const {
-            char* str = arb_get_str(_data, 10, ARB_STR_NO_RADIUS);
-            std::string result(str);
-            flint_free(str);
-            return result;
-        }
-
-        real abs() const { real result; arb_abs(result._data, _data); return result; }
-        real neg() const { real result; arb_neg(result._data, _data); return result; }
-        real pow(const real& n) const { real result; arb_pow(result._data, _data, n._data, FLOAT_PARA::prec); return result; }
-        real pow(const ulong n) const { real result; arb_pow_ui(result._data, _data, n, FLOAT_PARA::prec); return result; }
-
-        double get_d() const { return arf_get_d(arb_midref(_data), ARF_RND_NEAR); }
-        slong get_si() const { return arf_get_si(arb_midref(_data), ARF_RND_NEAR); }
-
-        // some constants
-        real e() const { real result; arb_const_e(result._data, FLOAT_PARA::prec); return result; }
-        real e(ulong prec) const { real result; arb_const_e(result._data, prec); return result; }
-        real pi() const { real result; arb_const_pi(result._data, FLOAT_PARA::prec); return result; }
-        real pi(ulong prec) const { real result; arb_const_pi(result._data, prec); return result; }
-        real log2() const { real result; arb_const_log2(result._data, FLOAT_PARA::prec); return result; }
-        real log2(ulong prec) const { real result; arb_const_log2(result._data, prec); return result; }
-        real log10() const { real result; arb_const_log10(result._data, FLOAT_PARA::prec); return result; }
-        real log10(ulong prec) const { real result; arb_const_log10(result._data, prec); return result; }
-        real euler() const { real result; arb_const_euler(result._data, FLOAT_PARA::prec); return result; } // Euler's constant
-        real euler(ulong prec) const { real result; arb_const_euler(result._data, prec); return result; }
-
-        // some basic functions with one parameter
-        NUM_FUNC_1(real, arb, inv);
-        NUM_FUNC_1(real, arb, sin);
-        NUM_FUNC_1(real, arb, sin_pi);
-        NUM_FUNC_1(real, arb, cos);
-        NUM_FUNC_1(real, arb, cos_pi);
-        NUM_FUNC_1(real, arb, tan);
-        NUM_FUNC_1(real, arb, tan_pi);
-        NUM_FUNC_1(real, arb, cot);
-        NUM_FUNC_1(real, arb, cot_pi);
-        NUM_FUNC_1(real, arb, asin);
-        NUM_FUNC_1(real, arb, acos);
-        NUM_FUNC_1(real, arb, atan);
-        NUM_FUNC_1(real, arb, sinh);
-        NUM_FUNC_1(real, arb, cosh);
-        NUM_FUNC_1(real, arb, tanh);
-        NUM_FUNC_1(real, arb, asinh);
-        NUM_FUNC_1(real, arb, acosh);
-        NUM_FUNC_1(real, arb, atanh);
-        NUM_FUNC_1(real, arb, exp);
-        NUM_FUNC_1(real, arb, log);
-        NUM_FUNC_1(real, arb, gamma);
-        NUM_FUNC_1(real, arb, lgamma); // log(gamma)
-        NUM_FUNC_1(real, arb, rgamma); // 1/gamma
-        NUM_FUNC_1(real, arb, digamma); // psi = d(log(gamma))/dx
-        NUM_FUNC_1(real, arb, zeta);
-    };
-
-    struct complex {
-        acb_t _data;
-
-        complex() { acb_init(_data); }
-        ~complex() { acb_clear(_data); }
-        complex(const complex& other) { acb_init(_data); acb_set(_data, other._data); }
-        complex(complex&& other) noexcept { acb_init(_data); acb_swap(_data, other._data); }
-
-        NUM_INIT(complex, acb_t, acb);
-        NUM_MACRO_s(NUM_INIT, complex, acb);
-        NUM_MACRO_u(NUM_INIT, complex, acb);
-        NUM_MACRO_d(NUM_INIT, complex, acb);
-
-        complex(const real& a) { acb_init(_data); acb_set_arb(_data, a._data); }
-        complex(const integer& a) { acb_init(_data); acb_set_fmpz(_data, a._data); }
-        complex(const rational& a) { acb_init(_data); acb_set_fmpq(_data, a._data, FLOAT_PARA::prec); }
-        complex(const real& a, const real& b) { acb_init(_data); acb_set_arb_arb(_data, a._data, b._data); }
-        complex(const slong a, const slong b) { acb_init(_data); acb_set_si_si(_data, a, b); }
-
-        real re() const { return acb_realref(_data); }
-        real im() const { return acb_imagref(_data); }
-
-        complex& operator=(const complex& other) { acb_set(_data, other._data); return *this; }
-        complex& operator=(complex&& other) noexcept { acb_swap(_data, other._data); return *this; }
-        NUM_MACRO_s(NUM_SET_0, complex, acb);
-        NUM_MACRO_u(NUM_SET_0, complex, acb);
-
-        NUM_EQUAL_0(complex&, acb_equal, ._data);
-        NUM_MACRO_s(NUM_EQUAL_1, , acb);
-
-        template<typename T> bool operator!=(const T other) const { return !operator==(other); }
-
-        bool is_zero() const { return acb_is_zero(_data); }
-
-        complex operator-() const { return neg(); }
-
-        NUM_OP_11(complex, complex&, acb, , ._data);
-        NUM_OP_11(complex, real&, acb, _arb, ._data);
-        NUM_OP_11(complex, integer&, acb, _fmpz, ._data);
-        NUM_MACRO_u(NUM_OP_11, complex, acb);
-        NUM_MACRO_s(NUM_OP_11, complex, acb);
-
-        NUM_SELF_OP_11(complex, complex&, acb, , ._data);
-        NUM_SELF_OP_11(complex, real&, acb, _arb, ._data);
-        NUM_SELF_OP_11(complex, integer&, acb, _fmpz, ._data);
-        NUM_MACRO_s(NUM_SELF_OP_11, complex, acb);
-        NUM_MACRO_u(NUM_SELF_OP_11, complex, acb);
-
-        real abs() const { real result; acb_abs(result._data, _data, FLOAT_PARA::prec); return result; }
-        complex neg() const { complex result; acb_neg(result._data, _data); return result; }
-        complex conj() const { complex result; acb_conj(result._data, _data); return result; }
-        complex pow(const complex& n) const { complex result; acb_pow(result._data, _data, n._data, FLOAT_PARA::prec); return result; }
-        complex pow(const slong n) const { complex result; acb_pow_si(result._data, _data, n, FLOAT_PARA::prec); return result; }
-        complex pow(const int n) const { complex result; acb_pow_si(result._data, _data, n, FLOAT_PARA::prec); return result; }
-        complex pow(const ulong n) const { complex result; acb_pow_ui(result._data, _data, n, FLOAT_PARA::prec); return result; }
-
-        complex pi() const { complex result; acb_const_pi(result._data, FLOAT_PARA::prec); return result; }
-
-        // some basic functions with one parameter
-        NUM_FUNC_1(complex, acb, inv);
-        NUM_FUNC_1(complex, acb, sin);
-        NUM_FUNC_1(complex, acb, sin_pi);
-        NUM_FUNC_1(complex, acb, cos);
-        NUM_FUNC_1(complex, acb, cos_pi);
-        NUM_FUNC_1(complex, acb, tan);
-        NUM_FUNC_1(complex, acb, tan_pi);
-        NUM_FUNC_1(complex, acb, cot);
-        NUM_FUNC_1(complex, acb, cot_pi);
-        NUM_FUNC_1(complex, acb, asin);
-        NUM_FUNC_1(complex, acb, acos);
-        NUM_FUNC_1(complex, acb, atan);
-        NUM_FUNC_1(complex, acb, sinh);
-        NUM_FUNC_1(complex, acb, cosh);
-        NUM_FUNC_1(complex, acb, tanh);
-        NUM_FUNC_1(complex, acb, asinh);
-        NUM_FUNC_1(complex, acb, acosh);
-        NUM_FUNC_1(complex, acb, atanh);
-        NUM_FUNC_1(complex, acb, exp);
-        NUM_FUNC_1(complex, acb, log);
-        NUM_FUNC_1(complex, acb, gamma);
-        NUM_FUNC_1(complex, acb, lgamma); // log(gamma)
-        NUM_FUNC_1(complex, acb, rgamma); // 1/gamma
-        NUM_FUNC_1(complex, acb, digamma); // psi = d(log(gamma))/dx
-        NUM_FUNC_1(complex, acb, zeta);
-
-    };
+    // our number types
+    template<typename T>
+    concept Flint_type = IsOneOf<T, int_t, rat_t>;
 
     template <typename T>
-    T& operator<< (T& os, const integer& i) {
+    T& operator<< (T& os, const int_t& i) {
         auto len = fmpz_sizeinbase(i._data, 10);
-        if (len > 1020) {
+        if (len > MAX_STR_LEN - 4) {
             char* str = fmpz_get_str(nullptr, 10, i._data);
             os << str;
             flint_free(str);
@@ -472,11 +330,11 @@ namespace Flint {
     }
 
     template <typename T>
-    T& operator<< (T& os, const rational& r) {
+    T& operator<< (T& os, const rat_t& r) {
         auto len = fmpz_sizeinbase(fmpq_numref(r._data), 10)
             + fmpz_sizeinbase(fmpq_denref(r._data), 10) + 3;
 
-        if (len > 1020) {
+        if (len > MAX_STR_LEN - 4) {
             char* str = fmpq_get_str(nullptr, 10, r._data);
             os << str;
             flint_free(str);
@@ -489,79 +347,40 @@ namespace Flint {
         return os;
     }
 
-    template <typename T>
-    T& operator<< (T& os, const real& r) {
-        char* str = arb_get_str(r._data, FLOAT_PARA::prec, ARB_STR_NO_RADIUS);
-        os << str;
-        flint_free(str);
-        return os;
-    }
+    template <typename T, Flint_type S> S operator+(const T r, const S& c) { return c + r; }
+    template <typename T, Flint_type S> S operator-(const T r, const S& c) { return (-c) + r; }
+    template <typename T, Flint_type S> S operator*(const T r, const S& c) { return c * r; }
+    template <builtin_number T, Flint_type S> S operator/(const T r, const S& c) { return (r == 1 ? c.inv() : S(r) / c); }
+    template <typename T, Flint_type S> S pow(const S& c, const T& r) { return c.pow(r); }
 
-    template <typename T>
-    T& operator<< (T& os, const complex& c) {
-        os << c.re() << " + " << c.im() << " * I";
-        return os;
-    }
-
-    template <typename T, typename S> S operator+(const T r, const S& c) { return c + r; }
-    template <typename T, typename S> S operator-(const T r, const S& c) { return (-c) + r; }
-    template <typename T, typename S> S operator*(const T r, const S& c) { return c * r; }
-    template <typename T, typename S> S operator/(const T r, const S& c) { return (r == 1 ? c.inv() : S(r) / c); }
-    template <typename T, typename S> S pow(const S& c, const T& r) { return c.pow(r); }
-
-    rational operator/(const integer& r, const integer& c) {
-        rational result;
+    rat_t operator/(const int_t& r, const int_t& c) {
+        rat_t result;
         fmpq_set_fmpz_frac(result._data, r._data, c._data);
         return result;
     }
 
-    // some basic functions with one parameter
-    template <typename T> inline T log(const T& x) { return x.log(); }
-    template <typename T> inline T exp(const T& x) { return x.exp(); }
-    template <typename T> inline T sin(const T& x) { return x.sin(); }
-    template <typename T> inline T sin_pi(const T& x) { return x.sin_pi(); }
-    template <typename T> inline T cos(const T& x) { return x.cos(); }
-    template <typename T> inline T cos_pi(const T& x) { return x.cos_pi(); }
-    template <typename T> inline T tan(const T& x) { return x.tan(); }
-    template <typename T> inline T tan_pi(const T& x) { return x.tan_pi(); }
-    template <typename T> inline T cot(const T& x) { return x.cot(); }
-    template <typename T> inline T cot_pi(const T& x) { return x.cot_pi(); }
-    template <typename T> inline T asin(const T& x) { return x.asin(); }
-    template <typename T> inline T acos(const T& x) { return x.acos(); }
-    template <typename T> inline T atan(const T& x) { return x.atan(); }
-    template <typename T> inline T sinh(const T& x) { return x.sinh(); }
-    template <typename T> inline T cosh(const T& x) { return x.cosh(); }
-    template <typename T> inline T tanh(const T& x) { return x.tanh(); }
-    template <typename T> inline T asinh(const T& x) { return x.asinh(); }
-    template <typename T> inline T acosh(const T& x) { return x.acosh(); }
-    template <typename T> inline T atanh(const T& x) { return x.atanh(); }
-    template <typename T> inline T gamma(const T& x) { return x.gamma(); }
-    template <typename T> inline T lgamma(const T& x) { return x.lgamma(); }
-    template <typename T> inline T digamma(const T& x) { return x.digamma(); }
-    template <typename T> inline T zeta(const T& x) { return x.zeta(); }
+    // other functions
 
-    // some constants
-    template <typename T> inline T const_e() { return T().e(); }
-    template <typename T> inline T const_e(ulong prec) { return T().e(prec); }
-    template <typename T> inline T pi() { return T().pi(); }
-    template <typename T> inline T pi(ulong prec) { return T().pi(prec); }
-    template <typename T> inline T log2() { return T().log2(); }
-    template <typename T> inline T log2(ulong prec) { return T().log2(prec); }
-    template <typename T> inline T log10() { return T().log10(); }
-    template <typename T> inline T log10(ulong prec) { return T().log10(prec); }
-    template <typename T> inline T euler() { return T().euler(); }
-    template <typename T> inline T euler(ulong prec) { return T().euler(prec); }
-
-    // some basic functions with two parameters
-    complex polylog(const complex& s, const complex& z) {
-        complex result;
-        acb_polylog(result._data, s._data, z._data, FLOAT_PARA::prec);
+    int_t factorial(const ulong n) {
+        int_t result;
+        fmpz_fac_ui(result._data, n);
         return result;
     }
 
-    real polylog(const real& s, const real& z) {
-        real result;
-        arb_polylog(result._data, s._data, z._data, FLOAT_PARA::prec);
+	int rational_reconstruct(rat_t& q, const int_t& a, const int_t& mod) {
+        return  fmpq_reconstruct_fmpz(q._data, a._data, mod._data);
+	}
+
+    // CRT
+	int_t CRT(const int_t& r1, const int_t& m1, ulong r2, ulong m2) {
+		int_t result;
+        fmpz_CRT_ui(result._data, r1._data, m1._data, r2, m2, 0);
+		return result;
+	}
+
+    int_t CRT(const int_t& r1, const int_t& m1, const int_t& r2, const int_t& m2) {
+        int_t result;
+        fmpz_CRT(result._data, r1._data, m1._data, r2._data, m2._data, 0);
         return result;
     }
 

@@ -33,7 +33,7 @@ namespace sparse_rref {
 	template <typename T> using sparse_vec_t = struct sparse_vec_struct<T>[1];
 
 	typedef sparse_vec_t<ulong> snmod_vec_t;
-	typedef sparse_vec_t<fmpq> sfmpq_vec_t;
+	typedef sparse_vec_t<rat_t> sfmpq_vec_t;
 
 	// sparse_vec
 
@@ -51,24 +51,18 @@ namespace sparse_rref {
 			if constexpr (!std::is_same_v<T, bool>) {
 				vec->entries = s_realloc(vec->entries, vec->alloc);
 			}
-			if constexpr (std::is_same_v<T, fmpq>) {
-				for (ulong i = old_alloc; i < vec->alloc; i++)
-					fmpq_init((fmpq*)(vec->entries) + i);
-			}
-			if constexpr (std::is_same_v<T, fmpz>) {
-				for (ulong i = old_alloc; i < vec->alloc; i++)
-					fmpz_init((fmpz*)(vec->entries) + i);
+			if constexpr (Flint::IsOneOf<T, int_t, rat_t>) {
+				for (ulong i = old_alloc; i < vec->alloc; i++) {
+					vec->entries[i].init();
+					vec->entries[i] = 0;
+				}
 			}
 		}
 		else {
 			// shrink: clear first
-			if constexpr (std::is_same_v<T, fmpq>) {
+			if constexpr (Flint::IsOneOf<T, int_t, rat_t>) {
 				for (ulong i = vec->alloc; i < old_alloc; i++)
-					fmpq_clear((fmpq*)(vec->entries) + i);
-			}
-			if constexpr (std::is_same_v<T, fmpz>) {
-				for (ulong i = vec->alloc; i < old_alloc; i++)
-					fmpz_clear((fmpz*)(vec->entries) + i);
+					vec->entries[i].clear();
 			}
 			vec->indices = s_realloc(vec->indices, vec->alloc);
 			if constexpr (!std::is_same_v<T, bool>) {
@@ -146,9 +140,7 @@ namespace sparse_rref {
 		for (auto i = 0; i < src->nnz; i++) {
 			vec->indices[i] = src->indices[i];
 			if constexpr (!std::is_same_v<T, bool>) {
-				scalar_set(
-					sparse_vec_entry_pointer(vec, i),
-					sparse_vec_entry_pointer(src, i));
+				*sparse_vec_entry_pointer(vec, i) = *sparse_vec_entry_pointer(src, i);
 			}
 		}
 	}
@@ -164,18 +156,12 @@ namespace sparse_rref {
 	// this raw version assumes that the vec[index] = 0
 	// equivalent to push_back
 	template <typename T, uint8_t scale = 2>
-	void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, const T* val) {
+	void _sparse_vec_set_entry(sparse_vec_t<T> vec, slong index, const T val) {
 		if (vec->nnz == vec->alloc)
 			sparse_vec_realloc(vec, scale * vec->alloc);
 		vec->indices[vec->nnz] = index;
 		if constexpr (!std::is_same_v<T, bool>) {
-			if constexpr (std::is_same_v<T, fmpq>) {
-				scalar_set(sparse_vec_entry_pointer(vec, vec->nnz), val);
-			}
-			else {
-				// use scalar_set ??
-				*sparse_vec_entry_pointer(vec, vec->nnz) = *val;
-			}
+			*sparse_vec_entry_pointer(vec, vec->nnz) = val;
 		}
 		vec->nnz++;
 	}
@@ -240,10 +226,11 @@ namespace sparse_rref {
 
 			// apply permutation
 			for (size_t i = 0; i < vec->nnz; i++) {
-				scalar_set(entries + i,
-					sparse_vec_entry_pointer(vec, perm[i]));
+				entries[i] = *sparse_vec_entry_pointer(vec, perm[i]);
 			}
-			scalar_set(vec->entries, entries, vec->nnz);
+			for (size_t i = 0; i < vec->nnz; i++) {
+				vec->entries[i] = entries[i];
+			}
 
 			if constexpr (std::is_same_v<T, fmpq>) {
 				for (size_t i = 0; i < vec->nnz; i++)
@@ -261,16 +248,14 @@ namespace sparse_rref {
 		ulong new_nnz = 0;
 		ulong i = 0;
 		for (; i < vec->nnz; i++) {
-			if (!scalar_is_zero(sparse_vec_entry_pointer(vec, i)))
+			if (*sparse_vec_entry_pointer(vec, i) != 0)
 				break;
 		}
 		for (; i < vec->nnz; i++) {
-			if (scalar_is_zero(sparse_vec_entry_pointer(vec, i)))
+			if (*sparse_vec_entry_pointer(vec, i) == 0)
 				continue;
 			vec->indices[new_nnz] = vec->indices[i];
-			scalar_set(
-				sparse_vec_entry_pointer(vec, new_nnz),
-				sparse_vec_entry_pointer(vec, i));
+			*sparse_vec_entry_pointer(vec, new_nnz) = *sparse_vec_entry_pointer(vec, i);
 			new_nnz++;
 		}
 		vec->nnz = new_nnz;
@@ -286,14 +271,14 @@ namespace sparse_rref {
 
 	// p should less than 2^(FLINT_BITS-1) (2^63(2^31) on 64(32)-bit machine)
 	// scalar and all vec->entries[i] should less than p
-	static inline void sparse_vec_rescale(snmod_vec_t vec, const ulong* scalar, const field_t F) {
+	static inline void sparse_vec_rescale(snmod_vec_t vec, const ulong scalar, const field_t F) {
 		_nmod_vec_scalar_mul_nmod_shoup(vec->entries, vec->entries, vec->nnz,
-			*scalar, F->mod);
+			scalar, F->mod);
 	}
 
-	static inline void sparse_vec_rescale(sfmpq_vec_t vec, const fmpq_t scalar, const field_t F = NULL) {
+	static inline void sparse_vec_rescale(sfmpq_vec_t vec, const rat_t scalar, const field_t F = NULL) {
 		for (ulong i = 0; i < vec->nnz; i++)
-			fmpq_mul(vec->entries + i, vec->entries + i, scalar);
+			vec->entries[i] *= scalar;
 	}
 
 	// we assume that vec and src are sorted, and the result is also sorted
@@ -306,7 +291,7 @@ namespace sparse_rref {
 
 		if (vec->nnz == 0) {
 			sparse_vec_set(vec, src);
-			sparse_vec_rescale(vec, &a, F);
+			sparse_vec_rescale(vec, a, F);
 		}
 
 		ulong na = a;
@@ -365,7 +350,7 @@ namespace sparse_rref {
 	}
 
 	template <bool dir>
-	int sfmpq_vec_addsub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const fmpq_t a) {
+	int sfmpq_vec_addsub_mul(sfmpq_vec_t vec, const sfmpq_vec_t src, const rat_t a) {
 		if (src->nnz == 0)
 			return 0;
 
@@ -374,15 +359,13 @@ namespace sparse_rref {
 			sparse_vec_rescale(vec, a);
 		}
 
-		fmpq_t na, entry;
-		scalar_init(na);
+		rat_t na, entry;
 		if constexpr (dir) {
-			scalar_set(na, a);
+			na = a;
 		}
 		else {
-			scalar_neg(na, a, NULL);
+			na = -a;
 		}
-		scalar_init(entry);
 
 		if (vec->nnz + src->nnz > vec->alloc)
 			sparse_vec_realloc(vec, vec->nnz + src->nnz);
@@ -392,41 +375,41 @@ namespace sparse_rref {
 		ulong ptr = vec->nnz + src->nnz;
 		while (ptr1 > 0 && ptr2 > 0) {
 			if (vec->indices[ptr1 - 1] == src->indices[ptr2 - 1]) {
-				fmpq_mul(entry, na, src->entries + ptr2 - 1);
-				fmpq_add(entry, vec->entries + ptr1 - 1, entry);
-				if (!scalar_is_zero(entry)) {
+				entry = na * src->entries[ptr2 - 1];
+				entry += vec->entries[ptr1 - 1];
+				if (entry != 0) {
 					vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
-					fmpq_set(vec->entries + ptr - 1, entry);
+					vec->entries[ptr - 1] = entry;
 					ptr--;
 				}
 				ptr1--;
 				ptr2--;
 			}
 			else if (vec->indices[ptr1 - 1] < src->indices[ptr2 - 1]) {
-				fmpq_mul(entry, na, src->entries + ptr2 - 1);
+				entry = na * src->entries[ptr2 - 1];
 				vec->indices[ptr - 1] = src->indices[ptr2 - 1];
-				fmpq_set(vec->entries + ptr - 1, entry);
+				vec->entries[ptr - 1] = entry;
 				ptr2--;
 				ptr--;
 			}
 			else {
 				vec->indices[ptr - 1] = vec->indices[ptr1 - 1];
-				fmpq_set(vec->entries + ptr - 1, vec->entries + ptr1 - 1);
+				vec->entries[ptr - 1] = vec->entries[ptr1 - 1];
 				ptr1--;
 				ptr--;
 			}
 		}
 		while (ptr2 > 0) {
-			fmpq_mul(entry, na, src->entries + ptr2 - 1);
+			entry = na * src->entries[ptr2 - 1];
 			vec->indices[ptr - 1] = src->indices[ptr2 - 1];
-			fmpq_set(vec->entries + ptr - 1, entry);
+			vec->entries[ptr - 1] = entry;
 			ptr2--;
 			ptr--;
 		}
 
 		// if ptr1 > 0, and ptr > 0
 		for (size_t i = ptr1; i < ptr; i++) {
-			fmpq_zero(vec->entries + i);
+			vec->entries[i] = 0;
 		}
 
 		vec->nnz += src->nnz;
@@ -434,8 +417,6 @@ namespace sparse_rref {
 		if (vec->alloc > 4 * vec->nnz)
 			sparse_vec_realloc(vec, 2 * vec->nnz);
 
-		scalar_clear(na);
-		scalar_clear(entry);
 		return 0;
 	}
 
@@ -472,24 +453,23 @@ namespace sparse_rref {
 		vec->alloc = src->nnz;
 		vec->nnz = 0;
 		for (size_t i = 0; i < src->nnz; i++) {
-			ulong num = fmpz_get_nmod(fmpq_numref(src->entries + i), p);
-			ulong den = fmpz_get_nmod(fmpq_denref(src->entries + i), p);
+			ulong num = src->entries[i].num() % p;
+			ulong den = src->entries[i].den() % p;
 			ulong val = nmod_div(num, den, p);
-			_sparse_vec_set_entry(vec, src->indices[i], &val);
+			_sparse_vec_set_entry(vec, src->indices[i], val);
 		}
 	}
 
 	// dot product
 	// return true if the result is zero
 	template <typename T>
-	bool sparse_vec_dot(T* result, const sparse_vec_t<T> v1, const sparse_vec_t<T> v2, field_t F) {
+	bool sparse_vec_dot(T& result, const sparse_vec_t<T> v1, const sparse_vec_t<T> v2, field_t F) {
 		if (v1->nnz == 0 || v2->nnz == 0) {
 			scalar_zero(result);
 			return 0;
 		}
 		slong ptr1 = 0, ptr2 = 0;
-		T tmp[1];
-		scalar_init(tmp);
+		T tmp;
 		while (ptr1 < v1->nnz && ptr2 < v2->nnz) {
 			if (v1->indices[ptr1] == v2->indices[ptr2]) {
 				scalar_mul(tmp, v1->entries + ptr1, v2->entries + ptr2, F);
@@ -502,7 +482,6 @@ namespace sparse_rref {
 			else
 				ptr2++;
 		}
-		scalar_clear(tmp);
 		return scalar_is_zero(result);
 	}
 

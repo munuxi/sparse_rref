@@ -163,7 +163,7 @@ namespace sparse_rref {
 				auto therow = this->row(i);
 				for (size_t j = 0; j < therow->nnz; j++) {
 					auto col = therow->indices[j];
-					auto entry = therow->entries + j;
+					auto entry = therow->entries[j];
 					_sparse_vec_set_entry(res[col], i, entry);
 				}
 			}
@@ -172,7 +172,7 @@ namespace sparse_rref {
 	};
 
 	typedef sparse_mat<ulong> snmod_mat;
-	typedef sparse_mat<fmpq> sfmpq_mat;
+	typedef sparse_mat<rat_t> sfmpq_mat;
 
 	template <typename T>
 	inline T* sparse_mat_entry(const sparse_mat<T>& mat, ulong r, ulong c, bool isbinary = true) {
@@ -197,18 +197,16 @@ namespace sparse_rref {
 			auto therow = mat[rows[i]];
 			for (size_t j = 0; j < therow->nnz; j++) {
 				auto col = therow->indices[j];
-				S* entry;
 				T* ptr = therow->entries + j;
 				if constexpr (std::is_same_v<S, T>) {
-					entry = ptr;
+					_sparse_vec_set_entry(tranmat[col], rows[i], *ptr);
 				}
 				else if constexpr (std::is_same_v<S, T*>) {
-					entry = &ptr;
+					_sparse_vec_set_entry(tranmat[col], rows[i], ptr);
 				}
 				else {
-					entry = NULL;
+					_sparse_vec_set_entry(tranmat[col], rows[i], (bool)0);
 				}
-				_sparse_vec_set_entry(tranmat[col], rows[i], entry);
 			}
 		}
 	}
@@ -257,10 +255,10 @@ namespace sparse_rref {
 			auto thecol = tranmat[pivlist[i]];
 			for (size_t j = 0; j < thecol->nnz; j++) {
 				if (thecol->indices[j] == i) {
-					scalar_one(thecol->entries[j]);
+					*(thecol->entries[j]) = 1;
 				}
 				else
-					scalar_zero(thecol->entries[j]);
+					*(thecol->entries[j]) = 0;
 			}
 		}
 
@@ -456,7 +454,7 @@ namespace sparse_rref {
 		for (size_t i = 0; i < pivots.size(); i++) {
 			auto therow = mat[pivots[i].first];
 			for (size_t j = 0; j < therow->nnz; j++) {
-				if (scalar_is_zero(therow->entries + j))
+				if (therow->entries[j] == 0)
 					continue;
 				auto col = therow->indices[j];
 				tranmat[col].push_back(pivots[i].first);
@@ -517,16 +515,13 @@ namespace sparse_rref {
 		sparse_vec_zero(result);
 		if (vec->nnz == 0 || mat.nnz() == 0)
 			return 0;
-		T tmp[1];
-		scalar_init(tmp);
 
 		for (size_t i = 0; i < mat.nrow; i++) {
 			auto therow = mat[i];
-			scalar_zero(tmp);
+			T tmp = 0;
 			if (!sparse_vec_dot(tmp, therow, vec, F))
 				_sparse_vec_set_entry(result, i, tmp);
 		}
-		scalar_clear(tmp);
 		return 1;
 	}
 
@@ -610,41 +605,38 @@ namespace sparse_rref {
 
 		for (size_t i = 0; i < therow->nnz; i++) {
 			nonzero_c.insert(therow->indices[i]);
-			scalar_set(tmpvec + therow->indices[i], therow->entries + i);
+			tmpvec[therow->indices[i]] = therow->entries[i];
 		}
-		T entry[1];
 		ulong e_pr;
-		scalar_init(entry);
 		for (auto [r, c] : pivots) {
 			if (!nonzero_c.count(c))
 				continue;
-			scalar_set(entry, tmpvec + c);
+			T entry = tmpvec[c];
 			auto row = mat[r];
 			if constexpr (std::is_same_v<T, ulong>) {
-				e_pr = n_mulmod_precomp_shoup(*entry, F->mod.n);
+				e_pr = n_mulmod_precomp_shoup(tmpvec[c], F->mod.n);
 			}
 			for (size_t i = 0; i < row->nnz; i++) {
 				if (!nonzero_c.count(row->indices[i])) {
 					nonzero_c.insert(row->indices[i]);
-					scalar_zero(tmpvec + row->indices[i]);
+					tmpvec[row->indices[i]] = 0;
 				}
 				if constexpr (std::is_same_v<T, ulong>) {
 					tmpvec[row->indices[i]] = _nmod_sub(tmpvec[row->indices[i]],
-						n_mulmod_shoup(*entry, row->entries[i], e_pr, F->mod.n), F->mod);
+						n_mulmod_shoup(entry, row->entries[i], e_pr, F->mod.n), F->mod);
 				}
-				else if constexpr (std::is_same_v<T, fmpq>) {
-					fmpq_submul(tmpvec + row->indices[i], entry, row->entries + i);
+				else if constexpr (std::is_same_v<T, rat_t>) {
+					tmpvec[row->indices[i]] -= entry * (row->entries[i]);
 				}
-				if (scalar_is_zero(tmpvec + row->indices[i]))
+				if (tmpvec[row->indices[i]] == 0)
 					nonzero_c.erase(row->indices[i]);
 			}
 		}
-		scalar_clear(entry);
 
 		therow->nnz = 0;
 		auto pos = nonzero_c.nonzero();
 		for (auto p : pos) {
-			_sparse_vec_set_entry(therow, p, tmpvec + p);
+			_sparse_vec_set_entry(therow, p, tmpvec[p]);
 		}
 	}
 
@@ -724,10 +716,8 @@ namespace sparse_rref {
 
 		// prepare the tmp array
 		auto nthreads = pool.get_thread_count();
-		T* cachedensedmat = s_malloc<T>(mat.ncol * nthreads);
+		std::vector<T> cachedensedmat(mat.ncol * nthreads);
 		std::vector<sparse_rref::uset> nonzero_c(nthreads);
-		for (size_t i = 0; i < mat.ncol * nthreads; i++)
-			scalar_init(cachedensedmat + i);
 		for (size_t i = 0; i < nthreads; i++)
 			nonzero_c[i].resize(mat.ncol);
 
@@ -736,7 +726,7 @@ namespace sparse_rref {
 		for (size_t i = 0; i < pivots.size(); i++) {
 			auto therow = mat[pivots[i].first];
 			for (size_t j = 0; j < therow->nnz; j++) {
-				if (scalar_is_zero(therow->entries + j))
+				if (therow->entries[j] == 0)
 					continue;
 				auto col = therow->indices[j];
 				tranmat[col].push_back(pivots[i].first);
@@ -747,15 +737,10 @@ namespace sparse_rref {
 		// TODO: better split strategy
 		size_t n_split = std::max(pivots.size() / 128ULL, 1024ULL);
 		size_t rank = pivots.size();
-		triangular_solver_2_rec(mat, tranmat, pivots, F, opt, pool, cachedensedmat, nonzero_c, n_split, rank, process);
+		triangular_solver_2_rec(mat, tranmat, pivots, F, opt, pool, cachedensedmat.data(), nonzero_c, n_split, rank, process);
 
 		if (opt->verbose)
 			std::cout << std::endl;
-
-		// clear tmp array
-		for (size_t i = 0; i < mat.ncol * nthreads; i++)
-			scalar_clear(cachedensedmat + i);
-		s_free(cachedensedmat);
 	}
 
 	template <typename T>
@@ -776,8 +761,7 @@ namespace sparse_rref {
 	void sparse_mat_direct_rref(sparse_mat<T>& mat,
 		std::vector<std::vector<pivot_t>>& pivots,
 		field_t F, sparse_rref::thread_pool& pool, rref_option_t opt) {
-		T scalar[1];
-		scalar_init(scalar);
+		T scalar;
 
 		// first set rows not in pivots to zero
 		std::vector<slong> rowset(mat.nrow, -1);
@@ -805,10 +789,8 @@ namespace sparse_rref {
 
 		// then do the elimination parallelly
 		auto nthreads = pool.get_thread_count();
-		T* cachedensedmat = s_malloc<T>(mat.ncol * nthreads);
+		std::vector<T> cachedensedmat(mat.ncol * nthreads);
 		std::vector<sparse_rref::uset> nonzero_c(nthreads);
-		for (size_t i = 0; i < mat.ncol * nthreads; i++)
-			scalar_init(cachedensedmat + i);
 		for (size_t i = 0; i < nthreads; i++)
 			nonzero_c[i].resize(mat.ncol);
 
@@ -819,7 +801,7 @@ namespace sparse_rref {
 
 			// rescale the pivots
 			for (auto [r, c] : n_pivots) {
-				scalar_inv(scalar, sparse_mat_entry(mat, r, c), F);
+				scalar_inv(scalar, *sparse_mat_entry(mat, r, c), F);
 				sparse_vec_rescale(mat[r], scalar, F);
 				rowset[r] = -1;
 			}
@@ -839,17 +821,11 @@ namespace sparse_rref {
 			pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 				auto id = sparse_rref::thread_id();
 				for (ulong j = s; j < e; j++) {
-					schur_complete(mat, leftrows[j], n_pivots, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
+					schur_complete(mat, leftrows[j], n_pivots, F, cachedensedmat.data() + id * mat.ncol, nonzero_c[id]);
 				}
 				}, ((leftrows.size() < 20 * nthreads) ? 0 : leftrows.size() / 10));
 			pool.wait();
 		}
-
-		// clear tmp array
-		scalar_clear(scalar);
-		for (size_t i = 0; i < mat.ncol * nthreads; i++)
-			scalar_clear(cachedensedmat + i);
-		s_free(cachedensedmat);
 	}
 
 	template <typename T>
@@ -858,8 +834,7 @@ namespace sparse_rref {
 		// first canonicalize, sort and compress the matrix
 		mat.compress();
 
-		T scalar[1];
-		scalar_init(scalar);
+		T scalar;
 
 		// perm the col
 		std::vector<slong> leftcols(mat.ncol);
@@ -905,7 +880,7 @@ namespace sparse_rref {
 				if (rowpivs[row] != -1)
 					continue;
 				rowpivs[row] = leftcols[kk];
-				scalar_inv(scalar, sparse_mat_entry(mat, row, rowpivs[row]), F);
+				scalar_inv(scalar, *sparse_mat_entry(mat, row, rowpivs[row]), F);
 				sparse_vec_rescale(mat[row], scalar, F);
 				n_pivots.push_back(std::make_pair(row, leftcols[kk]));
 			}
@@ -917,10 +892,8 @@ namespace sparse_rref {
 		auto rank = pivots[0].size();
 
 		auto nthreads = pool.get_thread_count();
-		T* cachedensedmat = s_malloc<T>(mat.ncol * nthreads);
+		std::vector<T> cachedensedmat(mat.ncol * nthreads);
 		std::vector<sparse_rref::uset> nonzero_c(nthreads);
-		for (size_t i = 0; i < mat.ncol * nthreads; i++)
-			scalar_init(cachedensedmat + i);
 		for (size_t i = 0; i < nthreads; i++)
 			nonzero_c[i].resize(mat.ncol);
 
@@ -952,7 +925,7 @@ namespace sparse_rref {
 				auto [r, cp] = *i;
 				rowpivs[r] = *cp;
 				n_pivots.push_back(std::make_pair(r, *cp));
-				scalar_inv(scalar, sparse_mat_entry(mat, r, *cp), F);
+				scalar_inv(scalar, *sparse_mat_entry(mat, r, *cp), F);
 				sparse_vec_rescale(mat[r], scalar, F);
 			}
 			pivots.push_back(n_pivots);
@@ -972,7 +945,7 @@ namespace sparse_rref {
 			pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 				auto id = sparse_rref::thread_id();
 				for (ulong i = s; i < e; i++) {
-					schur_complete(mat, leftrows[i], n_pivots, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
+					schur_complete(mat, leftrows[i], n_pivots, F, cachedensedmat.data() + id * mat.ncol, nonzero_c[id]);
 					flags[i] = 1;
 				}
 				}, (leftrows.size() < 20 * nthreads ? 0 : leftrows.size() / 10));
@@ -1035,12 +1008,6 @@ namespace sparse_rref {
 		if (verbose)
 			std::cout << "\n** Rank: " << rank << " nnz: " << mat.nnz() << std::endl;
 
-		scalar_clear(scalar);
-		for (size_t i = 0; i < mat.ncol * nthreads; i++)
-			scalar_clear(cachedensedmat + i);
-
-		s_free(cachedensedmat);
-
 		return pivots;
 	}
 
@@ -1052,8 +1019,7 @@ namespace sparse_rref {
 		// first canonicalize, sort and compress the matrix
 		sparse_mat_compress(mat);
 
-		T scalar[1];
-		scalar_init(scalar);
+		T scalar;
 
 		std::vector<slong> leftrows(mat.nrow);
 		for (size_t i = 0; i < mat.nrow; i++)
@@ -1095,10 +1061,8 @@ namespace sparse_rref {
 		sparse_mat<bool> tranmat(mat.ncol, mat.nrow);
 
 		auto nthreads = pool.get_thread_count();
-		T* cachedensedmat = s_malloc<T>(mat.ncol * nthreads);
+		std::vector<T> cachedensedmat(mat.ncol * nthreads);
 		std::vector<sparse_rref::uset> nonzero_c(nthreads);
-		for (size_t i = 0; i < mat.ncol * nthreads; i++)
-			scalar_init(cachedensedmat + i);
 		for (size_t i = 0; i < nthreads; i++)
 			nonzero_c[i].resize(mat.ncol);
 
@@ -1151,7 +1115,7 @@ namespace sparse_rref {
 				n_pivots.push_back(std::make_pair(*rp, c));
 				colpivs[c] = *rp;
 				rowpivs[*rp] = c;
-				scalar_inv(scalar, sparse_mat_entry(mat, *rp, c, true), F);
+				scalar_inv(scalar, *sparse_mat_entry(mat, *rp, c, true), F);
 				sparse_vec_rescale(mat[*rp], scalar, F);
 			}
 			pivots.push_back(n_pivots);
@@ -1180,7 +1144,7 @@ namespace sparse_rref {
 				for (ulong i = s; i < e; i++) {
 					if (rowpivs[leftrows[i]] != -1)
 						continue;
-					schur_complete(mat, leftrows[i], n_pivots, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
+					schur_complete(mat, leftrows[i], n_pivots, F, cachedensedmat.data() + id * mat.ncol, nonzero_c[id]);
 					flags[i] = 1;
 				}
 				}, ((mat.nrow - kk) < 20 * nthreads ? 0 : mat.nrow / 10));
@@ -1194,7 +1158,7 @@ namespace sparse_rref {
 						auto therow = mat[row];
 						for (size_t j = 0; j < therow->nnz; j++) {
 							auto col = therow->indices[j];
-							_sparse_vec_set_entry(tranmat[col], row, (bool*)NULL);
+							_sparse_vec_set_entry(tranmat[col], row, (bool)1);
 						}
 						tran_count++;
 						flags[i] = 0;
@@ -1225,17 +1189,11 @@ namespace sparse_rref {
 				<< " nnz: " << mat.nnz() << std::endl;
 		}
 
-		scalar_clear(scalar);
-		for (size_t i = 0; i < mat.ncol * nthreads; i++)
-			scalar_clear(cachedensedmat + i);
-
-		s_free(cachedensedmat);
-
 		return pivots;
 	}
 
 	// convert
-	static inline void snmod_mat_from_sfmpq(sparse_mat<ulong>& mat, const sparse_mat<fmpq>& src, nmod_t p) {
+	static inline void snmod_mat_from_sfmpq(sparse_mat<ulong>& mat, const sparse_mat<rat_t>& src, nmod_t p) {
 		for (size_t i = 0; i < src.nrow; i++)
 			snmod_vec_from_sfmpq(mat[i], src[i], p);
 	}
@@ -1261,7 +1219,7 @@ namespace sparse_rref {
 	// TODO: check!!! 
 	// parallel version !!!
 	// output some information !!!
-	std::vector<std::vector<pivot_t>> sparse_mat_rref_reconstruct(sparse_mat<fmpq>& mat,
+	std::vector<std::vector<pivot_t>> sparse_mat_rref_reconstruct(sparse_mat<rat_t>& mat,
 		sparse_rref::thread_pool& pool, rref_option_t opt) {
 		std::vector<std::vector<pivot_t>> pivots;
 
@@ -1280,13 +1238,12 @@ namespace sparse_rref {
 		if (opt->is_back_sub)
 			triangular_solver_2(matul, pivots, F, opt, pool);
 
-		fmpz_t mod, mod1;
-		scalar_init(mod);  scalar_init(mod1);
+		int_t mod, mod1;
 
-		fmpz_set_ui(mod, prime);
+		mod = prime;
 
 		int isok = 1;
-		sparse_mat<fmpq> matq(mat.nrow, mat.ncol);
+		sparse_mat<rat_t> matq(mat.nrow, mat.ncol);
 
 		// we use mod1 here as a temp variable
 		for (auto i = 0; i < mat.nrow; i++) {
@@ -1296,13 +1253,13 @@ namespace sparse_rref {
 			therowq->nnz = therow->nnz;
 			for (size_t j = 0; j < therow->nnz; j++) {
 				therowq->indices[j] = therow->indices[j];
-				fmpz_set_ui(mod1, therow->entries[j]);
+				mod1 = therow->entries[j];
 				if (isok)
-					isok = fmpq_reconstruct_fmpz(therowq->entries + j, mod1, mod);
+					isok = rational_reconstruct(therowq->entries[j], mod1, mod);
 			}
 		}
 
-		sparse_mat<fmpz> matz(mat.nrow, mat.ncol);
+		sparse_mat<int_t> matz(mat.nrow, mat.ncol);
 		if (!isok) {
 			for (auto i = 0; i < mat.nrow; i++) {
 				auto therow = matul[i];
@@ -1311,7 +1268,7 @@ namespace sparse_rref {
 				therowz->nnz = therow->nnz;
 				for (size_t j = 0; j < therow->nnz; j++) {
 					therowz->indices[j] = therow->indices[j];
-					fmpz_set_ui(therowz->entries + j, therow->entries[j]);
+					therowz->entries[j] = therow->entries[j];
 				}
 			}
 		}
@@ -1319,7 +1276,7 @@ namespace sparse_rref {
 		while (!isok) {
 			isok = 1;
 			prime = n_nextprime(prime, 0);
-			fmpz_mul_ui(mod1, mod, prime);
+			mod1 = mod * prime;
 			field_init(F, FIELD_Fp, prime);
 			snmod_mat_from_sfmpq(matul, mat, F->mod);
 			sparse_mat_direct_rref(matul, pivots, F, pool, opt);
@@ -1332,19 +1289,16 @@ namespace sparse_rref {
 				auto therowz = matz[i];
 				auto therowq = matq[i];
 				for (size_t j = 0; j < therow->nnz; j++) {
-					fmpz_CRT_ui(therowz->entries + j, therowz->entries + j, mod, therow->entries[j], prime, 0);
+					therowz->entries[j] = CRT(therowz->entries[j], mod, therow->entries[j], prime);
 					if (isok)
-						isok = fmpq_reconstruct_fmpz(therowq->entries + j, therowz->entries + j, mod1);
+						isok = rational_reconstruct(therowq->entries[j], therowz->entries[j], mod1);
 				}
 			}
-			fmpz_set(mod, mod1);
+			mod = mod1;
 		}
 		opt->verbose = true;
 
 		std::swap(mat, matq);
-
-		scalar_clear(mod);
-		scalar_clear(mod1);
 
 		return pivots;
 	}
@@ -1358,15 +1312,12 @@ namespace sparse_rref {
 		if (rank == M.ncol)
 			return K;
 
-		T m1[1];
-		scalar_init(m1);
-		scalar_one(m1);
+		T m1 = 1;
 
 		if (rank == 0) {
 			K.init(M.ncol, M.ncol);
 			for (size_t i = 0; i < M.ncol; i++)
 				_sparse_vec_set_entry(K[i], i, m1);
-			scalar_clear(m1);
 			return K;
 		}
 		scalar_neg(m1, m1, F);
@@ -1398,14 +1349,13 @@ namespace sparse_rref {
 			for (size_t j = 0; j < thecol->nnz; j++) {
 				_sparse_vec_set_entry(k_vec,
 					pivots[thecol->indices[j]].second,
-					thecol->entries + j);
+					thecol->entries[j]);
 			}
 			_sparse_vec_set_entry(k_vec, nonpivs[i], m1);
 			sparse_vec_sort_indices(k_vec); // sort the indices
 			});
 		pool.wait();
 
-		scalar_clear(m1);
 		return K;
 	}
 
@@ -1425,8 +1375,6 @@ namespace sparse_rref {
 		std::string strLine;
 
 		bool is_size = true;
-		fmpq_t val;
-		fmpq_init(val);
 
 		while (getline(st, strLine)) {
 			if (strLine[0] == '%')
@@ -1452,14 +1400,14 @@ namespace sparse_rref {
 				if (row < 0 || col < 0)
 					break;
 				sparse_rref::DeleteSpaces(tokens[2]);
-				fmpq_set_str(val, tokens[2].c_str(), 10);
+				rat_t val(tokens[2]);
 				_sparse_vec_set_entry(mat[row], col, val);
 			}
 		}
 	}
 
 	template <typename T, typename S> void sparse_mat_write(sparse_mat<T>& mat, S& st) {
-		if constexpr (std::is_same_v<T, fmpq>) {
+		if constexpr (std::is_same_v<T, rat_t>) {
 			st << "%%MatrixMarket matrix coordinate rational general" << '\n';
 		}
 		else {
@@ -1469,11 +1417,11 @@ namespace sparse_rref {
 		for (size_t i = 0; i < mat.nrow; i++) {
 			auto therow = mat[i];
 			for (size_t j = 0; j < therow->nnz; j++) {
-				if (scalar_is_zero(therow->entries + j))
+				if (therow->entries[j] == 0)
 					continue;
 				st << i + 1 << ' '
 					<< therow->indices[j] + 1 << ' '
-					<< scalar_to_str(therow->entries + j) << '\n';
+					<< therow->entries[j] << '\n';
 			}
 		}
 	}

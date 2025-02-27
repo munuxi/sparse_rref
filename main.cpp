@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
 	else
 		field_init(F, FIELD_Fp, prime);
 
-	sparse_mat<fmpq> mat_Q;
+	sparse_mat<rat_t> mat_Q;
 	sparse_mat<ulong> mat_Zp;
 
 	auto start = sparse_rref::clocknow();
