@@ -87,7 +87,7 @@ namespace sparse_rref {
 	typedef struct rref_option rref_option_t[1];
 
 	// version
-	constexpr static const char version[] = "v0.3.0";
+	constexpr static const char version[] = "v0.4.0";
 
 	// thread
 	using thread_pool = BS::thread_pool<>; // thread pool

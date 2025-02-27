@@ -518,115 +518,50 @@ namespace sparse_rref {
 
 	// sparse vector
 	template <typename T> struct sparse_vec {
-		ulong nnz;
-		ulong alloc;
-		ulong* indices;
-		T* entries;
+		std::vector<slong> indices;
+		std::vector<T> entries; // entries is useless for bool
 
-		void init(ulong n) {
-			nnz = 0;
-			alloc = n;
-			indices = s_malloc<ulong>(n);
-			entries = NULL;
+		// using PE_pair = std::pair<slong&, T&>;
+
+		sparse_vec() {};
+		~sparse_vec() {}
+
+		void clear() {
+			indices.clear();
+			entries.clear();
+		}
+
+		void reserve(ulong n) {
+			indices.reserve(n);
+			// entries is useless for bool
 			if constexpr (!std::is_same_v<T, bool>) {
-				entries = s_malloc<T>(n);
-			}
-			if constexpr (std::is_same_v<T, fmpq>) {
-				for (ulong i = 0; i < alloc; i++)
-					fmpq_init(entries + i);
+				entries.reserve(n);
 			}
 		}
 
-		inline bool is_alloced() {
-			return alloc != 0;
-		}
+		sparse_vec(ulong n) { reserve(n); }
 
-		sparse_vec(ulong n = 1) { init(n); }
+		inline void copy(const sparse_vec& src) {
+			indices = src.indices;
+			entries = src.entries;
+		}
 
 		sparse_vec(const sparse_vec& l) {
-			init(l.alloc);
 			copy(l);
 		}
 
+		size_t nnz() const {
+			return indices.size();
+		}
+
 		sparse_vec(sparse_vec&& l) noexcept {
-			nnz = l.nnz;
-			alloc = l.alloc;
 			indices = l.indices;
 			entries = l.entries;
-			l.indices = NULL;
-			l.entries = NULL;
-			l.alloc = 0;
-		}
-
-		void clear() {
-			s_free(indices);
-			if constexpr (std::is_same_v<T, fmpq>) {
-				for (auto i = 0; i < alloc; i++)
-					fmpq_clear(entries + i);
-			}
-			if constexpr (!std::is_same_v<T, bool>) {
-				s_free(entries);
-			}
-			alloc = 0;
-			indices = NULL;
-			entries = NULL;
-		}
-
-		~sparse_vec() {
-			clear();
-		}
-
-		void realloc(ulong n) {
-			if (alloc == n)
-				return;
-			indices = s_realloc(indices, n);
-			if (n > alloc) {
-				// enlarge: init later
-				if constexpr (!std::is_same_v<T, bool>) {
-					entries = s_realloc(entries, n);
-				}
-				if constexpr (std::is_same_v<T, fmpq>) {
-					for (ulong i = alloc; i < n; i++)
-						fmpq_init((fmpq*)(entries)+i);
-				}
-			}
-			else {
-				// shrink: clear first
-				if constexpr (std::is_same_v<T, fmpq>) {
-					for (ulong i = n; i < alloc; i++)
-						fmpq_clear((fmpq*)(entries)+i);
-				}
-				if constexpr (!std::is_same_v<T, bool>) {
-					entries = s_realloc(entries, n);
-				}
-			}
-			alloc = n;
-		}
-
-		void copy(const sparse_vec& src) {
-			nnz = src.nnz;
-			if (alloc < src.nnz)
-				realloc(src.nnz);
-			for (auto i = 0; i < src.nnz; i++) {
-				indices[i] = src.indices[i];
-				if constexpr (!std::is_same_v<T, bool>) {
-					if constexpr (std::is_same_v<T, fmpq>) {
-						scalar_set(entries + i, src.entries + i);
-					}
-					else {
-						entries[i] = src.entries[i];
-					}
-				}
-			}
 		}
 
 		sparse_vec& operator=(const sparse_vec& l) {
 			if (this == &l)
 				return *this;
-			if (alloc == 0)
-				init(l.alloc);
-			else if (alloc < l.nnz)
-				realloc(l.nnz);
 
 			copy(l);
 			return *this;
@@ -635,72 +570,76 @@ namespace sparse_rref {
 		sparse_vec& operator=(sparse_vec&& l) noexcept {
 			if (this == &l)
 				return *this;
-			clear();
-			nnz = l.nnz;
-			alloc = l.alloc;
+
 			indices = l.indices;
 			entries = l.entries;
-			l.indices = NULL;
-			l.entries = NULL;
-			l.alloc = 0;
-			return *this;
 		}
 
-		void set_zero() {
-			nnz = 0;
-		}
-
-		void push_back(ulong index, const T* val) {
-			if (nnz == alloc)
-				realloc(2 * alloc);
-			indices[nnz] = index;
+		void push_back(const ulong index, const T val) {
+			indices.push_back(index);
 			if constexpr (!std::is_same_v<T, bool>) {
-				if constexpr (std::is_same_v<T, fmpq>) {
-					scalar_set(entries + nnz, val);
-				}
-				else {
-					entries[nnz] = *val;
-				}
+				entries.push_back(val);
 			}
-			nnz++;
 		}
 
-		slong operator()(ulong pos) {
+		void push_back(const std::pair<ulong, T> a) {
+			indices.push_back(a.first);
+			if constexpr (!std::is_same_v<T, bool>) {
+				entries.push_back(a.second);
+			}
+		}
+
+		slong& operator()(const ulong pos) {
 			return indices[pos];
 		}
 
-		T* operator[](ulong pos) {
-			return entries + pos;
+		const T& operator()(const ulong pos) const {
+			return entries[pos];
 		}
 
-		std::pair<slong, T*> at(ulong pos) {
-			return std::make_pair(indices[pos], entries + pos);
+		T& operator[](const ulong pos) {
+			return entries[pos];
+		}
+
+		const T& operator[](const ulong pos) const {
+			return entries[pos];
+		}
+
+		std::pair<slong&, T&> at(ulong pos) {
+			return std::make_pair(indices[pos], entries[pos]);
+		}
+
+		const std::pair<slong&, T&> at(ulong pos) const {
+			return std::make_pair(indices[pos], entries[pos]);
 		}
 
 		void canonicalize() {
 			if constexpr (std::is_same_v<T, bool>) { return; }
 			ulong new_nnz = 0;
+			ulong nnz = indices.size();
 			ulong i = 0;
 			for (; i < nnz; i++) {
-				if (!scalar_is_zero(entries + i))
+				if (entries[i] != 0)
 					break;
 			}
 			for (; i < nnz; i++) {
-				if (scalar_is_zero(entries + i))
+				if (entries[i] == 0)
 					continue;
 				indices[new_nnz] = indices[i];
-				scalar_set(entries + new_nnz, entries + i);
+				entries[new_nnz] = entries[i];
 				new_nnz++;
 			}
-			nnz = new_nnz;
+			indices.resize(new_nnz);
+			entries.resize(new_nnz);
 		}
 
 		void sort_indices() {
+			ulong nnz = indices.size();
 			if (nnz <= 1)
 				return;
 
 			if constexpr (std::is_same_v<T, bool>) {
-				std::sort(indices, indices + nnz);
+				std::sort(indices.begin(), indices.end());
 				return;
 			}
 			else {
@@ -722,24 +661,16 @@ namespace sparse_rref {
 				if (is_sorted)
 					return;
 
-				T* tentries = s_malloc<T>(nnz);
-				if constexpr (std::is_same_v<T, fmpq>) {
-					for (size_t i = 0; i < nnz; i++)
-						scalar_init(tentries + i);
-				}
+				std::vector<T> tentries(nnz);
 
 				// apply permutation
 				for (size_t i = 0; i < nnz; i++) {
-					scalar_set(tentries + i, entries + perm[i]);
+					tentries[i] = entries[perm[i]];
 				}
-				scalar_set(entries, tentries, nnz);
+				
+				entries = tentries;
 
-				if constexpr (std::is_same_v<T, fmpq>) {
-					for (size_t i = 0; i < nnz; i++)
-						scalar_clear(tentries + i);
-				}
-				s_free(tentries);
-				std::sort(indices, indices + nnz);
+				std::sort(indices.begin(), indices.end());
 			}
 		}
 
@@ -753,14 +684,14 @@ namespace sparse_rref {
 	using sfmpq_vec = sparse_vec<fmpq>;
 
 	template <typename T>
-	inline void _sparse_vec_rescale(sparse_vec<T>& vec, const T* scalar, const field_t F) {
+	inline void _sparse_vec_rescale(sparse_vec<T>& vec, const T scalar, const field_t F) {
 		if constexpr (std::is_same_v<T, ulong>) {
 			_nmod_vec_scalar_mul_nmod_shoup(vec.entries, vec.entries, vec.nnz,
-				*scalar, F->mod);
+				scalar, F->mod);
 		}
-		else if constexpr (std::is_same_v<T, fmpq>) {
-			for (ulong i = 0; i < vec.nnz; i++)
-				fmpq_mul(vec.entries + i, vec.entries + i, scalar);
+		else if constexpr (Flint::IsOneOf<T, int_t, rat_t>) {
+			for (ulong i = 0; i < vec.nnz(); i++)
+				vec.entries[i] *= scalar;
 		}
 	}
 }
