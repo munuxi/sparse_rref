@@ -60,20 +60,6 @@ namespace sparse_rref {
 		std::fill(s, s + size, val);
 	}
 
-	// field
-
-	enum RING {
-		FIELD_QQ,    // fmpq
-		FIELD_Fp,    // ulong
-		OTHER_RING // not implemented now
-	};
-
-	struct field_struct {
-		enum RING ring;
-		nmod_t mod;
-	};
-	typedef struct field_struct field_t[1];
-
 	// rref_option
 
 	struct rref_option {

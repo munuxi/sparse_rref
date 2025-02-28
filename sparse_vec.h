@@ -11,6 +11,7 @@
 
 #include "flint/nmod_vec.h"
 
+#include "sparse_rref.h"
 #include "scalar.h"
 
 namespace sparse_rref {
