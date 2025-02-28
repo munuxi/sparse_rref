@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
 	program.add_usage_newline();
 	program.add_argument("-k", "--kernel")
 		.default_value(false)
-		.help("output the kernel")
+		.help("output the kernel (null vectors)")
 		.implicit_value(true)
 		.nargs(0);
 	program.add_argument("--output-pivots")
