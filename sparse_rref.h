@@ -79,7 +79,6 @@ namespace sparse_rref {
 	struct rref_option {
 		bool verbose = false;
 		bool is_back_sub = true;
-		bool pivot_dir = true; // true: col, false: row
 		uint8_t method = 0;
 		int print_step = 100;
 		int search_depth = INT_MAX;
@@ -250,6 +249,16 @@ namespace sparse_rref {
 	};
 
 	template <typename T> inline T* binarysearch(T* begin, T* end, T val) {
+		auto ptr = std::lower_bound(begin, end, val);
+		if (ptr == end || *ptr == val)
+			return ptr;
+		else
+			return end;
+	}
+
+	template <typename T> inline std::vector<T>::iterator binarysearch(std::vector<T>& vec, const T& val) {
+		auto begin = vec.begin();
+		auto end = vec.end();
 		auto ptr = std::lower_bound(begin, end, val);
 		if (ptr == end || *ptr == val)
 			return ptr;

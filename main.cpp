@@ -64,10 +64,6 @@ int main(int argc, char** argv) {
 		.default_value(1)
 		.nargs(1)
 		.scan<'i', int>();
-	program.add_argument("-pd", "--pivot_direction")
-		.help("the direction to select pivots")
-		.default_value("col")
-		.nargs(1);
 	program.add_usage_newline();
 	program.add_argument("-V", "--verbose")
 		.default_value(false)
@@ -158,6 +154,7 @@ int main(int argc, char** argv) {
 
 	std::ifstream file(filePath);
 	sfmpq_mat_read(mat_Q, file);
+
 	if (prime != 0) {
 		mat_Zp.init(mat_Q.nrow, mat_Q.ncol);
 		snmod_mat_from_sfmpq(mat_Zp, mat_Q, p);
@@ -179,7 +176,6 @@ int main(int argc, char** argv) {
 	opt->verbose = (program["--verbose"] == true);
 	opt->is_back_sub = (program["--no-backward-substitution"] == false);
 	opt->print_step = program.get<int>("--print_step");
-	opt->pivot_dir = (program.get<std::string>("--pivot_direction") == "col");
 
 	if (opt->verbose) {
 		std::cout << "-------------------" << std::endl;

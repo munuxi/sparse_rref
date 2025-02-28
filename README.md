@@ -34,11 +34,11 @@ We also provide an example, see `mma_link.cpp`, by using the LibraryLink api of 
 Build it, e.g. (also add `-lpthread` if pthread is required by the compiler)
 
 ```bash
-g++ main.cpp -o sparserref -O3 -std=c++17 -Iincludepath -Llibpath -lflint -lgmp
+g++ main.cpp -o sparserref -O3 -std=c++20 -Iincludepath -Llibpath -lflint -lgmp
 ```
 
 ```bash
-g++ mma_link.cpp -fPIC -shared -O3 -std=c++17 -o mathlink.dll -Iincludepath -Llibpath -lflint -lgmp
+g++ mma_link.cpp -fPIC -shared -O3 -std=c++20 -o mathlink.dll -Iincludepath -Llibpath -lflint -lgmp
 ```
 
 ### How to use the code
