@@ -251,8 +251,9 @@ namespace sparse_rref {
 		ulong ptr2 = src.nnz();
 		ulong ptr = vec.nnz() + src.nnz();
 
-		vec.reserve(vec.nnz() + src.nnz());
-		vec.resize(vec.nnz() + src.nnz());
+		if (vec.indices.capacity() < ptr)
+			vec.reserve(ptr);
+		vec.resize(ptr);
 
 		while (ptr1 > 0 && ptr2 > 0) {
 			if (vec(ptr1 - 1) == src(ptr2 - 1)) {
@@ -321,8 +322,9 @@ namespace sparse_rref {
 		ulong ptr2 = src.nnz();
 		ulong ptr = vec.nnz() + src.nnz();
 
-		vec.reserve(vec.nnz() + src.nnz());
-		vec.resize(vec.nnz() + src.nnz());
+		if (vec.indices.capacity() < ptr)
+			vec.reserve(ptr);
+		vec.resize(ptr);
 
 		while (ptr1 > 0 && ptr2 > 0) {
 			if (vec(ptr1 - 1) == src(ptr2 - 1)) {
@@ -383,7 +385,7 @@ namespace sparse_rref {
 	}
 
 	static inline int sparse_vec_add(snmod_vec& vec, const snmod_vec& src, field_t F) {
-		return snmod_vec_add_mul(vec, src, (ulong)1, F);
+		return snmod_vec_add_mul(vec, src, 1, F);
 	}
 
 	static inline int sparse_vec_sub(snmod_vec& vec, const snmod_vec& src, field_t F) {
@@ -392,10 +394,6 @@ namespace sparse_rref {
 
 	static inline int sparse_vec_sub_mul(snmod_vec& vec, const snmod_vec& src, const ulong a, field_t F) {
 		return snmod_vec_sub_mul(vec, src, a, F);
-	}
-
-	static inline int sparse_vec_sub_mul(sfmpq_vec& vec, const sfmpq_vec& src, const rat_t& a, field_t F = NULL) {
-		return sfmpq_vec_sub_mul(vec, src, a);
 	}
 
 

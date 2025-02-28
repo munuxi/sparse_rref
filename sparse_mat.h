@@ -674,7 +674,7 @@ namespace sparse_rref {
 
 		size_t process = 0;
 		// TODO: better split strategy
-		size_t n_split = std::max(pivots.size() / 128ULL, 1024ULL);
+		size_t n_split = std::max(pivots.size() / 128ULL, 1ULL << 10); // TODO: better strategy?
 		size_t rank = pivots.size();
 		triangular_solver_2_rec(mat, tranmat, pivots, F, opt, pool, cachedensedmat.data(), nonzero_c, n_split, rank, process);
 
@@ -716,14 +716,6 @@ namespace sparse_rref {
 		sparse_mat<T*> tranmatp(mat.ncol, mat.nrow);
 		std::vector<slong> tmplist(mat.nrow, -1);
 		eliminate_row_with_one_nnz_rec(mat, tranmatp, tmplist, opt);
-
-		//auto n_pivots = pivots[0];
-		//for (auto [r, c] : n_pivots) {
-		//	auto therow = mat[r];
-		//	therow.nnz() = 1;
-		//	therow->indices[0] = c;
-		//	scalar_one(therow->entries);
-		//}
 
 		// then do the elimination parallelly
 		auto nthreads = pool.get_thread_count();
