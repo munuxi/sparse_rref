@@ -6,8 +6,8 @@
 	License.
 */
 
-#ifndef SPARSE_BASE_H
-#define SPARSE_BASE_H
+#ifndef SPARSE_RREF_H
+#define SPARSE_RREF_H
 
 #include "thread_pool.hpp"
 #include <algorithm>
@@ -28,63 +28,66 @@
 #include <unordered_set>
 #include <vector>
 
+// flint 
+#include "flint/nmod.h"
+#include "flint/ulong_extras.h"
+
 #ifdef NULL
 #undef NULL
 #endif
 #define NULL nullptr
 
-// Memory management
+namespace sparse_rref {
+	// Memory management
 
-template <typename T>
-inline T* s_malloc(const size_t size) {
-	return (T*)std::malloc(size * sizeof(T));
-}
+	template <typename T>
+	inline T* s_malloc(const size_t size) {
+		return (T*)std::malloc(size * sizeof(T));
+	}
 
-template <typename T>
-inline void s_free(T* s) {
-	std::free(s);
-}
+	template <typename T>
+	inline void s_free(T* s) {
+		std::free(s);
+	}
 
-template <typename T>
-inline T* s_realloc(T* s, const size_t size) {
-	return (T*)std::realloc(s, size * sizeof(T));
-}
+	template <typename T>
+	inline T* s_realloc(T* s, const size_t size) {
+		return (T*)std::realloc(s, size * sizeof(T));
+	}
 
-template <typename T>
-void s_memset(T* s, const T val, const T size) {
-	std::fill(s, s + size, val);
-}
+	template <typename T>
+	void s_memset(T* s, const T val, const T size) {
+		std::fill(s, s + size, val);
+	}
 
-// field
+	// field
 
-enum RING {
-	FIELD_QQ,    // fmpq
-	FIELD_Fp,    // ulong
-	RING_MulitFp // not implemented now
-};
+	enum RING {
+		FIELD_QQ,    // fmpq
+		FIELD_Fp,    // ulong
+		OTHER_RING // not implemented now
+	};
 
-struct field_struct {
-	enum RING ring;
-	ulong rank = 1; // the rank of the product ring
-	nmod_t* pvec = NULL;
-};
-typedef struct field_struct field_t[1];
+	struct field_struct {
+		enum RING ring;
+		nmod_t mod;
+	};
+	typedef struct field_struct field_t[1];
 
-// rref_option
+	// rref_option
 
-struct rref_option {
-	bool verbose = false;
-	bool is_back_sub = true;
-	bool pivot_dir = true; // true: row, false: col
-	uint8_t method = 0;
-	int print_step = 100;
-	int search_depth = INT_MAX;
-};
-typedef struct rref_option rref_option_t[1];
+	struct rref_option {
+		bool verbose = false;
+		bool is_back_sub = true;
+		bool pivot_dir = true; // true: col, false: row
+		uint8_t method = 0;
+		int print_step = 100;
+		int search_depth = INT_MAX;
+	};
+	typedef struct rref_option rref_option_t[1];
 
-namespace sparse_base {
 	// version
-	constexpr static const char version[] = "v0.2.4";
+	constexpr static const char version[] = "v0.2.5";
 
 	// thread
 	using thread_pool = BS::thread_pool<>; // thread pool
@@ -95,13 +98,19 @@ namespace sparse_base {
 	// if c++20, use std::countr_zero
 	// if c++17, use flint_ctz (__builtin_ctzll or _tzcnt_u64)
 #if __cplusplus >= 202002L
-	#include <bit>
+#include <bit>
 	inline size_t ctz(ulong x) {
 		return std::countr_zero(x);
+	}
+	inline size_t clz(ulong x) {
+		return std::countl_zero(x);
 	}
 #else
 	inline size_t ctz(ulong x) {
 		return flint_ctz(x);
+	}
+	inline size_t clz(ulong x) {
+		return flint_clz(x);
 	}
 #endif
 
@@ -201,18 +210,39 @@ namespace sparse_base {
 		}
 
 		std::vector<size_t> nonzero() {
-			std::vector<size_t> result;
+			std::vector<ulong> result;
+			std::vector<ulong> tmp;
+			tmp.reserve(bitset_size);
 			for (size_t i = 0; i < data.size(); i++) {
 				if (data[i].any()) {
-					// for (size_t j = 0; j < bitset_size; j++) {
-					// 	if (data[i].test(j))
-					// 		result.push_back(i * bitset_size + j);
-					// }
+#ifndef flint_ctz
+					// naive version
+					 for (size_t j = 0; j < bitset_size; j++) {
+					 	if (data[i].test(j))
+					 		result.push_back(i * bitset_size + j);
+					 }
+#else
+					tmp.clear();
 					ulong c = data[i].to_ullong();
+
+					// only ctz version
+					// while (c) {
+					// 	auto ctzpos = ctz(c);
+					// 	result.push_back(i * bitset_size + ctzpos);
+					// 	c &= c - 1;
+					// }
+
 					while (c) {
-						result.push_back(i * bitset_size + ctz(c));
-						c &= c - 1;
+						auto ctzpos = ctz(c);
+						auto clzpos = bitset_size - 1 - clz(c);
+						result.push_back(i * bitset_size + ctzpos);
+						if (ctzpos == clzpos)
+							break;
+						tmp.push_back(i * bitset_size + clzpos);
+						c = c ^ (1ULL << clzpos) ^ (1ULL << ctzpos);
 					}
+					result.insert(result.end(), tmp.rbegin(), tmp.rend());
+#endif
 				}
 			}
 			return result;
@@ -254,12 +284,89 @@ namespace sparse_base {
 	}
 
 	template <typename T> inline T* binarysearch(T* begin, T* end, uint16_t rank, T* val) {
-		auto ptr = sparse_base::lower_bound(begin, end, rank, val);
+		auto ptr = sparse_rref::lower_bound(begin, end, rank, val);
 		if (ptr == end || std::equal(ptr, ptr + rank, val))
 			return ptr;
 		else
 			return end;
 	}
+
+	// LockFreeQueue
+	template <typename T>
+	class LockFreeQueue {
+	private:
+		struct Node {
+			std::shared_ptr<T> data;
+			std::atomic<Node*> next;
+
+			Node(T const& value) : data(std::make_shared<T>(value)), next(nullptr) {}
+		};
+
+		std::atomic<Node*> head;
+		std::atomic<Node*> tail;
+
+	public:
+		LockFreeQueue() {
+			Node* dummy = new Node(T());  
+			head.store(dummy);
+			tail.store(dummy);
+		}
+
+		~LockFreeQueue() {
+			while (Node* old_head = head.load()) {
+				head.store(old_head->next);
+				delete old_head;
+			}
+		}
+
+		void enqueue(T const& value) {
+			Node* new_node = new Node(value);
+			Node* old_tail = tail.load();
+			Node* null_ptr = nullptr;
+
+			while (true) {
+				Node* old_next = old_tail->next.load();
+
+				if (old_next == nullptr) {
+					if (old_tail->next.compare_exchange_weak(null_ptr, new_node)) {
+						tail.compare_exchange_weak(old_tail, new_node);
+						break;
+					}
+				}
+				else {
+					tail.compare_exchange_weak(old_tail, old_next);
+				}
+			}
+		}
+
+		std::shared_ptr<T> dequeue() {
+			Node* old_head;
+			Node* old_tail;
+			std::shared_ptr<T> result;
+
+			while (true) {
+				old_head = head.load();
+				old_tail = tail.load();
+				Node* next = old_head->next.load();
+
+				if (old_head == head.load()) {
+					if (old_head == old_tail) {
+						if (next == nullptr) {
+							return std::shared_ptr<T>();  
+						}
+						tail.compare_exchange_weak(old_tail, next);
+					}
+					else {
+						result = next->data;
+						if (head.compare_exchange_weak(old_head, next)) {
+							delete old_head;
+							return result;
+						}
+					}
+				}
+			}
+		}
+	};
 
 	// IO
 	using DataTuple = std::vector<std::tuple<slong, slong, std::string>>;
