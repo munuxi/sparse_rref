@@ -69,7 +69,7 @@ namespace sparse_rref {
 		int print_step = 100;
 		int search_depth = INT_MAX;
 	};
-	typedef struct rref_option rref_option_t[1];
+	using rref_option_t = rref_option[1];
 
 	// version
 	constexpr static const char version[] = "v0.4.0";

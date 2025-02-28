@@ -135,11 +135,11 @@ int main(int argc, char** argv) {
 	sparse_rref::thread_pool pool(nthread);
 	std::cout << "using " << nthread << " threads" << std::endl;
 
-	field_t F;
+	sparse_rref::field_t F;
 	if (prime == 0)
-		field_init(F, FIELD_QQ, 1);
+		field_init(F, sparse_rref::RING::FIELD_QQ, 1);
 	else
-		field_init(F, FIELD_Fp, prime);
+		field_init(F, sparse_rref::RING::FIELD_Fp, prime);
 
 	sparse_mat<rat_t> mat_Q;
 	sparse_mat<ulong> mat_Zp;
@@ -172,7 +172,7 @@ int main(int argc, char** argv) {
 		printmatinfo(mat_Zp);
 	}
 	
-	rref_option_t opt;
+	sparse_rref::rref_option_t opt;
 	opt->verbose = (program["--verbose"] == true);
 	opt->is_back_sub = (program["--no-backward-substitution"] == false);
 	opt->print_step = program.get<int>("--print_step");
