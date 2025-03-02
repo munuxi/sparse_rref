@@ -65,12 +65,8 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     mint* colptr = ld->MTensor_getIntegerData(*m_colptr);
 
     auto nnz = rowptr[nrows];
-    BS::thread_pool pool((int)nthreads);
     rref_option_t opt;
-    if (method == 0) 
-        opt->pivot_dir = true;
-    else 
-        opt->pivot_dir = false;
+	opt->pool.reset(nthreads);
 
     // init a sparse matrix
     nmod_t pp;
@@ -80,21 +76,20 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     sparse_mat<ulong> A(nrows, ncols);
     
     for (auto i = 0; i < nrows; i++) {
-        auto therow = A[i];
         for (auto k = rowptr[i]; k < rowptr[i + 1]; k++) {
             fmpz_set_si(tmp, valptr[k]);
             fmpz_mod_ui(tmp, tmp, p);
             ulong entry = fmpz_get_ui(tmp);
-            _sparse_vec_set_entry(therow, colptr[k] - 1, &entry);
+            A[i].push_back(colptr[k] - 1, entry);
         }
     }
     fmpz_clear(tmp);
 
     field_t F;
-    field_init(F, FIELD_Fp, std::vector<ulong>{(ulong)p});
+    field_init(F, FIELD_Fp, p);
 
-    auto pivots = sparse_mat_rref(A, F, pool, opt);
-    sparse_mat<ulong> K(sparse_mat_rref_kernel(A, pivots, F, pool));
+    auto pivots = sparse_mat_rref(A, F, opt);
+    sparse_mat<ulong> K(sparse_mat_rref_kernel(A, pivots, F, opt));
     auto len = K.nrow;
     auto rank = pivots.size();
     
@@ -120,22 +115,20 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     auto nownnz = 0;
     // output A
     for (auto i = 0; i < A.nrow; i++){
-        auto therow = A[i];
-        for (auto j = 0; j < therow->nnz; j++){
+        for (auto j = 0; j < A[i].nnz(); j++){
             posdata[2 * nownnz] = i + 1;
-            posdata[2 * nownnz + 1] = therow->indices[j] + 1;
-            valdata[nownnz] = therow->entries[j];
+            posdata[2 * nownnz + 1] = A[i](j) + 1;
+            valdata[nownnz] = A[i][j];
             nownnz++;
         }
     }
     if (len > 0) {
         // output K
         for (auto i = 0; i < K.nrow; i++) {
-            auto therow = K[i];
-            for (auto j = 0; j < therow->nnz; j++) {
+            for (auto j = 0; j < K[i].nnz(); j++) {
                 posdata[2 * nownnz] = A.nrow + i + 1;
-                posdata[2 * nownnz + 1] = therow->indices[j] + 1;
-                valdata[nownnz] = therow->entries[j];
+                posdata[2 * nownnz + 1] = K[i](j) + 1;
+                valdata[nownnz] = K[i][j];
                 nownnz++;
             }
         }
@@ -147,8 +140,6 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     ld->MTensor_free(pos);
     ld->MTensor_free(val);
     ld->MTensor_free(dim);
-    
-    field_clear(F);
     
     if (err)
         return LIBRARY_FUNCTION_ERROR;
