@@ -122,7 +122,7 @@ namespace sparse_rref {
 	typedef sparse_mat<rat_t> sfmpq_mat;
 
 	template <typename T>
-	inline std::vector<T>::iterator sparse_mat_entry(sparse_mat<T>& mat, ulong r, ulong c, bool isbinary = true) {
+	inline T* sparse_mat_entry(sparse_mat<T>& mat, ulong r, ulong c, bool isbinary = true) {
 		return sparse_vec_entry(mat[r], c, isbinary);
 	}
 
@@ -174,7 +174,7 @@ namespace sparse_rref {
 	// and the result is also canonical
 	template <typename T>
 	ulong eliminate_row_with_one_nnz(sparse_mat<T>& mat,
-		sparse_mat<T*>& tranmat, std::vector<slong>& donelist, bool is_tran = false) {
+		std::vector<slong>& donelist, bool is_tran = false) {
 		auto localcounter = 0;
 		std::vector<slong> pivlist(mat.nrow, -1);
 		std::vector<slong> collist(mat.ncol, -1);
@@ -193,18 +193,14 @@ namespace sparse_rref {
 		if (localcounter == 0)
 			return localcounter;
 
-		if (!is_tran)
-			sparse_mat_transpose_replace(tranmat, mat);
 		for (size_t i = 0; i < mat.nrow; i++) {
-			if (pivlist[i] == -1)
-				continue;
-			auto& thecol = tranmat[pivlist[i]];
-			for (size_t j = 0; j < thecol.nnz(); j++) {
-				if (thecol(j) == i) {
-					*(thecol[j]) = 1;
+			for (size_t j = 0; j < mat[i].nnz(); j++) {
+				if (collist[mat[i](j)] != -1) {
+					if (pivlist[i] == mat[i](j))
+						mat[i][j] = 1;
+					else
+						mat[i][j] = 0;
 				}
-				else
-					*(thecol[j]) = 0;
 			}
 		}
 
@@ -220,7 +216,6 @@ namespace sparse_rref {
 
 	template <typename T>
 	ulong eliminate_row_with_one_nnz_rec(sparse_mat<T>& mat,
-		sparse_mat<T*>& tranmat,
 		std::vector<slong>& donelist, rref_option_t opt,
 		slong max_depth = INT_MAX) {
 		slong depth = 0;
@@ -237,7 +232,7 @@ namespace sparse_rref {
 		int bitlen_ndir = (int)std::floor(std::log(ndir) / std::log(10)) + 1;
 
 		do {
-			localcounter = eliminate_row_with_one_nnz(mat, tranmat, donelist);
+			localcounter = eliminate_row_with_one_nnz(mat, donelist);
 			if (verbose) {
 				oldnnz = mat.nnz();
 				std::cout << "-- " << dirstr << ": " << std::setw(bitlen_ndir)
@@ -713,9 +708,9 @@ namespace sparse_rref {
 
 		mat.compress();
 
-		sparse_mat<T*> tranmatp(mat.ncol, mat.nrow);
+		sparse_mat<bool> tranmatp(mat.ncol, mat.nrow);
 		std::vector<slong> tmplist(mat.nrow, -1);
-		eliminate_row_with_one_nnz_rec(mat, tranmatp, tmplist, opt);
+		eliminate_row_with_one_nnz_rec(mat, tmplist, opt);
 
 		// then do the elimination parallelly
 		auto nthreads = pool.get_thread_count();
@@ -784,17 +779,17 @@ namespace sparse_rref {
 		// look for row with only one non-zero entry
 
 		// compute the transpose of pointers of the matrix
-		sparse_mat<T*> tranmatp(mat.ncol, mat.nrow);
 		ulong count =
-			eliminate_row_with_one_nnz_rec(mat, tranmatp, rowpivs, opt);
+			eliminate_row_with_one_nnz_rec(mat, rowpivs, opt);
 		now_nnz = mat.nnz();
 
-		sparse_mat_transpose_replace(tranmatp, mat);
+		sparse_mat<bool> tranmat(mat.ncol, mat.nrow);
+		sparse_mat_transpose_replace(tranmat, mat);
 
 		// sort pivots by nnz, it will be faster
 		std::stable_sort(leftcols.begin(), leftcols.end(),
-			[&tranmatp](slong a, slong b) {
-				return tranmatp[a].nnz() < tranmatp[b].nnz();
+			[&tranmat](slong a, slong b) {
+				return tranmat[a].nnz() < tranmat[b].nnz();
 			});
 
 		// look for pivot cols with only one nonzero element
@@ -802,11 +797,11 @@ namespace sparse_rref {
 		std::fill(rowpivs.begin(), rowpivs.end(), -1);
 		std::vector<pivot_t> n_pivots;
 		for (; kk < mat.ncol; kk++) {
-			auto nnz = tranmatp[leftcols[kk]].nnz();
+			auto nnz = tranmat[leftcols[kk]].nnz();
 			if (nnz == 0)
 				continue;
 			if (nnz == 1) {
-				auto row = tranmatp[leftcols[kk]](0);
+				auto row = tranmat[leftcols[kk]](0);
 				if (rowpivs[row] != -1)
 					continue;
 				rowpivs[row] = leftcols[kk];
@@ -827,7 +822,6 @@ namespace sparse_rref {
 		for (size_t i = 0; i < nthreads; i++)
 			nonzero_c[i].resize(mat.ncol);
 
-		sparse_mat<bool> tranmat(mat.ncol, mat.nrow);
 		sparse_mat_transpose_replace(tranmat, mat);
 
 		std::vector<slong> leftrows;
@@ -1173,8 +1167,8 @@ namespace sparse_rref {
 			auto& therow = mat[i];
 			auto nnz = therow.nnz();
 			std::memcpy(ptr, &nnz, sizeof(ulong)); ptr += ratio;
-			std::memcpy(ptr, therow.indices.data(), nnz * sizeof(ulong)); ptr += nnz * ratio;
-			std::memcpy(ptr, therow.entries.data(), nnz * sizeof(ulong)); ptr += nnz * ratio;
+			std::memcpy(ptr, therow.indices, nnz * sizeof(ulong)); ptr += nnz * ratio;
+			std::memcpy(ptr, therow.entries, nnz * sizeof(ulong)); ptr += nnz * ratio;
 		}
 		return std::make_pair(len, buffer);
 	}
@@ -1192,8 +1186,8 @@ namespace sparse_rref {
 			ulong nnz;
 			std::memcpy(&nnz, ptr, sizeof(ulong)); ptr += ratio;
 			therow.resize(nnz);
-			std::memcpy(therow.indices.data(), ptr, nnz * sizeof(ulong)); ptr += nnz * ratio;
-			std::memcpy(therow.entries.data(), ptr, nnz * sizeof(ulong)); ptr += nnz * ratio;
+			std::memcpy(therow.indices, ptr, nnz * sizeof(ulong)); ptr += nnz * ratio;
+			std::memcpy(therow.entries, ptr, nnz * sizeof(ulong)); ptr += nnz * ratio;
 		}
 
 		return mat;

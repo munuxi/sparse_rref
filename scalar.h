@@ -97,21 +97,6 @@ namespace Flint {
     NUM_SELF_OP_00(type1, type2, fh, ft, tail);                   \
     NUM_SELF_OP_0(type1, /=, type2, fh##_div##ft, tail)           \
 
-#define NUM_SELF_OP_1(type1, op, type2, func, tail)               \
-    type1& operator##op(const type2 other) {                      \
-        func(_data, _data, other##tail, FLOAT_PARA::prec);        \
-        return *this;                                             \
-    }
-
-#define NUM_SELF_OP_10(type1, type2, fh, ft, tail)                \
-    NUM_SELF_OP_1(type1, +=, type2, fh##_add##ft, tail);          \
-    NUM_SELF_OP_1(type1, -=, type2, fh##_sub##ft, tail);          \
-    NUM_SELF_OP_1(type1, *=, type2, fh##_mul##ft, tail)           \
-
-#define NUM_SELF_OP_11(type1, type2, fh, ft, tail)                \
-    NUM_SELF_OP_10(type1, type2, fh, ft, tail);                   \
-    NUM_SELF_OP_1(type1, /=, type2, fh##_div##ft, tail)           \
-
 #define NUM_CMP_0(type, op, num, func, tail)                      \
     bool operator##op(const type other) const {                   \
         return func(_data, other##tail) op num;                   \
@@ -149,13 +134,6 @@ namespace Flint {
     type1 func() const {                                          \
         type1 result;                                             \
         type2##_##func(result._data, _data);                      \
-        return result;                                            \
-    }
-
-#define NUM_FUNC_1(type1, type2, func)                            \
-    type1 func() const {                                          \
-        type1 result;                                             \
-        type2##_##func(result._data, _data, FLOAT_PARA::prec);    \
         return result;                                            \
     }
 
