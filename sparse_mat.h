@@ -229,8 +229,7 @@ namespace sparse_rref {
 	// we assume that mat is canonical, i.e. each index is sorted
 	// and the result is also canonical
 	template <typename T>
-	ulong eliminate_row_with_one_nnz(sparse_mat<T>& mat,
-		sparse_mat<T*>& tranmat, std::vector<slong>& donelist, bool is_tran = false) {
+	ulong eliminate_row_with_one_nnz(sparse_mat<T>& mat, std::vector<slong>& donelist) {
 		auto localcounter = 0;
 		std::vector<slong> pivlist(mat.nrow, -1);
 		std::vector<slong> collist(mat.ncol, -1);
@@ -238,29 +237,23 @@ namespace sparse_rref {
 			if (donelist[i] != -1)
 				continue;
 			if (mat[i]->nnz == 1) {
-				if (collist[mat[i]->indices[0]] == -1) {
-					localcounter++;
-					pivlist[i] = mat[i]->indices[0];
-					collist[mat[i]->indices[0]] = i;
-				}
+				localcounter++;
+				pivlist[i] = mat[i]->indices[0];
+				collist[mat[i]->indices[0]] = i;
 			}
 		}
 
 		if (localcounter == 0)
 			return localcounter;
 
-		if (!is_tran)
-			sparse_mat_transpose_replace(tranmat, mat);
 		for (size_t i = 0; i < mat.nrow; i++) {
-			if (pivlist[i] == -1)
-				continue;
-			auto thecol = tranmat[pivlist[i]];
-			for (size_t j = 0; j < thecol->nnz; j++) {
-				if (thecol->indices[j] == i) {
-					scalar_one(thecol->entries[j]);
+			for (size_t j = 0; j < mat[i]->nnz; j++) {
+				if (collist[mat[i]->indices[j]] != -1) {
+					if (pivlist[i] == mat[i]->indices[j])
+						scalar_one(mat[i]->entries + j);
+					else 
+						scalar_zero(mat[i]->entries + j);
 				}
-				else
-					scalar_zero(thecol->entries[j]);
 			}
 		}
 
@@ -275,10 +268,8 @@ namespace sparse_rref {
 	}
 
 	template <typename T>
-	ulong eliminate_row_with_one_nnz_rec(sparse_mat<T>& mat,
-		sparse_mat<T*>& tranmat,
-		std::vector<slong>& donelist, rref_option_t opt,
-		slong max_depth = INT_MAX) {
+	ulong eliminate_row_with_one_nnz_rec(sparse_mat<T>& mat, std::vector<slong>& donelist, 
+		rref_option_t opt, slong max_depth = INT_MAX) {
 		slong depth = 0;
 		ulong localcounter = 0;
 		ulong count = 0;
@@ -293,7 +284,7 @@ namespace sparse_rref {
 		int bitlen_ndir = (int)std::floor(std::log(ndir) / std::log(10)) + 1;
 
 		do {
-			localcounter = eliminate_row_with_one_nnz(mat, tranmat, donelist);
+			localcounter = eliminate_row_with_one_nnz(mat, donelist);
 			if (verbose) {
 				oldnnz = mat.nnz();
 				std::cout << "-- " << dirstr << ": " << std::setw(bitlen_ndir)
@@ -968,8 +959,7 @@ namespace sparse_rref {
 		// look for row with only one non-zero entry
 
 		// compute the transpose of pointers of the matrix
-		sparse_mat<T*> tranmatp(mat.ncol, mat.nrow);
-		ulong count = eliminate_row_with_one_nnz_rec(mat, tranmatp, rowpivs, opt);
+		ulong count = eliminate_row_with_one_nnz_rec(mat, rowpivs, opt);
 		now_nnz = mat.nnz();
 
 		std::vector<pivot_t> n_pivots;
@@ -979,23 +969,24 @@ namespace sparse_rref {
 		}
 		pivots.push_back(n_pivots);
 
-		sparse_mat_transpose_replace(tranmatp, mat);
+		sparse_mat<bool> tranmat(mat.ncol, mat.nrow);
+		sparse_mat_transpose_replace(tranmat, mat);
 
 		// sort pivots by nnz, it will be faster
 		std::stable_sort(leftcols.begin(), leftcols.end(),
-			[&tranmatp](slong a, slong b) {
-				return tranmatp[a]->nnz < tranmatp[b]->nnz;
+			[&tranmat](slong a, slong b) {
+				return tranmat[a]->nnz < tranmat[b]->nnz;
 			});
 
 		// look for pivot cols with only one nonzero element
 		ulong kk = 0;
 		n_pivots.clear();
 		for (; kk < mat.ncol; kk++) {
-			auto nnz = tranmatp[leftcols[kk]]->nnz;
+			auto nnz = tranmat[leftcols[kk]]->nnz;
 			if (nnz == 0)
 				continue;
 			if (nnz == 1) {
-				auto row = tranmatp[leftcols[kk]]->indices[0];
+				auto row = tranmat[leftcols[kk]]->indices[0];
 				if (rowpivs[row] != -1)
 					continue;
 				rowpivs[row] = leftcols[kk];
@@ -1017,9 +1008,6 @@ namespace sparse_rref {
 			scalar_init(cachedensedmat + i);
 		for (size_t i = 0; i < nthreads; i++)
 			nonzero_c[i].resize(mat.ncol);
-
-		sparse_mat<bool> tranmat(mat.ncol, mat.nrow);
-		sparse_mat_transpose_replace(tranmat, mat);
 
 		std::vector<slong> leftrows;
 		leftrows.reserve(mat.nrow);
@@ -1177,9 +1165,7 @@ namespace sparse_rref {
 		std::vector<slong> rowpivs(mat.nrow, -1);
 		std::vector<slong> colpivs(mat.ncol, -1);
 
-		sparse_mat<T*> tranmatp(mat.ncol, mat.nrow);
-		ulong count =
-			eliminate_row_with_one_nnz_rec(mat, tranmatp, rowpivs, opt);
+		ulong count = eliminate_row_with_one_nnz_rec(mat, rowpivs, opt);
 		now_nnz = mat.nnz();
 
 		// sort rows by nnz
