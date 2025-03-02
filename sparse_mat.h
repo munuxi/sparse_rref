@@ -284,18 +284,17 @@ namespace sparse_rref {
 		int bitlen_ndir = (int)std::floor(std::log(ndir) / std::log(10)) + 1;
 
 		do {
-			localcounter = eliminate_row_with_one_nnz(mat, donelist);
+			count += eliminate_row_with_one_nnz(mat, donelist);
 			if (verbose) {
 				oldnnz = mat.nnz();
 				std::cout << "-- " << dirstr << ": " << std::setw(bitlen_ndir)
-					<< localcounter << "/" << ndir
+					<< count << "/" << ndir
 					<< "  rank: " << std::setw(bitlen_ndir) << count
 					<< "  nnz: " << std::setw(bitlen_nnz) << oldnnz
 					<< "  density: " << std::setprecision(6) << std::setw(8)
 					<< 100 * (double)oldnnz / (mat.nrow * mat.ncol) << "%"
 					<< "    \r" << std::flush;
 			}
-			count += localcounter;
 			depth++;
 		} while (localcounter > 0 && depth < max_depth);
 		return count;
