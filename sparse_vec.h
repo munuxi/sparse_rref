@@ -89,6 +89,7 @@ namespace sparse_rref {
 				indices[i] = l.indices[i];
 				entries[i] = l.entries[i];
 			}
+			_nnz = l._nnz;
 		}
 
 		sparse_vec(const sparse_vec& l) {

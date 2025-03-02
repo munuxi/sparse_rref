@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
 	program.add_usage_newline();
 	program.add_argument("-k", "--kernel")
 		.default_value(false)
-		.help("output the kernel")
+		.help("output the kernel (null vectors)")
 		.implicit_value(true)
 		.nargs(0);
 	program.add_argument("--output-pivots")
@@ -131,8 +131,14 @@ int main(int argc, char** argv) {
 		std::exit(1);
 	}
 
+	rref_option_t opt;
 	int nthread = program.get<int>("--threads");
-	sparse_rref::thread_pool pool(nthread);
+	if (nthread == 0)
+		opt->pool.reset(); // automatic mode, use all possible threads
+	else
+		opt->pool.reset(nthread);
+	
+	auto& pool = opt->pool;
 	std::cout << "using " << nthread << " threads" << std::endl;
 
 	sparse_rref::field_t F;
@@ -172,7 +178,6 @@ int main(int argc, char** argv) {
 		printmatinfo(mat_Zp);
 	}
 	
-	sparse_rref::rref_option_t opt;
 	opt->verbose = (program["--verbose"] == true);
 	opt->is_back_sub = (program["--no-backward-substitution"] == false);
 	opt->print_step = program.get<int>("--print_step");
@@ -186,10 +191,10 @@ int main(int argc, char** argv) {
 	std::vector<std::vector<pivot_t>> pivots;
 	if (prime == 0) {
 		// pivots = sparse_mat_rref(mat_Q, F, pool, opt);
-		pivots = sparse_mat_rref_reconstruct(mat_Q, pool, opt);
+		pivots = sparse_mat_rref_reconstruct(mat_Q, opt);
 	}
 	else {
-		pivots = sparse_mat_rref(mat_Zp, F, pool, opt);
+		pivots = sparse_mat_rref(mat_Zp, F, opt);
 	}
 
 	end = sparse_rref::clocknow();
@@ -244,14 +249,14 @@ int main(int argc, char** argv) {
 		outname_add = ".kernel";
 		file2.open(outname + outname_add);
 		if (prime == 0) {
-			auto K = sparse_mat_rref_kernel(mat_Q, pivots, F, pool);
+			auto K = sparse_mat_rref_kernel(mat_Q, pivots, F, opt);
 			if (K.nrow > 0)
 				sparse_mat_write(K, file2);
 			else
 				std::cout << "kernel is empty" << std::endl;
 		}
 		else {
-			auto K = sparse_mat_rref_kernel( mat_Zp, pivots, F, pool);
+			auto K = sparse_mat_rref_kernel(mat_Zp, pivots, F, opt);
 			if (K.nrow > 0)
 				sparse_mat_write(K, file2);
 			else 

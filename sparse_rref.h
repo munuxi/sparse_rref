@@ -60,25 +60,26 @@ namespace sparse_rref {
 		std::fill(s, s + size, val);
 	}
 
-	// rref_option
+	// thread
+	using thread_pool = BS::thread_pool<>; // thread pool
+	inline size_t thread_id() {
+		return BS::this_thread::get_index().value();
+	}
 
+	// rref_option
 	struct rref_option {
 		bool verbose = false;
 		bool is_back_sub = true;
 		uint8_t method = 0;
 		int print_step = 100;
 		int search_depth = INT_MAX;
+		thread_pool pool = thread_pool(1); // default: thread pool with 1 thread
 	};
 	using rref_option_t = rref_option[1];
 
 	// version
-	constexpr static const char version[] = "v0.4.0";
+	constexpr static const char version[] = "v0.3.0";
 
-	// thread
-	using thread_pool = BS::thread_pool<>; // thread pool
-	inline size_t thread_id() {
-		return BS::this_thread::get_index().value();
-	}
 
 	// if c++20, use std::countr_zero
 	// if c++17, use flint_ctz (__builtin_ctzll or _tzcnt_u64)

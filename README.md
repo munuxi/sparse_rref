@@ -27,7 +27,7 @@ For a sparse matrix $M$, the code computes its RREF  $\Lambda$ with row and colu
 
 We now only support the rational field $\mathbb Q$ and the $\mathbb Z/p\mathbb Z$, where $p$ is a prime less than $2^{\texttt{BIT}-1}$ (it's $2^{63}$ on a 64-bit machine), but it is possible to generalize to other fields/rings by some small modification.
 
-It is highly recommended to use [mimalloc](https://github.com/microsoft/mimalloc) (or other similar library) to dynamically override the standard malloc, especially on Windows.
+It is recommended to use [mimalloc](https://github.com/microsoft/mimalloc) (or other similar library) to dynamically override the standard malloc, especially on Windows.
 
 We also provide an example, see `mma_link.cpp`, by using the LibraryLink api of Mathematica to compile a library which can used by Mathematica.
 
@@ -62,8 +62,8 @@ Positional arguments:
 Optional arguments:
   -h, --help                  shows help message and exits
   -v, --version               prints version information and exits
-  -o, --output                output file in matrix market format [default: "input_file.rref"]
-  -k, --kernel                output the kernel
+  -o, --output                output file in matrix market format [default: "<input_file>.rref"]
+  -k, --kernel                output the kernel (null vectors)
   --output-pivots             output pivots
   -F, --field                 QQ: rational field
                               Zp or Fp: Z/p for a prime p [default: "QQ"]
@@ -77,8 +77,6 @@ Optional arguments:
 
 The main function is `sparse_mat_rref`, its output is its pivots, and it modifies the input matrix $M$ to its RREF $\Lambda$.
 
-One main struct is `sparse_vec_t`, which contains two lists: the first is the list of indices of nonzero entries, and the second is entries. Another main struct is `sparse_mat_t`, which contains an array of `sparse_vec_t` and some other information.
-
 ### BenchMark
 
 We compare it with [Spasm](https://github.com/cbouilla/spasm). Platform and Configuration: 
@@ -88,7 +86,7 @@ We compare it with [Spasm](https://github.com/cbouilla/spasm). Platform and Conf
 	OS: Arch Linux x86-64
 	Compiler: gcc (GCC) 14.2.1 20240910
 	FLINT: v3.1.2
-	SparseRREF: v0.2.4 (with mimalloc)
+	SparseRREF: v0.2.5
 	Prime number: 1073741827 ~ 2^30
 	Configuration: 
 	  - Spasm: Default configuration for Spasm, first spasm_echelonize and then spasm_rref
@@ -96,18 +94,18 @@ We compare it with [Spasm](https://github.com/cbouilla/spasm). Platform and Conf
 
 First two test matrices come from https://hpac.imag.fr, bs comes from symbol bootstrap, ibp comes from IBP of Feynman integrals:
 
-| Matrix   | (#row, #col, #non-zero-values, rank)   | Spasm (echelonize + rref)    | SparseRREF (-pd row) | SparseRREF (-pd col) |
-| -------- | -------------------------------------- | ---------------------------- | -------------------- | -------------------- |
-| GL7d24   | (21074, 105054, 593892, 18549)         | 10.9765s + 51.0s             | 2.82s                | 3.58s                |
-| M0,6-D10 | (1274688, 616320, 5342400, 493432)     | 101.195s + 13.4s             | 68.73s               | 101.19s              |
-| bs-1     | (202552, 64350, 11690309, 62130)       | 5.53596s + 0.9s              | 2.22s                | 2.10s                |
-| bs-2     | (709620, 732600, 48819232, 709620)     | too slow                     | 2210.43s             | 271.89s              |
-| bs-3     | (10011551, 2958306, 33896262, 2867955) | 484s + 327.1s                | 77.84s               | 62.41s               |
-| ibp-1    | (69153, 73316, 1117324, 58252)         | (rank is wrong) 2543.92s + ? | 4.07s                | 3.87s                |
-| ibp-2    | (169323, 161970, 2801475, 135009)      | too slow                     | 32.33s               | 29.29s               |
+| Matrix   | (#row, #col, #non-zero-values, rank)   | Spasm (echelonize + rref)    | SparseRREF           |
+| -------- | -------------------------------------- | ---------------------------- | -------------------- |
+| GL7d24   | (21074, 105054, 593892, 18549)         | 10.9765s + 51.0s             | 3.95s                |
+| M0,6-D10 | (1274688, 616320, 5342400, 493432)     | 101.195s + 13.4s             | 91.69s               |
+| bs-1     | (202552, 64350, 11690309, 62130)       | 5.53596s + 0.9s              | 1.97s                |
+| bs-2     | (709620, 732600, 48819232, 709620)     | too slow                     | 247.11s              |
+| bs-3     | (10011551, 2958306, 33896262, 2867955) | 484s + 327.1s                | 55.42s               |
+| ibp-1    | (69153, 73316, 1117324, 58252)         | (rank is wrong) 2543.92s + ? | 4.23s                |
+| ibp-2    | (169323, 161970, 2801475, 135009)      | too slow                     | 32.51s               |
 
-bs-2 is slow for the option -pd row, since in the calulation of pivots, physical memory is not enough, and the system uses swap, which is slow.
-Some tests for Spasm are slow for the same reason, so the SparseRREF is more efficient and uses less memory.
+Some tests for Spasm are slow since the physical memory is not enought, and it uses swap. In the most of cases,
+SparseRREF uses less memory than Spasm since its result has less non zero values.
 
 ### TODO
 

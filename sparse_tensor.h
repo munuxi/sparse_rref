@@ -15,6 +15,12 @@
 
 // TODO: sparse tensor
 
+enum SPARSE_TYPE {
+	SPARSE_CSR, // Compressed sparse row
+	SPARSE_LIL, // List of lists
+	SPARSE_LR  // List of rows
+};
+
 namespace sparse_rref {
 
 	// CSR format for sparse tensor
@@ -243,7 +249,6 @@ namespace sparse_rref {
 			scalar_set(valptr + index, val);
 			for (size_t i = row + 1; i <= dims[0]; i++)
 				rowptr[i]++;
-			return;
 		}
 
 		// ordered insert
@@ -293,12 +298,6 @@ namespace sparse_rref {
 		}
 	};
 
-	enum SPARSE_TYPE {
-		SPARSE_CSR, // Compressed sparse row
-		SPARSE_LIL, // List of lists
-		SPARSE_LR  // List of rows
-	};
-
 	template <typename T, SPARSE_TYPE Type = SPARSE_CSR> struct sparse_tensor_t;
 
 	template <typename T> struct sparse_tensor_t<T, SPARSE_CSR> {
@@ -314,6 +313,7 @@ namespace sparse_rref {
 
 		inline ulong nnz() { return data.rowptr[data.dims[0]]; }
 		inline ulong rank() { return data.rank; }
+		inline std::vector<ulong> dims() { return data.dims; }
 		inline void set_zero() { data.set_zero(); }
 		inline void insert(std::vector<ulong> l, T* val, bool mode = true) { data.insert(l, val, mode); }
 		inline void push_back(std::vector<ulong> l, T* val) { data.push_back(l, val); }
@@ -377,6 +377,10 @@ namespace sparse_rref {
 
 		inline ulong nnz() { return data.rowptr[1]; }
 		inline ulong rank() { return data.rank; }
+		inline std::vector<ulong> dims() {
+			std::vector<ulong> result(data.dims.begin() + 1, data.dims.end());
+			return result;
+		}
 		inline void set_zero() { data.set_zero(); }
 		inline void insert(std::vector<ulong> l, T* val, bool mode = true) { data.insert(prepend_num(l), val, mode); }
 		inline void push_back(std::vector<ulong> l, T* val) { data.push_back(prepend_num(l), val); }
@@ -445,6 +449,15 @@ namespace sparse_rref {
 			return nnz;
 		}
 		inline ulong rank() { return data[0].rank() + 1; }
+		inline std::vector<ulong> dims() {
+			std::vector<ulong> result(rank());
+			result[0] = data.size();
+			auto otherdims = data[0].dims();
+			for (ulong i = 1; i < rank(); i++)
+				result[i] = otherdims[i - 1];
+			return result;
+		}
+
 		inline void set_zero() {
 			for (auto& a : data)
 				a.set_zero();
