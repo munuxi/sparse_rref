@@ -284,7 +284,8 @@ namespace sparse_rref {
 		int bitlen_ndir = (int)std::floor(std::log(ndir) / std::log(10)) + 1;
 
 		do {
-			count += eliminate_row_with_one_nnz(mat, donelist);
+			localcounter = eliminate_row_with_one_nnz(mat, donelist);
+			count += localcounter;
 			if (verbose) {
 				oldnnz = mat.nnz();
 				std::cout << "-- " << dirstr << ": " << std::setw(bitlen_ndir)
@@ -791,23 +792,10 @@ namespace sparse_rref {
 			rowset[r] = -1;
 		}
 
-		std::vector<slong> col_dict(mat.ncol, -1);
-		for (auto [r, c] : n_pivots)
-			col_dict[c] = r;
+		std::vector<slong> leftrows(mat.nrow, -1);
+		eliminate_row_with_one_nnz(mat, leftrows);
 
-		for (size_t i = 0; i < mat.nrow; i++) {
-			if (rowset[i] == -1)
-				continue;
-			auto therow = mat[i];
-			for (size_t j = 0; j < therow->nnz; j++) {
-				if (col_dict[therow->indices[j]] != -1)
-					scalar_zero(therow->entries + j);
-			}
-		}
-
-		mat.compress();
-
-		std::vector<slong> leftrows;
+		leftrows.clear();
 
 		// then do the elimination parallelly
 		auto nthreads = pool.get_thread_count();
@@ -829,10 +817,6 @@ namespace sparse_rref {
 				sparse_vec_rescale(mat[r], scalar, F);
 				rowset[r] = -1;
 			}
-
-			// the first is done by eliminate_row_with_one_nnz_rec
-			if (i == 0)
-				continue;
 
 			leftrows.clear();
 			for (size_t j = 0; j < mat.nrow; j++) {
