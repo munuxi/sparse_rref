@@ -237,9 +237,11 @@ namespace sparse_rref {
 			if (donelist[i] != -1)
 				continue;
 			if (mat[i]->nnz == 1) {
-				localcounter++;
-				pivlist[i] = mat[i]->indices[0];
-				collist[mat[i]->indices[0]] = i;
+				if (collist[mat[i]->indices[0]] == -1) {
+					localcounter++;
+					pivlist[i] = mat[i]->indices[0];
+					collist[mat[i]->indices[0]] = i;
+				}
 			}
 		}
 
