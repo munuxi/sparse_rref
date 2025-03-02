@@ -44,109 +44,6 @@ namespace Flint {
     template <typename T>
     concept unsigned_builtin_integral = builtin_integral<T> && std::is_unsigned_v<T>;
 
-#define NUM_INIT(type1, type2, fh, fd)                            \
-    type1(const type2 a) {                                        \
-        fh##_init(_data);                                         \
-        fh##_set##fd(_data, a);                                   \
-    }
-
-#define NUM_OP_0(type1, op, type2, func, tail)                    \
-    type1 operator##op(const type2 other) const {                 \
-        type1 result;                                             \
-        func(result._data, _data, other##tail);                   \
-        return result;                                            \
-    }
-
-#define NUM_OP_00(type1, type2, fh, ft, tail)                     \
-    NUM_OP_0(type1, +, type2, fh##_add##ft, tail);                \
-    NUM_OP_0(type1, -, type2, fh##_sub##ft, tail);                \
-    NUM_OP_0(type1, *, type2, fh##_mul##ft, tail)                 \
-
-#define NUM_OP_01(type1, type2, fh, ft, tail)                     \
-    NUM_OP_00(type1, type2, fh, ft, tail);                        \
-    NUM_OP_0(type1, /, type2, fh##_mul##ft, tail)                 \
-
-#define NUM_OP_1(type1, op, type2, func, tail)                    \
-    type1 operator##op(const type2 other) const {                 \
-        type1 result;                                             \
-        func(result._data, _data, other##tail, FLOAT_PARA::prec); \
-        return result;                                            \
-    }
-
-#define NUM_OP_10(type1, type2, fh, ft, tail)                     \
-    NUM_OP_1(type1, +, type2, fh##_add##ft, tail);                \
-    NUM_OP_1(type1, -, type2, fh##_sub##ft, tail);                \
-    NUM_OP_1(type1, *, type2, fh##_mul##ft, tail)                 \
-
-#define NUM_OP_11(type1, type2, fh, ft, tail)                     \
-    NUM_OP_10(type1, type2, fh, ft, tail);                        \
-    NUM_OP_1(type1, /, type2, fh##_div##ft, tail)                 \
-
-#define NUM_SELF_OP_0(type1, op, type2, func, tail)               \
-    type1& operator##op(const type2 other) {                      \
-        func(_data, _data, other##tail);                          \
-        return *this;                                             \
-    }
-
-#define NUM_SELF_OP_00(type1, type2, fh, ft, tail)                \
-    NUM_SELF_OP_0(type1, +=, type2, fh##_add##ft, tail);          \
-    NUM_SELF_OP_0(type1, -=, type2, fh##_sub##ft, tail);          \
-    NUM_SELF_OP_0(type1, *=, type2, fh##_mul##ft, tail)           \
-
-#define NUM_SELF_OP_01(type1, type2, fh, ft, tail)                \
-    NUM_SELF_OP_00(type1, type2, fh, ft, tail);                   \
-    NUM_SELF_OP_0(type1, /=, type2, fh##_div##ft, tail)           \
-
-#define NUM_CMP_0(type, op, num, func, tail)                      \
-    bool operator##op(const type other) const {                   \
-        return func(_data, other##tail) op num;                   \
-    }
-
-#define NUM_EQUAL_0(type, func, tail)                             \
-    bool operator==(const type other) const {                     \
-        return func(_data, other##tail);                          \
-    }
-
-#define NUM_EQUAL_1(type1, type2, fh, ft)                         \
-    bool operator==(const type2 other) const {                    \
-        if (other == 0) {                                         \
-            return fh##_is_zero(_data);                           \
-        }                                                         \
-        if (other == 1) {                                         \
-            return fh##_is_one(_data);                            \
-        }                                                         \
-        return fh##_equal##ft(_data, other);                      \
-    }
-
-#define NUM_CMP_01(type1, type2, fh, ft, tail)                    \
-    NUM_CMP_0(type2, < , 0, fh##_cmp##ft, tail);                  \
-    NUM_CMP_0(type2, > , 0, fh##_cmp##ft, tail);                  \
-    NUM_CMP_0(type2, <= , 0, fh##_cmp##ft, tail);                 \
-    NUM_CMP_0(type2, >= , 0, fh##_cmp##ft, tail)
-
-#define NUM_SET_0(type1, type2, fh, ft, tail)                     \
-    type1& operator=(const type2 a) {                             \
-        fh##_set##ft(_data, a);                                   \
-        return *this;                                             \
-    }
-
-#define NUM_FUNC_0(type1, type2, func)                            \
-    type1 func() const {                                          \
-        type1 result;                                             \
-        type2##_##func(result._data, _data);                      \
-        return result;                                            \
-    }
-
-#define NUM_MACRO_s(MACRO, type1, type2)                          \
-    MACRO(type1, int, type2, _si);                                \
-    MACRO(type1, long, type2, _si);                               \
-    MACRO(type1, slong, type2, _si)    
-
-#define NUM_MACRO_u(MACRO, type1, type2)                          \
-    MACRO(type1, unsigned int, type2, _ui);                       \
-    MACRO(type1, unsigned long, type2, _ui);                      \
-    MACRO(type1, ulong, type2, _ui)
-
     struct int_t {
         fmpz_t _data;
 
@@ -156,40 +53,68 @@ namespace Flint {
         ~int_t() { fmpz_clear(_data); }
         int_t(const int_t& other) { fmpz_init(_data); fmpz_set(_data, other._data); }
         int_t(int_t&& other) noexcept { fmpz_init(_data); fmpz_swap(_data, other._data); }
+		int_t(const fmpz_t a) { fmpz_init(_data); fmpz_set(_data, a); }
 
-        NUM_INIT(int_t, fmpz_t, fmpz);
-        NUM_MACRO_s(NUM_INIT, int_t, fmpz);
-        NUM_MACRO_u(NUM_INIT, int_t, fmpz);
+		template <signed_builtin_integral T> int_t(const T a) { fmpz_init(_data); fmpz_set_si(_data, a); }
+		template <unsigned_builtin_integral T> int_t(const T a) { fmpz_init(_data); fmpz_set_ui(_data, a); }
 
         int_t(const std::string& str) { fmpz_init(_data); fmpz_set_str(_data, str.c_str(), 10); }
         void set_str(const std::string& str, int base = 10) { fmpz_set_str(_data, str.c_str(), base); }
 
         int_t& operator=(const int_t& other) { if (this != &other) fmpz_set(_data, other._data); return *this; }
         int_t& operator=(int_t&& other) noexcept { if (this != &other) fmpz_swap(_data, other._data); return *this; }
-        NUM_MACRO_s(NUM_SET_0, int_t, fmpz);
-        NUM_MACRO_u(NUM_SET_0, int_t, fmpz);
+		template <signed_builtin_integral T> int_t& operator=(const T a) { fmpz_set_si(_data, a); return *this; }
+		template <unsigned_builtin_integral T> int_t& operator=(const T a) { fmpz_set_ui(_data, a); return *this; }
 
-        NUM_EQUAL_0(int_t&, fmpz_equal, ._data);
-        NUM_MACRO_s(NUM_EQUAL_1, , fmpz);
-        NUM_MACRO_u(NUM_EQUAL_1, , fmpz);
+		bool operator==(const int_t other) const { return fmpz_equal(_data, other._data); }
+		template <unsigned_builtin_integral T> bool operator==(const T other) const { return fmpz_equal_ui(_data, other); }
+		template <signed_builtin_integral T> bool operator==(const T other) const { return fmpz_equal_si(_data, other); }
+		bool operator!=(const int_t other) const { return !operator==(other); }
 
-        NUM_CMP_01(, int_t&, fmpz, , ._data);
-        NUM_MACRO_s(NUM_CMP_01, , fmpz);
-        NUM_MACRO_u(NUM_CMP_01, , fmpz);
+		bool operator<(const int_t other) const { return fmpz_cmp(_data, other._data) < 0; }
+		bool operator>(const int_t other) const { return fmpz_cmp(_data, other._data) > 0; }
+		bool operator<=(const int_t other) const { return fmpz_cmp(_data, other._data) <= 0; }
+		bool operator>=(const int_t other) const { return fmpz_cmp(_data, other._data) >= 0; }
 
-        NUM_OP_00(int_t, int_t&, fmpz, , ._data);
-        NUM_MACRO_s(NUM_OP_00, int_t, fmpz);
-        NUM_MACRO_u(NUM_OP_00, int_t, fmpz);
+		template <unsigned_builtin_integral T> bool operator<(const T other) const { return fmpz_cmp_ui(_data, other) < 0; }
+		template <unsigned_builtin_integral T> bool operator>(const T other) const { return fmpz_cmp_ui(_data, other) > 0; }
+		template <unsigned_builtin_integral T> bool operator<=(const T other) const { return fmpz_cmp_ui(_data, other) <= 0; }
+		template <unsigned_builtin_integral T> bool operator>=(const T other) const { return fmpz_cmp_ui(_data, other) >= 0; }
 
-        NUM_SELF_OP_00(int_t, int_t&, fmpz, , ._data);
-        NUM_MACRO_s(NUM_SELF_OP_00, int_t, fmpz);
-        NUM_MACRO_u(NUM_SELF_OP_00, int_t, fmpz);
+		template <signed_builtin_integral T> bool operator<(const T other) const { return fmpz_cmp_si(_data, other) < 0; }
+		template <signed_builtin_integral T> bool operator>(const T other) const { return fmpz_cmp_si(_data, other) > 0; }
+		template <signed_builtin_integral T> bool operator<=(const T other) const { return fmpz_cmp_si(_data, other) <= 0; }
+		template <signed_builtin_integral T> bool operator>=(const T other) const { return fmpz_cmp_si(_data, other) >= 0; }
+
+		int_t operator+(const int_t& other) const { int_t result; fmpz_add(result._data, _data, other._data); return result; }
+		template <unsigned_builtin_integral T> int_t operator+(const T other) const { int_t result; fmpz_add_ui(result._data, _data, other); return result; }
+		template <signed_builtin_integral T> int_t operator+(const T other) const { int_t result; fmpz_add_si(result._data, _data, other); return result; }
+
+		int_t operator-(const int_t& other) const { int_t result; fmpz_sub(result._data, _data, other._data); return result; }
+		template <unsigned_builtin_integral T> int_t operator-(const T other) const { int_t result; fmpz_sub_ui(result._data, _data, other); return result; }
+		template <signed_builtin_integral T> int_t operator-(const T other) const { int_t result; fmpz_sub_si(result._data, _data, other); return result; }
+
+		int_t operator*(const int_t& other) const { int_t result; fmpz_mul(result._data, _data, other._data); return result; }
+		template <unsigned_builtin_integral T> int_t operator*(const T other) const { int_t result; fmpz_mul_ui(result._data, _data, other); return result; }
+		template <signed_builtin_integral T> int_t operator*(const T other) const { int_t result; fmpz_mul_si(result._data, _data, other); return result; }
+
+		void operator+=(const int_t& other) { fmpz_add(_data, _data, other._data); }
+		template <unsigned_builtin_integral T> void operator+=(const T other) { fmpz_add_ui(_data, _data, other); }
+		template <signed_builtin_integral T> void operator+=(const T other) { fmpz_add_si(_data, _data, other); }
+
+		void operator-=(const int_t& other) { fmpz_sub(_data, _data, other._data); }
+		template <unsigned_builtin_integral T> void operator-=(const T other) { fmpz_sub_ui(_data, _data, other); }
+		template <signed_builtin_integral T> void operator-=(const T other) { fmpz_sub_si(_data, _data, other); }
+
+		void operator*=(const int_t& other) { fmpz_mul(_data, _data, other._data); }
+		template <unsigned_builtin_integral T> void operator*=(const T other) { fmpz_mul_ui(_data, _data, other); }
+		template <signed_builtin_integral T> void operator*=(const T other) { fmpz_mul_si(_data, _data, other); }
 
         template <unsigned_builtin_integral T>
         int_t pow(const T n) const { int_t result; fmpz_pow_ui(result._data, _data, n); return result; }
         int_t pow(const int_t& n) const { int_t result; fmpz_pow_fmpz(result._data, _data, n._data); return result; }
-        NUM_FUNC_0(int_t, fmpz, abs);
-        NUM_FUNC_0(int_t, fmpz, neg);
+		int_t abs() const { int_t result; fmpz_abs(result._data, _data); return result; }
+		int_t neg() const { int_t result; fmpz_neg(result._data, _data); return result; }
 
 		ulong operator%(const nmod_t other) const { return fmpz_get_nmod(_data, other); }
 		int_t operator%(const int_t& other) const { int_t result; fmpz_mod(result._data, _data, other._data); return result; }
@@ -224,7 +149,7 @@ namespace Flint {
 
         rat_t(const rat_t& other) { fmpq_init(_data); fmpq_set(_data, other._data); }
         rat_t(rat_t&& other) noexcept { fmpq_init(_data); fmpq_swap(_data, other._data); }
-        NUM_INIT(rat_t, fmpq_t, fmpq);
+		rat_t(const fmpq_t a) { fmpq_init(_data); fmpq_set(_data, a); }
 
         template <signed_builtin_integral T> rat_t(const T a, const T b) { fmpq_init(_data); fmpq_set_si(_data, a, b); }
         template <signed_builtin_integral T> rat_t(const T a) { fmpq_init(_data); fmpq_set_si(_data, a, 1); }
@@ -240,25 +165,28 @@ namespace Flint {
         rat_t& operator=(const rat_t& other) { if (this != &other) fmpq_set(_data, other._data); return *this; }
         rat_t& operator=(rat_t&& other) noexcept { if (this != &other) fmpq_swap(_data, other._data); return *this; }
 
-        template <signed_builtin_integral T>
-        rat_t& operator=(const T a) { fmpq_set_si(_data, a, 1); return *this; }
-        template <unsigned_builtin_integral T>
-        rat_t& operator=(const T a) { fmpq_set_ui(_data, a, 1); return *this; }
+        template <signed_builtin_integral T> rat_t& operator=(const T a) { fmpq_set_si(_data, a, 1); return *this; }
+        template <unsigned_builtin_integral T> rat_t& operator=(const T a) { fmpq_set_ui(_data, a, 1); return *this; }
 
-        NUM_OP_01(rat_t, rat_t&, fmpq, , ._data);
-        NUM_OP_01(rat_t, int_t&, fmpq, _fmpz, ._data);
-        NUM_MACRO_s(NUM_OP_00, rat_t, fmpq);
-        NUM_MACRO_u(NUM_OP_00, rat_t, fmpq);
+        bool operator<(const rat_t& other) const { return fmpq_cmp(_data, other._data) < 0; }
+        bool operator>(const rat_t& other) const { return fmpq_cmp(_data, other._data) > 0; }
+        bool operator<=(const rat_t& other) const { return fmpq_cmp(_data, other._data) <= 0; }
+        bool operator>=(const rat_t& other) const { return fmpq_cmp(_data, other._data) >= 0; }
 
-        NUM_SELF_OP_01(rat_t, rat_t&, fmpq, , ._data);
-        NUM_SELF_OP_01(rat_t, int_t&, fmpq, _fmpz, ._data);
-        NUM_MACRO_s(NUM_SELF_OP_00, rat_t, fmpq);
-        NUM_MACRO_u(NUM_SELF_OP_00, rat_t, fmpq);
+        template <unsigned_builtin_integral T> bool operator<(const T other) const { return fmpq_cmp_ui(_data, other) < 0; }
+        template <unsigned_builtin_integral T> bool operator>(const T other) const { return fmpq_cmp_ui(_data, other) > 0; }
+        template <unsigned_builtin_integral T> bool operator<=(const T other) const { return fmpq_cmp_ui(_data, other) <= 0; }
+        template <unsigned_builtin_integral T> bool operator>=(const T other) const { return fmpq_cmp_ui(_data, other) >= 0; }
 
-        NUM_CMP_01(, rat_t&, fmpq, , ._data);
-        NUM_CMP_01(, int_t&, fmpq, _fmpz, ._data);
-        NUM_MACRO_s(NUM_CMP_01, , fmpq);
-        NUM_MACRO_u(NUM_CMP_01, , fmpq);
+        template <signed_builtin_integral T> bool operator<(const T other) const { return fmpq_cmp_si(_data, other) < 0; }
+        template <signed_builtin_integral T> bool operator>(const T other) const { return fmpq_cmp_si(_data, other) > 0; }
+        template <signed_builtin_integral T> bool operator<=(const T other) const { return fmpq_cmp_si(_data, other) <= 0; }
+        template <signed_builtin_integral T> bool operator>=(const T other) const { return fmpq_cmp_si(_data, other) >= 0; }
+
+        bool operator<(const int_t& other) const { return fmpq_cmp_fmpz(_data, other._data) < 0; }
+        bool operator>(const int_t& other) const { return fmpq_cmp_fmpz(_data, other._data) > 0; }
+        bool operator<=(const int_t& other) const { return fmpq_cmp_fmpz(_data, other._data) <= 0; }
+        bool operator>=(const int_t& other) const { return fmpq_cmp_fmpz(_data, other._data) >= 0; }
 
         bool operator==(const rat_t& other) const { return fmpq_equal(_data, other._data); }
         bool operator==(const int_t& other) const { return fmpq_equal_fmpz((fmpq*)_data, (fmpz*)other._data); }
@@ -271,12 +199,52 @@ namespace Flint {
         };
         template<typename T> bool operator!=(const T other) const { return !operator==(other); }
 
+		rat_t operator+(const rat_t& other) const { rat_t result; fmpq_add(result._data, _data, other._data); return result; }
+		template <unsigned_builtin_integral T> rat_t operator+(const T other) const { rat_t result; fmpq_add_ui(result._data, _data, other); return result; }
+		template <signed_builtin_integral T> rat_t operator+(const T other) const { rat_t result; fmpq_add_si(result._data, _data, other); return result; }
+        rat_t operator+(const int_t& other) const { rat_t result; fmpq_add_fmpz(result._data, _data, other._data); return result; }
+
+		rat_t operator-(const rat_t& other) const { rat_t result; fmpq_sub(result._data, _data, other._data); return result; }
+		template <unsigned_builtin_integral T> rat_t operator-(const T other) const { rat_t result; fmpq_sub_ui(result._data, _data, other); return result; }
+		template <signed_builtin_integral T> rat_t operator-(const T other) const { rat_t result; fmpq_sub_si(result._data, _data, other); return result; }
+		rat_t operator-(const int_t& other) const { rat_t result; fmpq_sub_fmpz(result._data, _data, other._data); return result; }
+
+		rat_t operator*(const rat_t& other) const { rat_t result; fmpq_mul(result._data, _data, other._data); return result; }
+		template <unsigned_builtin_integral T> rat_t operator*(const T other) const { rat_t result; fmpq_mul_ui(result._data, _data, other); return result; }
+		template <signed_builtin_integral T> rat_t operator*(const T other) const { rat_t result; fmpq_mul_si(result._data, _data, other); return result; }
+        rat_t operator*(const int_t& other) const { rat_t result; fmpq_mul_fmpz(result._data, _data, other._data); return result; }
+
+		rat_t operator/(const rat_t& other) const { rat_t result; fmpq_div(result._data, _data, other._data); return result; }
+		template <unsigned_builtin_integral T> rat_t operator/(const T other) const { rat_t result; fmpq_div_ui(result._data, _data, other); return result; }
+		template <signed_builtin_integral T> rat_t operator/(const T other) const { rat_t result; fmpq_div_si(result._data, _data, other); return result; }
+		rat_t operator/(const int_t& other) const { rat_t result; fmpq_div_fmpz(result._data, _data, other._data); return result; }
+
+		void operator+=(const rat_t& other) { fmpq_add(_data, _data, other._data); }
+		template <unsigned_builtin_integral T> void operator+=(const T other) { fmpq_add_ui(_data, _data, other); }
+		template <signed_builtin_integral T> void operator+=(const T other) { fmpq_add_si(_data, _data, other); }
+		void operator+=(const int_t& other) { fmpq_add_fmpz(_data, _data, other._data); }
+
+		void operator-=(const rat_t& other) { fmpq_sub(_data, _data, other._data); }
+		template <unsigned_builtin_integral T> void operator-=(const T other) { fmpq_sub_ui(_data, _data, other); }
+		template <signed_builtin_integral T> void operator-=(const T other) { fmpq_sub_si(_data, _data, other); }
+		void operator-=(const int_t& other) { fmpq_sub_fmpz(_data, _data, other._data); }
+
+		void operator*=(const rat_t& other) { fmpq_mul(_data, _data, other._data); }
+		template <unsigned_builtin_integral T> void operator*=(const T other) { fmpq_mul_ui(_data, _data, other); }
+		template <signed_builtin_integral T> void operator*=(const T other) { fmpq_mul_si(_data, _data, other); }
+		void operator*=(const int_t& other) { fmpq_mul_fmpz(_data, _data, other._data); }
+
+		void operator/=(const rat_t& other) { fmpq_div(_data, _data, other._data); }
+		template <unsigned_builtin_integral T> void operator/=(const T other) { fmpq_div_ui(_data, _data, other); }
+		template <signed_builtin_integral T> void operator/=(const T other) { fmpq_div_si(_data, _data, other); }
+		void operator/=(const int_t& other) { fmpq_div_fmpz(_data, _data, other._data); }
+
         rat_t pow(const int_t& n) const { rat_t result; fmpq_pow_fmpz(result._data, _data, n._data); return result; }
         template <signed_builtin_integral T>
         rat_t pow(const T n) const { rat_t result; fmpq_pow_si(result._data, _data, n); return result; }
-        NUM_FUNC_0(rat_t, fmpq, abs);
-        NUM_FUNC_0(rat_t, fmpq, neg);
-        NUM_FUNC_0(rat_t, fmpq, inv);
+		rat_t inv() const { rat_t result; fmpq_inv(result._data, _data); return result; }
+		rat_t abs() const { rat_t result; fmpq_abs(result._data, _data); return result; }
+		rat_t neg() const { rat_t result; fmpq_neg(result._data, _data); return result; }
 
         rat_t operator-() const { return neg(); }
 
@@ -372,33 +340,6 @@ namespace Flint {
         fmpz_CRT(result._data, r1._data, m1._data, r2._data, m2._data, 0);
         return result;
     }
-
-#undef NUM_INIT
-#undef NUM_OP_0
-#undef NUM_OP_00
-#undef NUM_OP_01
-#undef NUM_OP_1
-#undef NUM_OP_10
-#undef NUM_OP_11
-#undef NUM_SELF_OP_0
-#undef NUM_SELF_OP_00
-#undef NUM_SELF_OP_01
-#undef NUM_SELF_OP_1
-#undef NUM_SELF_OP_10
-#undef NUM_SELF_OP_11
-#undef NUM_CMP_0
-#undef NUM_EQUAL_0
-#undef NUM_EQUAL_1
-#undef NUM_EQUAL_1s
-#undef NUM_EQUAL_1u
-#undef NUM_CMP_01
-#undef NUM_SET_0
-#undef NUM_SET_01
-#undef NUM_FUNC_0
-#undef NUM_FUNC_1
-#undef NUM_MACRO_s
-#undef NUM_MACRO_u
-#undef NUM_MACRO_d
 
 }
 
