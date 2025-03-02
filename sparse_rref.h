@@ -60,8 +60,13 @@ namespace sparse_rref {
 		std::fill(s, s + size, val);
 	}
 
-	// field
+	// thread
+	using thread_pool = BS::thread_pool<>; // thread pool
+	inline size_t thread_id() {
+		return BS::this_thread::get_index().value();
+	}
 
+	// field
 	enum RING {
 		FIELD_QQ,    // fmpq
 		FIELD_Fp,    // ulong
@@ -75,7 +80,6 @@ namespace sparse_rref {
 	typedef struct field_struct field_t[1];
 
 	// rref_option
-
 	struct rref_option {
 		bool verbose = false;
 		bool is_back_sub = true;
@@ -83,17 +87,14 @@ namespace sparse_rref {
 		uint8_t method = 0;
 		int print_step = 100;
 		int search_depth = INT_MAX;
+		thread_pool pool = thread_pool(1); // default: thread pool with 1 thread
 	};
 	typedef struct rref_option rref_option_t[1];
 
 	// version
 	constexpr static const char version[] = "v0.2.5";
 
-	// thread
-	using thread_pool = BS::thread_pool<>; // thread pool
-	inline size_t thread_id() {
-		return BS::this_thread::get_index().value();
-	}
+
 
 	// if c++20, use std::countr_zero
 	// if c++17, use flint_ctz (__builtin_ctzll or _tzcnt_u64)
