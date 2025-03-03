@@ -111,6 +111,28 @@ namespace sparse_rref {
 			l._alloc = 0;
 		}
 
+		template <typename U = T, typename std::enable_if<Flint::IsOneOf<U, ulong, int_t>,int>::type = 0>
+		operator sparse_vec<rat_t>() {
+			sparse_vec<rat_t> result;
+			result.reserve(_nnz);
+			result.zero();
+			for (size_t i = 0; i < _nnz; i++) {
+				result.push_back(indices[i], rat_t(entries[i]));
+			}
+			return result;
+		}
+
+		template <typename U = T, typename std::enable_if<Flint::IsOneOf<U, ulong>, int>::type = 0>
+		operator sparse_vec<int_t>() {
+			sparse_vec<int_t> result;
+			result.reserve(_nnz);
+			result.zero();
+			for (size_t i = 0; i < _nnz; i++) {
+				result.push_back(indices[i], int_t(entries[i]));
+			}
+			return result;
+		}
+
 		sparse_vec& operator=(const sparse_vec& l) {
 			if (this == &l)
 				return *this;
@@ -358,6 +380,7 @@ namespace sparse_rref {
 
 	static void snmod_vec_from_sfmpq(snmod_vec& vec, const sfmpq_vec& src, nmod_t p) {
 		vec.reserve(src.nnz());
+		vec.zero();
 		for (size_t i = 0; i < src.nnz(); i++) {
 			ulong num = src[i].num() % p;
 			ulong den = src[i].den() % p;
@@ -540,12 +563,10 @@ namespace sparse_rref {
 			return T(0);
 		}
 		slong ptr1 = 0, ptr2 = 0;
-		T result, tmp;
-		result = 0;
+		T result = 0;
 		while (ptr1 < v1.nnz() && ptr2 < v2.nnz()) {
 			if (v1(ptr1) == v2(ptr2)) {
-				scalar_mul(tmp, v1[ptr1], v2[ptr2], F);
-				scalar_add(result, result, tmp, F);
+				result = scalar_add(result, scalar_mul(v1[ptr1], v2[ptr2], F), F);
 				ptr1++;
 				ptr2++;
 			}

@@ -721,14 +721,13 @@ namespace sparse_rref {
 		for (size_t i = 0; i < nthreads; i++)
 			nonzero_c[i].resize(mat.ncol);
 
-		T scalar;
 		for (auto i = 1; i < pivots.size(); i++) {
 			if (pivots[i].size() == 0)
 				continue;
 
 			// rescale the pivots
 			for (auto [r, c] : pivots[i]) {
-				scalar_inv(scalar, *sparse_mat_entry(mat, r, c), F);
+				T scalar = scalar_inv(*sparse_mat_entry(mat, r, c), F);
 				sparse_vec_rescale(mat[r], scalar, F);
 				rowset[r] = -1;
 			}
@@ -827,7 +826,6 @@ namespace sparse_rref {
 		mat.compress();
 
 		auto& pool = opt->pool;
-		T scalar;
 
 		// perm the col
 		std::vector<slong> leftcols(mat.ncol);
@@ -879,7 +877,7 @@ namespace sparse_rref {
 				if (rowpivs[row] != -1)
 					continue;
 				rowpivs[row] = leftcols[kk];
-				scalar_inv(scalar, *sparse_mat_entry(mat, row, rowpivs[row]), F);
+				T scalar = scalar_inv(*sparse_mat_entry(mat, row, rowpivs[row]), F);
 				sparse_vec_rescale(mat[row], scalar, F);
 				n_pivots.push_back(std::make_pair(row, leftcols[kk]));
 			}
@@ -935,7 +933,7 @@ namespace sparse_rref {
 			rank += n_pivots.size();
 
 			for (auto [r, c] : n_pivots) {
-				scalar_inv(scalar, *sparse_mat_entry(mat, r, c), F);
+				T scalar = scalar_inv(*sparse_mat_entry(mat, r, c), F);
 				sparse_vec_rescale(mat[r], scalar, F);
 			}
 
@@ -1056,44 +1054,35 @@ namespace sparse_rref {
 		if (opt->is_back_sub)
 			triangular_solver_2(matul, pivots, F, opt);
 
-		int_t mod, mod1;
+		int_t mod = prime;
 
-		mod = prime;
-
-		int isok = 1;
+		bool isok = true;
 		sparse_mat<rat_t> matq(mat.nrow, mat.ncol);
 
 		// we use mod1 here as a temp variable
 		for (auto i = 0; i < mat.nrow; i++) {
-			matq[i].reserve(matul[i].nnz());
-			auto& therow = matul[i];
-			auto& therowq = matq[i];
-			therowq.resize(therow.nnz());
-			for (size_t j = 0; j < therow.nnz(); j++) {
-				therowq(j) = therow(j);
-				mod1 = therow[j];
+			size_t nnz = matul[i].nnz();
+			matq[i].reserve(nnz);
+			matq[i].resize(nnz);
+			for (size_t j = 0; j < nnz; j++) {
+				matq[i](j) = matul[i](j);
+				int_t mod1 = matul[i][j];
 				if (isok)
-					isok = rational_reconstruct(therowq[j], mod1, mod);
+					isok = rational_reconstruct(matq[i][j], mod1, mod);
 			}
 		}
 
 		sparse_mat<int_t> matz(mat.nrow, mat.ncol);
 		if (!isok) {
-			for (auto i = 0; i < mat.nrow; i++) {
-				auto& therow = matul[i];
-				auto& therowz = matz[i];
-				therowz.resize(therow.nnz());
-				for (size_t j = 0; j < therow.nnz(); j++) {
-					therowz(j) = therow(j);
-					therowz[j] = therow[j];
-				}
-			}
+			for (auto i = 0; i < mat.nrow; i++) 
+				matz[i] = matul[i];
 		}
 
 		while (!isok) {
-			isok = 1;
+			isok = true;
+			std::cout << "Not Success, try next prime: " << prime << std::endl;
 			prime = n_nextprime(prime, 0);
-			mod1 = mod * prime;
+			int_t mod1 = mod * prime;
 			field_init(F, FIELD_Fp, prime);
 			snmod_mat_from_sfmpq(matul, mat, F->mod);
 			sparse_mat_direct_rref(matul, pivots, F, opt);
@@ -1102,20 +1091,21 @@ namespace sparse_rref {
 				triangular_solver_2(matul, pivots, F, opt);
 			}
 			for (auto i = 0; i < mat.nrow; i++) {
-				auto& therow = matul[i];
-				auto& therowz = matz[i];
-				auto& therowq = matq[i];
-				for (size_t j = 0; j < therow.nnz(); j++) {
-					therowz[j] = CRT(therowz[j], mod, therow[j], prime);
+				size_t nnz = matul[i].nnz();
+				matz[i].reserve(nnz);
+				matz[i].resize(nnz);
+				for (size_t j = 0; j < nnz; j++) {
+					matz[i][j] = CRT(matz[i][j], mod, matul[i][j], prime);
 					if (isok)
-						isok = rational_reconstruct(therowq[j], therowz[j], mod1);
+						isok = rational_reconstruct(matq[i][j], matz[i][j], mod1);
 				}
 			}
+
 			mod = mod1;
 		}
 		opt->verbose = true;
 
-		std::swap(mat, matq);
+		mat = matq;
 
 		return pivots;
 	}
@@ -1131,14 +1121,13 @@ namespace sparse_rref {
 		if (rank == M.ncol)
 			return K;
 
-		T m1 = 1;
 		if (rank == 0) {
 			K.init(M.ncol, M.ncol);
 			for (size_t i = 0; i < M.ncol; i++)
-				K[i].push_back(i, m1);
+				K[i].push_back(i, 1);
 			return K;
 		}
-		scalar_neg(m1, m1, F);
+		T m1 = scalar_neg(1, F);
 
 		sparse_mat<T> rows(rank, M.ncol);
 		sparse_mat<T> trows(M.ncol, rank);

@@ -243,16 +243,6 @@ namespace sparse_rref {
 			return end;
 	}
 
-	template <typename T> inline std::vector<T>::iterator binarysearch(std::vector<T>& vec, const T& val) {
-		auto begin = vec.begin();
-		auto end = vec.end();
-		auto ptr = std::lower_bound(begin, end, val);
-		if (ptr == end || *ptr == val)
-			return ptr;
-		else
-			return end;
-	}
-
 	template <typename T> inline T* lower_bound(T* begin, T* end, ulong rank, T* val) {
 		auto len = (end - begin) / rank;
 		T** vec = s_malloc<T*>(len);

@@ -71,20 +71,9 @@ namespace Flint {
 		template <signed_builtin_integral T> bool operator==(const T other) const { return fmpz_equal_si(_data, other); }
 		bool operator!=(const int_t other) const { return !operator==(other); }
 
-		bool operator<(const int_t other) const { return fmpz_cmp(_data, other._data) < 0; }
-		bool operator>(const int_t other) const { return fmpz_cmp(_data, other._data) > 0; }
-		bool operator<=(const int_t other) const { return fmpz_cmp(_data, other._data) <= 0; }
-		bool operator>=(const int_t other) const { return fmpz_cmp(_data, other._data) >= 0; }
-
-		template <unsigned_builtin_integral T> bool operator<(const T other) const { return fmpz_cmp_ui(_data, other) < 0; }
-		template <unsigned_builtin_integral T> bool operator>(const T other) const { return fmpz_cmp_ui(_data, other) > 0; }
-		template <unsigned_builtin_integral T> bool operator<=(const T other) const { return fmpz_cmp_ui(_data, other) <= 0; }
-		template <unsigned_builtin_integral T> bool operator>=(const T other) const { return fmpz_cmp_ui(_data, other) >= 0; }
-
-		template <signed_builtin_integral T> bool operator<(const T other) const { return fmpz_cmp_si(_data, other) < 0; }
-		template <signed_builtin_integral T> bool operator>(const T other) const { return fmpz_cmp_si(_data, other) > 0; }
-		template <signed_builtin_integral T> bool operator<=(const T other) const { return fmpz_cmp_si(_data, other) <= 0; }
-		template <signed_builtin_integral T> bool operator>=(const T other) const { return fmpz_cmp_si(_data, other) >= 0; }
+		auto operator<=>(const int_t other) const { return fmpz_cmp(_data, other._data) <=> 0; }
+		template <unsigned_builtin_integral T> auto operator<=>(const T other) const { return fmpz_cmp_ui(_data, other) <=> 0; }
+		template <signed_builtin_integral T> auto operator<=>(const T other) const { return fmpz_cmp_si(_data, other) <=> 0; }
 
 		int_t operator+(const int_t& other) const { int_t result; fmpz_add(result._data, _data, other._data); return result; }
 		template <unsigned_builtin_integral T> int_t operator+(const T other) const { int_t result; fmpz_add_ui(result._data, _data, other); return result; }
@@ -168,25 +157,10 @@ namespace Flint {
         template <signed_builtin_integral T> rat_t& operator=(const T a) { fmpq_set_si(_data, a, 1); return *this; }
         template <unsigned_builtin_integral T> rat_t& operator=(const T a) { fmpq_set_ui(_data, a, 1); return *this; }
 
-        bool operator<(const rat_t& other) const { return fmpq_cmp(_data, other._data) < 0; }
-        bool operator>(const rat_t& other) const { return fmpq_cmp(_data, other._data) > 0; }
-        bool operator<=(const rat_t& other) const { return fmpq_cmp(_data, other._data) <= 0; }
-        bool operator>=(const rat_t& other) const { return fmpq_cmp(_data, other._data) >= 0; }
-
-        template <unsigned_builtin_integral T> bool operator<(const T other) const { return fmpq_cmp_ui(_data, other) < 0; }
-        template <unsigned_builtin_integral T> bool operator>(const T other) const { return fmpq_cmp_ui(_data, other) > 0; }
-        template <unsigned_builtin_integral T> bool operator<=(const T other) const { return fmpq_cmp_ui(_data, other) <= 0; }
-        template <unsigned_builtin_integral T> bool operator>=(const T other) const { return fmpq_cmp_ui(_data, other) >= 0; }
-
-        template <signed_builtin_integral T> bool operator<(const T other) const { return fmpq_cmp_si(_data, other) < 0; }
-        template <signed_builtin_integral T> bool operator>(const T other) const { return fmpq_cmp_si(_data, other) > 0; }
-        template <signed_builtin_integral T> bool operator<=(const T other) const { return fmpq_cmp_si(_data, other) <= 0; }
-        template <signed_builtin_integral T> bool operator>=(const T other) const { return fmpq_cmp_si(_data, other) >= 0; }
-
-        bool operator<(const int_t& other) const { return fmpq_cmp_fmpz(_data, other._data) < 0; }
-        bool operator>(const int_t& other) const { return fmpq_cmp_fmpz(_data, other._data) > 0; }
-        bool operator<=(const int_t& other) const { return fmpq_cmp_fmpz(_data, other._data) <= 0; }
-        bool operator>=(const int_t& other) const { return fmpq_cmp_fmpz(_data, other._data) >= 0; }
+        auto operator<=>(const rat_t& other) const { return fmpq_cmp(_data, other._data) <=> 0; }
+        template <unsigned_builtin_integral T> auto operator<=>(const T other) const { return fmpq_cmp_ui(_data, other) <=> 0; }
+        template <signed_builtin_integral T> auto operator<=>(const T other) const { return fmpq_cmp_si(_data, other) <=> 0; }
+        auto operator<=>(const int_t& other) const { return fmpq_cmp_fmpz(_data, other._data) <=> 0; }
 
         bool operator==(const rat_t& other) const { return fmpq_equal(_data, other._data); }
         bool operator==(const int_t& other) const { return fmpq_equal_fmpz((fmpq*)_data, (fmpz*)other._data); }
@@ -374,35 +348,35 @@ namespace sparse_rref {
 
     // arithmetic
 
-    static inline void scalar_neg(ulong& a, const ulong b, const field_t field) {
-        a = field->mod.n - b;
+    static inline ulong scalar_neg(const ulong b, const field_t field) {
+        return field->mod.n - b;
     }
-    static inline void scalar_neg(rat_t& a, const rat_t& b, const field_t field) { a = -b; }
+    static inline rat_t scalar_neg(const rat_t& b, const field_t field) { return -b; }
 
-    static inline void scalar_inv(ulong& a, const ulong& b, const field_t field) {
-        a = nmod_inv(b, field->mod);
+    static inline ulong scalar_inv(const ulong b, const field_t field) {
+        return nmod_inv(b, field->mod);
     }
-    static inline void scalar_inv(rat_t& a, const rat_t& b, const field_t field) { a = b.inv(); }
+    static inline rat_t scalar_inv(const rat_t& b, const field_t field) { return b.inv(); }
 
-    static inline void scalar_add(ulong& a, const ulong b, const ulong c, const field_t field) {
-        a = _nmod_add(b, c, field->mod);
+    static inline ulong scalar_add(const ulong b, const ulong c, const field_t field) {
+        return _nmod_add(b, c, field->mod);
     }
-    static inline void scalar_add(rat_t& a, const rat_t b, const rat_t c, const field_t field) { a = b + c; }
+    static inline rat_t scalar_add(const rat_t& b, const rat_t& c, const field_t field) { return b + c; }
 
-    static inline void scalar_sub(ulong& a, const ulong b, const ulong c, const field_t field) {
-        a = _nmod_sub(b, c, field->mod);
+    static inline ulong scalar_sub(const ulong b, const ulong c, const field_t field) {
+        return _nmod_sub(b, c, field->mod);
     }
-    static inline void scalar_sub(rat_t& a, const rat_t b, const rat_t c, const field_t field) { a = b - c; }
+    static inline rat_t scalar_sub(const rat_t& b, const rat_t& c, const field_t field) { return b - c; }
 
-    static inline void scalar_mul(ulong& a, const ulong b, const ulong c, const field_t field) {
-        a = nmod_mul(b, c, field->mod);
+    static inline ulong scalar_mul(const ulong b, const ulong c, const field_t field) {
+        return nmod_mul(b, c, field->mod);
     }
-    static inline void scalar_mul(rat_t& a, const rat_t b, const rat_t c, const field_t field) { a = b * c; }
+    static inline rat_t scalar_mul(const rat_t& b, const rat_t& c, const field_t field) { return b * c; }
 
-    static inline void scalar_div(ulong& a, const ulong b, const ulong c, const field_t field) {
-        a = nmod_div(b, c, field->mod);
+    static inline ulong scalar_div(const ulong b, const ulong c, const field_t field) {
+        return nmod_div(b, c, field->mod);
     }
-    static inline void scalar_div(rat_t& a, const rat_t b, const rat_t c, const field_t field) { a = b / c; }
+    static inline rat_t scalar_div(const rat_t& b, const rat_t& c, const field_t field) { return b / c; }
 }
 
 #endif
