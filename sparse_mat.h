@@ -1042,6 +1042,10 @@ namespace sparse_rref {
 		rref_option_t opt) {
 		std::vector<std::vector<pivot_t>> pivots;
 
+		mat.compress();
+		auto& pool = opt->pool;
+		auto nthreads = pool.get_thread_count();
+
 		ulong prime = n_nextprime(1ULL << 50, 0);
 		field_t F;
 		field_init(F, FIELD_Fp, prime);
@@ -1059,9 +1063,13 @@ namespace sparse_rref {
 		bool isok = true;
 		sparse_mat<rat_t> matq(mat.nrow, mat.ncol);
 
-		// we use mod1 here as a temp variable
+		std::vector<slong> leftrows;
+
 		for (auto i = 0; i < mat.nrow; i++) {
 			size_t nnz = matul[i].nnz();
+			if (nnz == 0)
+				continue;
+			leftrows.push_back(i);
 			matq[i].reserve(nnz);
 			matq[i].resize(nnz);
 			for (size_t j = 0; j < nnz; j++) {
@@ -1078,10 +1086,17 @@ namespace sparse_rref {
 				matz[i] = matul[i];
 		}
 
+		auto verbose = opt->verbose;
+
+		if (verbose) {
+			std::cout << std::endl;
+		}
+
 		while (!isok) {
 			isok = true;
-			std::cout << "Not Success, try next prime: " << prime << std::endl;
 			prime = n_nextprime(prime, 0);
+			if (verbose)
+				std::cout << ">> Reconstruct failed, try next prime: " << prime << '\r' << std::flush;
 			int_t mod1 = mod * prime;
 			field_init(F, FIELD_Fp, prime);
 			snmod_mat_from_sfmpq(matul, mat, F->mod);
@@ -1090,20 +1105,30 @@ namespace sparse_rref {
 				opt->verbose = false;
 				triangular_solver_2(matul, pivots, F, opt);
 			}
-			for (auto i = 0; i < mat.nrow; i++) {
-				size_t nnz = matul[i].nnz();
-				matz[i].reserve(nnz);
-				matz[i].resize(nnz);
-				for (size_t j = 0; j < nnz; j++) {
-					matz[i][j] = CRT(matz[i][j], mod, matul[i][j], prime);
-					if (isok)
-						isok = rational_reconstruct(matq[i][j], matz[i][j], mod1);
+			std::vector<int> flags(nthreads, 1);
+
+			pool.detach_loop<size_t>(0, leftrows.size(), [&](size_t i) {
+				size_t row = leftrows[i];
+				auto id = sparse_rref::thread_id();
+				for (size_t j = 0; j < matul[row].nnz(); j++) {
+					matz[row][j] = CRT(matz[row][j], mod, matul[row][j], prime);
+					if (flags[id])
+						flags[id] = rational_reconstruct(matq[row][j], matz[row][j], mod1);
 				}
-			}
+				});
+
+			pool.wait();
+			for (auto f : flags)
+				isok = isok && f;
 
 			mod = mod1;
 		}
-		opt->verbose = true;
+		opt->verbose = verbose;
+
+		if (opt->verbose) {
+			std::cout << "** Reconstruct success! Using mod ~ "
+				<< "2^" << fmpz_clog_ui(mod._data, 2) << ".                " << std::endl;
+		}
 
 		mat = matq;
 

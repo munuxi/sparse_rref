@@ -48,7 +48,7 @@ namespace sparse_rref {
 		}
 
 		void reserve(ulong n) {
-			if (n == _alloc)
+			if (n == _alloc || n == 0)
 				return;
 
 			if (_alloc == 0) {
