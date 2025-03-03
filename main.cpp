@@ -99,6 +99,7 @@ int main(int argc, char** argv) {
 	nmod_t p;
 	if (program.get<std::string>("--field") == "QQ") {
 		prime = 0;
+		std::cout << "RREF on the rational field. Using the reconstruction method." << std::endl;
 	}
 	else if (program.get<std::string>("--field") == "Zp" || program.get<std::string>("--field") == "Fp") {
 		if (program.get<std::string>("--prime") == "34534567") {

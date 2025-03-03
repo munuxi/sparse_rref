@@ -765,9 +765,9 @@ namespace sparse_rref {
 		triangular_solver_2(mat, n_pivots, F, opt);
 	}
 
-	// TODO: TEST!!! 
 	// TODO: add ordering
 	// if already know the pivots, we can directly do the rref
+	// important: mat is supposed to be canonical!!!
 	template <typename T>
 	void sparse_mat_direct_rref(sparse_mat<T>& mat,
 		std::vector<std::vector<pivot_t>>& pivots,
@@ -786,8 +786,7 @@ namespace sparse_rref {
 			if (rowset[i] == -1)
 				sparse_vec_zero(mat[i]);
 
-		auto& n_pivots = pivots[0];
-		for (auto [r, c] : n_pivots) {
+		for (auto [r, c] : pivots[0]) {
 			mat[r]->nnz = 1;
 			mat[r]->indices[0] = c;
 			scalar_one(mat[r]->entries);
@@ -809,12 +808,11 @@ namespace sparse_rref {
 			nonzero_c[i].resize(mat.ncol);
 
 		for (auto i = 1; i < pivots.size(); i++) {
-			n_pivots = pivots[i];
-			if (n_pivots.size() == 0)
+			if (pivots[i].size() == 0)
 				continue;
 
 			// rescale the pivots
-			for (auto [r, c] : n_pivots) {
+			for (auto [r, c] : pivots[i]) {
 				scalar_inv(scalar, sparse_mat_entry(mat, r, c), F);
 				sparse_vec_rescale(mat[r], scalar, F);
 				rowset[r] = -1;
@@ -831,7 +829,7 @@ namespace sparse_rref {
 			pool.detach_blocks<ulong>(0, leftrows.size(), [&](const ulong s, const ulong e) {
 				auto id = sparse_rref::thread_id();
 				for (ulong j = s; j < e; j++) {
-					schur_complete(mat, leftrows[j], n_pivots, F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
+					schur_complete(mat, leftrows[j], pivots[i], F, cachedensedmat + id * mat.ncol, nonzero_c[id]);
 				}
 				}, ((leftrows.size() < 20 * nthreads) ? 0 : leftrows.size() / 10));
 			pool.wait();
@@ -1344,6 +1342,11 @@ namespace sparse_rref {
 		rref_option_t opt) {
 		std::vector<std::vector<pivot_t>> pivots;
 
+		// first canonicalize, sort and compress the matrix
+		mat.compress();
+		auto& pool = opt->pool;
+		auto nthread = pool.get_thread_count();
+
 		ulong prime = n_nextprime(1ULL << 50, 0);
 		field_t F;
 		field_init(F, FIELD_Fp, prime);
@@ -1395,9 +1398,17 @@ namespace sparse_rref {
 			}
 		}
 
+		auto verbose = opt->verbose;
+
+		if (verbose) {
+			std::cout << std::endl;
+		}
+
 		while (!isok) {
 			isok = 1;
 			prime = n_nextprime(prime, 0);
+			if (verbose)
+				std::cout << ">> Reconstruct failed, try next prime: " << prime << '\r' << std::flush;
 			fmpz_mul_ui(mod1, mod, prime);
 			field_init(F, FIELD_Fp, prime);
 			snmod_mat_from_sfmpq(matul, mat, F->mod);
@@ -1406,21 +1417,32 @@ namespace sparse_rref {
 				opt->verbose = false;
 				triangular_solver_2(matul, pivots, F, opt);
 			}
-			for (auto i = 0; i < mat.nrow; i++) {
+			std::vector<int> flags(nthread, 1);
+
+			pool.detach_loop<size_t>(0, mat.nrow, [&](size_t i) {
 				auto therow = matul[i];
 				auto therowz = matz[i];
 				auto therowq = matq[i];
 				for (size_t j = 0; j < therow->nnz; j++) {
 					fmpz_CRT_ui(therowz->entries + j, therowz->entries + j, mod, therow->entries[j], prime, 0);
-					if (isok)
-						isok = fmpq_reconstruct_fmpz(therowq->entries + j, therowz->entries + j, mod1);
+					if (flags[sparse_rref::thread_id()])
+						flags[sparse_rref::thread_id()] = fmpq_reconstruct_fmpz(therowq->entries + j, therowz->entries + j, mod1);
 				}
-			}
+				});
+			pool.wait();
+			for (auto f : flags)
+				isok &= f;
+
 			fmpz_set(mod, mod1);
 		}
-		opt->verbose = true;
+		opt->verbose = verbose;
 
-		std::swap(mat, matq);
+		if (opt->verbose) {
+			std::cout << "** Reconstruct success! Using mod ~ "
+				<< "2^" << fmpz_clog_ui(mod, 2) << "." << std::endl;
+		}
+
+		mat = matq;
 
 		scalar_clear(mod);
 		scalar_clear(mod1);
