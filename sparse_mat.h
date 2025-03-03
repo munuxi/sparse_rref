@@ -244,33 +244,8 @@ namespace sparse_rref {
 		return count;
 	}
 
-	// TODO: add a DFS algorithm to find a maximal compatible set
-	// //     |    a2 b2 |    |    a2 b2 |    |    a2 b2|    |    a2 b2 |   
-	// //  11 | a1  *  * | 10 | a1  *  0 | 01 | a1  *  *| 00 | a1  *  0 |   
-	// //     | b1  *  * |    | b1  *  * |    | b1  0  *|    | b1  0  * |   
-	// //   3               2               1              0 
-	// 
-	// int compatible_degree(std::unordered_set<std::pair<slong, slong>>& adjmat,
-	// 	std::pair<slong, slong>& a, std::pair<slong, slong>& b) {
-	// 	auto [a1,a2] = a;
-	// 	auto [b1,b2] = b;
-	// 	if (a1 == b1 || a2 == b2) // same row or same col
-	// 		return 3;
-	// 	bool test1 = adjmat.find(std::make_pair(a1, b2)) == adjmat.end();
-	// 	bool test2 = adjmat.find(std::make_pair(b1, a2)) == adjmat.end();
-	// 	if (test1 && test2)
-	// 		return 0;
-	// 	if (test1)
-	// 		return 2;
-	// 	if (test2)
-	// 		return 1;
-	// 	return 3;
-	// }
-
-	using iter = std::vector<slong>::iterator;
-
 	template <typename T, typename S>
-	std::vector<std::pair<slong, iter>> findmanypivots(const sparse_mat<T>& mat, const sparse_mat<S>& tranmat,
+	std::vector<std::pair<slong, slong>> findmanypivots(const sparse_mat<T>& mat, const sparse_mat<S>& tranmat,
 		std::vector<slong>& rdivpivs, std::vector<slong>& dirperm, bool mat_dir, size_t max_depth = ULLONG_MAX) {
 
 		if (!mat_dir)
@@ -282,7 +257,7 @@ namespace sparse_rref {
 		auto ndir = mat.nrow;
 		auto nrdir = tranmat.nrow;
 
-		std::list<std::pair<slong, iter>> pivots;
+		std::list<std::pair<slong, slong>> pivots;
 		std::unordered_set<slong> pdirs;
 		pdirs.reserve(std::min((size_t)4096, max_depth));
 
@@ -318,7 +293,7 @@ namespace sparse_rref {
 			if (!flag)
 				continue;
 			if (mnnz != ULLONG_MAX) {
-				pivots.push_back(std::make_pair(rdiv, dir));
+				pivots.push_back(std::make_pair(rdiv, *dir));
 				pdirs.insert(rdiv);
 			}
 		}
@@ -326,12 +301,12 @@ namespace sparse_rref {
 		// leftlook then
 		pdirs.clear();
 		// make a table to help to look for dir pointers
-		std::vector<iter> dirptrs(ndir, end);
+		std::vector<slong> dirptrs(ndir, -1);
 		for (auto it = start; it != end; it++)
-			dirptrs[*it] = it;
+			dirptrs[*it] = *it;
 
 		for (auto p : pivots)
-			pdirs.insert(*(p.second));
+			pdirs.insert(p.second);
 
 		for (size_t i = 0; i < nrdir; i++) {
 			if (pivots.size() > max_depth)
@@ -348,7 +323,7 @@ namespace sparse_rref {
 			auto& tc = tranmat[rdir];
 
 			for (size_t j = 0; j < tc.nnz(); j++) {
-				if (dirptrs[tc(j)] == end)
+				if (dirptrs[tc(j)] == -1)
 					continue;
 				flag = (pdirs.count(tc(j)) == 0);
 				if (!flag)
@@ -365,12 +340,12 @@ namespace sparse_rref {
 			if (!flag)
 				continue;
 			if (mnnz != ULLONG_MAX) {
-				pivots.push_front(std::make_pair(rdir, dirptrs[dir]));
+				pivots.push_front(std::make_pair(rdir, dir));
 				pdirs.insert(dir);
 			}
 		}
 
-		std::vector<std::pair<slong, iter>> result(pivots.begin(), pivots.end());
+		std::vector<std::pair<slong, slong>> result(pivots.begin(), pivots.end());
 		return result;
 	}
 
@@ -897,15 +872,10 @@ namespace sparse_rref {
 		std::vector<slong> leftrows;
 		leftrows.reserve(mat.nrow);
 		for (size_t i = 0; i < mat.nrow; i++) {
-			if (rowpivs[i] != -1 || mat.rows[i].nnz() == 0)
+			if (rowpivs[i] != -1 || mat[i].nnz() == 0)
 				continue;
 			leftrows.push_back(i);
 		}
-
-		//for (size_t i = 0; i < mat.nrow; i++) {
-		//	if (rowpivs[i] != -1)
-		//		colpivs[rowpivs[i]] = i;
-		//}
 
 		// for printing
 		double oldpr = 0;
@@ -923,12 +893,9 @@ namespace sparse_rref {
 
 			n_pivots.clear();
 			for (auto i = ps.rbegin(); i != ps.rend(); i++) {
-				auto [r, cp] = *i;
-				rowpivs[r] = *cp;
-				//colpivs[*cp] = r;
-				n_pivots.push_back(std::make_pair(r, *cp));
+				rowpivs[(*i).first] = (*i).second;
+				n_pivots.push_back(*i);
 			}
-			//n_pivots = findmorepivots(mat, tranmat, rowpivs, colpivs, n_pivots);
 			pivots.push_back(n_pivots);
 			rank += n_pivots.size();
 
@@ -940,7 +907,7 @@ namespace sparse_rref {
 			ulong n_leftrows = 0;
 			for (size_t i = 0; i < leftrows.size(); i++) {
 				auto row = leftrows[i];
-				if (rowpivs[row] != -1 || mat.rows[row].nnz() == 0)
+				if (rowpivs[row] != -1 || mat[row].nnz() == 0)
 					continue;
 				leftrows[n_leftrows] = row;
 				n_leftrows++;
@@ -959,7 +926,7 @@ namespace sparse_rref {
 			// reorder the cols, move ps to the front
 			tmp_set.clear();
 			for (auto [r, c] : ps)
-				tmp_set.insert(*c);
+				tmp_set.insert(c);
 			std::vector<slong> result;
 			result.reserve(leftcols.size());
 			for (auto it : leftcols) {
@@ -1232,14 +1199,36 @@ namespace sparse_rref {
 		}
 	}
 
-	template <typename T, typename S> void sparse_mat_write(sparse_mat<T>& mat, S& st) {
-		if constexpr (std::is_same_v<T, rat_t>) {
-			st << "%%MatrixMarket matrix coordinate rational general" << '\n';
+	template <typename T, typename S> void sparse_mat_write(sparse_mat<T>& mat, S& st, 
+		enum SPARSE_FILE_TYPE type) {
+		if (!st.is_open())
+			return;
+
+		if (type == SPARSE_FILE_TYPE_MTX) {
+			// write the header
+			// MTX only support integer
+			if constexpr (std::is_same_v<T, ulong>) {
+				st << "%%MatrixMarket matrix coordinate integer general" << '\n';
+			}
+			else {
+				return;
+			}
+			st << mat.nrow << ' ' << mat.ncol << ' ' << mat.nnz() << '\n';
+		}
+		else if (type == SPARSE_FILE_TYPE_SMS){
+			if constexpr (std::is_same_v<T, ulong> || std::is_same_v<T, int_t>) {
+				st << mat.nrow << ' ' << mat.ncol << ' ' << 'M' << '\n';
+			}
+			else if constexpr (std::is_same_v<T, rat_t>) {
+				st << mat.nrow << ' ' << mat.ncol << ' ' << 'Q' << '\n';
+			}
+			else 
+				return;
 		}
 		else {
-			st << "%%MatrixMarket matrix coordinate integer general" << '\n';
+			return;
 		}
-		st << mat.nrow << ' ' << mat.ncol << ' ' << mat.nnz() << '\n';
+		
 		for (size_t i = 0; i < mat.nrow; i++) {
 			for (size_t j = 0; j < mat[i].nnz(); j++) {
 				if (mat[i][j] == 0)
@@ -1247,6 +1236,8 @@ namespace sparse_rref {
 				st << i + 1 << ' ' << mat[i](j) + 1 << ' ' << mat[i][j] << '\n';
 			}
 		}
+		if (type == SPARSE_FILE_TYPE_SMS)
+			st << "0 0 0" << '\n';
 	}
 
 	static std::pair<size_t, char*> snmod_mat_to_binary(sparse_mat<ulong>& mat) {

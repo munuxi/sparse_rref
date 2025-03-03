@@ -34,9 +34,9 @@ int main(int argc, char** argv) {
 	program.set_usage_max_line_width(80);
 	program.add_description("(exact) Sparse Reduced Row Echelon Form " + std::string(sparse_rref::version));
 	program.add_argument("input_file")
-		.help("input file in matrix market format");
+		.help("input file in the Matrix Market exchange formats (MTX) or\nSparse/Symbolic Matrix Storage (SMS)");
 	program.add_argument("-o", "--output")
-		.help("output file in matrix market format")
+		.help("output file in SMS format")
 		.default_value("<input_file>.rref")
 		.nargs(1);
 	program.add_usage_newline();
@@ -238,10 +238,10 @@ int main(int argc, char** argv) {
 
 	file2.open(outname + outname_add);
 	if (prime == 0) {
-		sparse_mat_write(mat_Q, file2);
+		sparse_mat_write(mat_Q, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
 	}
 	else {
-		sparse_mat_write(mat_Zp, file2);
+		sparse_mat_write(mat_Zp, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
 	}
 	file2.close();
 
@@ -251,14 +251,14 @@ int main(int argc, char** argv) {
 		if (prime == 0) {
 			auto K = sparse_mat_rref_kernel(mat_Q, pivots, F, opt);
 			if (K.nrow > 0)
-				sparse_mat_write(K, file2);
+				sparse_mat_write(K, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
 			else
 				std::cout << "kernel is empty" << std::endl;
 		}
 		else {
 			auto K = sparse_mat_rref_kernel(mat_Zp, pivots, F, opt);
 			if (K.nrow > 0)
-				sparse_mat_write(K, file2);
+				sparse_mat_write(K, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
 			else 
 				std::cout << "kernel is empty" << std::endl;
 		}

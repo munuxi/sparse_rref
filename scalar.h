@@ -58,8 +58,8 @@ namespace Flint {
 		template <signed_builtin_integral T> int_t(const T a) { fmpz_init(_data); fmpz_set_si(_data, a); }
 		template <unsigned_builtin_integral T> int_t(const T a) { fmpz_init(_data); fmpz_set_ui(_data, a); }
 
-        int_t(const std::string& str) { fmpz_init(_data); fmpz_set_str(_data, str.c_str(), 10); }
         void set_str(const std::string& str, int base = 10) { fmpz_set_str(_data, str.c_str(), base); }
+		int_t(const std::string& str) { set_str(str); }
 
         int_t& operator=(const int_t& other) { if (this != &other) fmpz_set(_data, other._data); return *this; }
         int_t& operator=(int_t&& other) noexcept { if (this != &other) fmpz_swap(_data, other._data); return *this; }
@@ -145,8 +145,8 @@ namespace Flint {
         template <unsigned_builtin_integral T> rat_t(const T a, const T b) { fmpq_init(_data); fmpq_set_ui(_data, a, b); }
         template <unsigned_builtin_integral T> rat_t(const T a) { fmpq_init(_data); fmpq_set_ui(_data, a, 1); }
 
-        rat_t(const std::string& str) { fmpq_init(_data); fmpq_set_str(_data, str.c_str(), 10); }
         void set_str(const std::string& str, int base = 10) { fmpq_set_str(_data, str.c_str(), base); }
+        rat_t(const std::string& str) { set_str(str); }
 
         int_t num() const { return fmpq_numref(_data); }
         int_t den() const { return fmpq_denref(_data); }

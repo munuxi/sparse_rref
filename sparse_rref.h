@@ -405,6 +405,12 @@ namespace sparse_rref {
 		file.close();
 		return buffer.str();
 	}
+
+	enum SPARSE_FILE_TYPE {
+		SPARSE_FILE_TYPE_SMS,
+		SPARSE_FILE_TYPE_MTX,
+		SPARSE_FILE_TYPE_BIN
+	};
 }
 
 #endif
