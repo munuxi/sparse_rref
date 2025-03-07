@@ -45,23 +45,27 @@ namespace sparse_rref {
 		return 0;
 	}
 
-	inline std::vector<ulong> swap_perm(ulong a, ulong b, ulong n) {
-		std::vector<ulong> perm(n);
-		for (ulong i = 0; i < n; i++)
+	inline std::vector<size_t> swap_perm(size_t a, size_t b, size_t n) {
+		std::vector<size_t> perm(n);
+		for (size_t i = 0; i < n; i++)
 			perm[i] = i;
 		perm[a] = b;
 		perm[b] = a;
 		return perm;
 	}
 
+	using index_type = uint8_t;
+	using index_t = std::vector<index_type>;
+	using index_p = index_type*;
+
 	// CSR format for sparse tensor
 	template <typename T> struct sparse_tensor_struct {
-		ulong rank;
-		ulong alloc;
-		ulong* colptr;
+		size_t rank;
+		size_t alloc;
+		index_type* colptr;
 		T* valptr;
-		std::vector<ulong> dims;
-		std::vector<ulong> rowptr;
+		std::vector<size_t> dims;
+		std::vector<size_t> rowptr;
 
 		//empty constructor
 		sparse_tensor_struct() {
@@ -73,18 +77,18 @@ namespace sparse_rref {
 
 		// Constructor with dimensions
 
-		void init(std::vector<ulong> l, ulong aoc = 8) {
+		void init(std::vector<size_t> l, size_t aoc = 8) {
 			dims = l;
 			rank = l.size();
 			rowptr.resize(l[0] + 1);
 			alloc = aoc;
-			colptr = s_malloc<ulong>(rank * alloc);
+			colptr = s_malloc<index_type>((rank - 1) * alloc);
 			valptr = s_malloc<T>(alloc);
-			for (ulong i = 0; i < alloc; i++)
+			for (size_t i = 0; i < alloc; i++)
 				new (valptr + i) T();
 		}
 
-		sparse_tensor_struct(std::vector<ulong> l, ulong aoc = 8) {
+		sparse_tensor_struct(std::vector<size_t> l, size_t aoc = 8) {
 			init(l, aoc);
 		}
 
@@ -92,8 +96,8 @@ namespace sparse_rref {
 		sparse_tensor_struct(const sparse_tensor_struct& l) {
 			init(l.dims, l.alloc);
 			std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
-			std::copy(l.colptr, l.colptr + alloc * rank, colptr);
-			for (ulong i = 0; i < alloc; i++)
+			std::copy(l.colptr, l.colptr + alloc * (rank - 1), colptr);
+			for (size_t i = 0; i < alloc; i++)
 				valptr[i] = l.valptr[i];
 		}
 
@@ -101,7 +105,7 @@ namespace sparse_rref {
 		sparse_tensor_struct(sparse_tensor_struct&& l) noexcept {
 			dims = l.dims;
 			rank = l.rank;
-			rowptr = std::move(l.rowptr);
+			rowptr = l.rowptr;
 			alloc = l.alloc;
 			colptr = l.colptr;
 			l.colptr = NULL;
@@ -113,7 +117,7 @@ namespace sparse_rref {
 		void clear() {
 			if (alloc == 0)
 				return;
-			for (ulong i = 0; i < alloc; i++)
+			for (size_t i = 0; i < alloc; i++)
 				valptr[i].~T();
 			s_free(valptr);
 			s_free(colptr);
@@ -124,17 +128,17 @@ namespace sparse_rref {
 			clear();
 		}
 
-		void reserve(ulong size) {
+		void reserve(size_t size) {
 			if (size == alloc)
 				return;
-			colptr = s_realloc<ulong>(colptr, size * rank);
+			colptr = s_realloc<index_type>(colptr, size * (rank - 1));
 			if (size > alloc) {
 				valptr = s_realloc<T>(valptr, size);
-				for (ulong i = alloc; i < size; i++)
+				for (size_t i = alloc; i < size; i++)
 					new (valptr + i) T();
 			}
 			else if (size < alloc) {
-				for (ulong i = size; i < alloc; i++)
+				for (size_t i = size; i < alloc; i++)
 					valptr[i].~T();
 				valptr = s_realloc<T>(valptr, size);
 			}
@@ -154,7 +158,7 @@ namespace sparse_rref {
 				init(l.dims, l.alloc);
 				std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
 				std::copy(l.colptr, l.colptr + alloc * rank, colptr);
-				for (ulong i = 0; i < alloc; i++)
+				for (size_t i = 0; i < alloc; i++)
 					valptr[i] = l.valptr[i];
 				return *this;
 			}
@@ -165,7 +169,7 @@ namespace sparse_rref {
 				reserve(l.alloc);
 			std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
 			std::copy(l.colptr, l.colptr + alloc * rank, colptr);
-			for (ulong i = 0; i < alloc; i++)
+			for (size_t i = 0; i < alloc; i++)
 				valptr[i] = l.valptr[i];
 			return *this;
 		}
@@ -187,32 +191,32 @@ namespace sparse_rref {
 			return *this;
 		}
 
-		inline ulong nnz() {
+		inline size_t nnz() {
 			return rowptr[dims[0]];
 		}
 
-		std::vector<ulong> row_nums() {
+		std::vector<size_t> row_nums() {
 			return sparse_rref::difference(rowptr);
 		}
 
-		ulong row_nnz(ulong i) {
+		size_t row_nnz(size_t i) {
 			return rowptr[i + 1] - rowptr[i];
 		}
 
 		// remove zero entries
 		void canonicalize() {
-			ulong nnz = this->nnz();
-			std::vector<ulong> rowptr_new(dims[0] + 1);
-			ulong* colptr_new = s_malloc<ulong>(nnz * (rank - 1));
-			T* valptr_new = s_malloc<T>(nnz);
-			for (ulong i = 0; i < nnz; i++)
+			size_t nnz = this->nnz();
+			std::vector<size_t> rowptr_new(dims[0] + 1);
+			auto colptr_new = s_malloc<index_type>(nnz * (rank - 1));
+			auto valptr_new = s_malloc<T>(nnz);
+			for (size_t i = 0; i < nnz; i++)
 				new (valptr_new + i) T();
-			ulong index = 0;
+			size_t index = 0;
 			rowptr_new[0] = 0;
-			for (ulong i = 0; i < dims[0]; i++) {
-				for (ulong j = rowptr[i]; j < rowptr[i + 1]; j++) {
+			for (size_t i = 0; i < dims[0]; i++) {
+				for (size_t j = rowptr[i]; j < rowptr[i + 1]; j++) {
 					if (valptr[j] != 0) {
-						for (ulong k = 0; k < rank - 1; k++)
+						for (size_t k = 0; k < rank - 1; k++)
 							colptr_new[index * (rank - 1) + k] = colptr[j * (rank - 1) + k];
 						valptr_new[index] = valptr[j];
 						index++;
@@ -228,11 +232,11 @@ namespace sparse_rref {
 			alloc = nnz;
 		}
 
-		std::pair<ulong*, T*> row(ulong i) {
+		std::pair<index_p, T*> row(size_t i) {
 			return std::make_pair(colptr + rowptr[i] * (rank - 1), valptr + rowptr[i]);
 		}
 
-		ulong* entry_lower_bound(ulong* l) {
+		index_p entry_lower_bound(const index_p l) {
 			auto begin = row(l[0]).first;
 			auto end = row(l[0] + 1).first;
 			if (begin == end)
@@ -240,11 +244,11 @@ namespace sparse_rref {
 			return sparse_rref::lower_bound(begin, end, rank - 1, l + 1);
 		}
 
-		ulong* entry_lower_bound(std::vector<ulong> l) {
+		index_p entry_lower_bound(const index_t& l) {
 			return entry_lower_bound(l.data());
 		}
 
-		ulong* entry_ptr(ulong* l) {
+		index_p entry_ptr(index_p l) {
 			auto ptr = entry_lower_bound(l);
 			auto end = row(l[0] + 1).first;
 			if (ptr == end || std::equal(ptr, ptr + rank - 1, l + 1))
@@ -253,14 +257,14 @@ namespace sparse_rref {
 				return end;
 		}
 
-		ulong* entry_ptr(std::vector<ulong> l) {
+		index_p entry_ptr(const index_t& l) {
 			return entry_ptr(l.data());
 		}
 
 		// unordered, push back on the end of the row
-		void push_back(std::vector<ulong> l, const T& val) {
-			ulong row = l[0];
-			ulong nnz = this->nnz();
+		void push_back(const index_t& l, const T& val) {
+			index_type row = l[0];
+			size_t nnz = this->nnz();
 			if (nnz + 1 > alloc)
 				reserve((alloc + 1) * 2);
 			size_t index = rowptr[row + 1];
@@ -279,12 +283,12 @@ namespace sparse_rref {
 		// ordered insert
 		// mode = false: insert anyway
 		// mode = true: insert and replace if exist
-		void insert(std::vector<ulong> l, const T& val, bool mode = true) {
-			ulong trow = l[0];
-			ulong nnz = this->nnz();
+		void insert(const index_t& l, const T& val, bool mode = true) {
+			size_t trow = l[0];
+			size_t nnz = this->nnz();
 			if (nnz + 1 > alloc)
 				reserve((alloc + 1) * 2);
-			ulong* ptr = entry_lower_bound(l);
+			auto ptr = entry_lower_bound(l);
 			size_t index = (ptr - colptr) / (rank - 1);
 			bool exist = (ptr != row(trow + 1).first && std::equal(ptr, ptr + rank - 1, l.data() + 1));
 			if (!exist || !mode) {
@@ -293,7 +297,7 @@ namespace sparse_rref {
 					std::copy_backward(tmpptr, tmpptr + (rank - 1), tmpptr + 2 * (rank - 1));
 					valptr[i] = valptr[i - 1];
 				}
-				std::copy(l.begin() + 1, l.begin() + rank, &colptr[index * (rank - 1)]);
+				std::copy(l.begin() + 1, l.begin() + rank, colptr + index * (rank - 1));
 				valptr[index] = val;
 				for (size_t i = trow + 1; i <= dims[0]; i++)
 					rowptr[i]++;
@@ -303,12 +307,12 @@ namespace sparse_rref {
 		}
 
 		// ordered add one value
-		void insert_add(std::vector<ulong> l, const T& val) {
-			ulong trow = l[0];
-			ulong nnz = this->nnz();
+		void insert_add(const index_t& l, const T& val) {
+			size_t trow = l[0];
+			size_t nnz = this->nnz();
 			if (nnz + 1 > alloc)
 				reserve((alloc + 1) * 2);
-			ulong* ptr = entry_lower_bound(l);
+			auto ptr = entry_lower_bound(l);
 			size_t index = (ptr - colptr) / (rank - 1);
 			bool exist = (ptr != row(trow + 1).first && std::equal(ptr, ptr + rank - 1, l.data() + 1));
 			if (!exist) {
@@ -317,7 +321,7 @@ namespace sparse_rref {
 					std::copy_backward(tmpptr, tmpptr + (rank - 1), tmpptr + 2 * (rank - 1));
 					valptr[i] = valptr[i - 1];
 				}
-				std::copy(l.begin() + 1, l.begin() + rank, &colptr[index * (rank - 1)]);
+				std::copy(l.begin() + 1, l.begin() + rank, colptr + index * (rank - 1));
 				valptr[index] = val;
 				for (size_t i = trow + 1; i <= dims[0]; i++)
 					rowptr[i]++;
@@ -326,19 +330,19 @@ namespace sparse_rref {
 			valptr[index] += val;
 		}
 
-		sparse_tensor_struct<T> transpose(const std::vector<ulong>& perm) {
-			std::vector<ulong> l(rank);
-			std::vector<ulong> lperm(rank);
-			for (ulong i = 0; i < rank; i++)
+		sparse_tensor_struct<T> transpose(const std::vector<size_t>& perm) {
+			std::vector<size_t> l(rank);
+			std::vector<size_t> lperm(rank);
+			for (size_t i = 0; i < rank; i++)
 				lperm[i] = dims[perm[i]];
 			sparse_tensor_struct<T> B(lperm, nnz());
-			for (ulong i = 0; i < dims[0]; i++) {
-				for (ulong j = rowptr[i]; j < rowptr[i + 1]; j++) {
+			for (size_t i = 0; i < dims[0]; i++) {
+				for (size_t j = rowptr[i]; j < rowptr[i + 1]; j++) {
 					l[0] = i;
 					auto tmpptr = colptr + j * (rank - 1);
-					for (ulong k = 1; k < rank; k++)
+					for (size_t k = 1; k < rank; k++)
 						l[k] = tmpptr[k - 1];
-					for (ulong k = 0; k < rank; k++)
+					for (size_t k = 0; k < rank; k++)
 						lperm[k] = l[perm[k]];
 					B.push_back(lperm, valptr[j]);
 				}
@@ -347,27 +351,27 @@ namespace sparse_rref {
 		}
 
 		void sort_indices() {
-			for (ulong i = 0; i < dims[0]; i++) {
-				ulong rownnz = rowptr[i + 1] - rowptr[i];
-				std::vector<ulong> perm(rownnz);
-				for (ulong j = 0; j < rownnz; j++)
+			for (size_t i = 0; i < dims[0]; i++) {
+				size_t rownnz = rowptr[i + 1] - rowptr[i];
+				std::vector<size_t> perm(rownnz);
+				for (size_t j = 0; j < rownnz; j++)
 					perm[j] = j;
-				std::sort(perm.begin(), perm.end(), [&](ulong a, ulong b) {
+				std::sort(perm.begin(), perm.end(), [&](size_t a, size_t b) {
 					auto ptra = colptr + (rowptr[i] + a) * (rank - 1);
 					auto ptrb = colptr + (rowptr[i] + b) * (rank - 1);
 					return std::lexicographical_compare(
 						ptra, ptra + rank - 1,
 						ptrb, ptrb + rank - 1);
 					});
-				std::vector<ulong> colptr_new(rownnz * (rank - 1));
+				index_t colptr_new(rownnz * (rank - 1));
 				std::vector<T> valptr_new(rownnz);
-				for (ulong j = 0; j < rownnz; j++) {
-					for (ulong k = 0; k < rank - 1; k++)
+				for (size_t j = 0; j < rownnz; j++) {
+					for (size_t k = 0; k < rank - 1; k++)
 						colptr_new[j * (rank - 1) + k] = colptr[(rowptr[i] + perm[j]) * (rank - 1) + k];
 					valptr_new[j] = valptr[rowptr[i] + perm[j]];
 				}
-				for (ulong j = 0; j < rownnz; j++) {
-					for (ulong k = 0; k < rank - 1; k++)
+				for (size_t j = 0; j < rownnz; j++) {
+					for (size_t k = 0; k < rank - 1; k++)
 						colptr[(rowptr[i] + j) * (rank - 1) + k] = colptr_new[j * (rank - 1) + k];
 					valptr[rowptr[i] + j] = valptr_new[j];
 				}
@@ -375,41 +379,42 @@ namespace sparse_rref {
 		}
 	};
 
-	template <typename T, SPARSE_TYPE Type = SPARSE_CSR> struct sparse_tensor_t;
+	// define the default sparse tensor
+	template <typename T, SPARSE_TYPE Type = SPARSE_COO> struct sparse_tensor_t;
 
 	template <typename T> struct sparse_tensor_t<T, SPARSE_CSR> {
 		sparse_tensor_struct<T> data;
 
 		sparse_tensor_t() {}
 		~sparse_tensor_t() {}
-		sparse_tensor_t(std::vector<ulong> l, ulong aoc = 8) : data(l, aoc) {}
+		sparse_tensor_t(std::vector<size_t> l, size_t aoc = 8) : data(l, aoc) {}
 		sparse_tensor_t(const sparse_tensor_t& l) : data(l.data) {}
 		sparse_tensor_t(sparse_tensor_t&& l) noexcept : data(std::move(l.data)) {}
 		sparse_tensor_t& operator=(const sparse_tensor_t& l) { data = l.data; return *this; }
 		sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept { data = std::move(l.data); return *this; }
 
-		inline ulong nnz() { return data.rowptr[data.dims[0]]; }
-		inline ulong rank() { return data.rank; }
-		inline std::vector<ulong> dims() { return data.dims; }
+		inline size_t nnz() { return data.rowptr[data.dims[0]]; }
+		inline size_t rank() { return data.rank; }
+		inline std::vector<size_t> dims() { return data.dims; }
 		inline void set_zero() { data.set_zero(); }
-		inline void insert(std::vector<ulong> l, const T& val, bool mode = true) { data.insert(l, val, mode); }
-		inline void push_back(std::vector<ulong> l, const T& val) { data.push_back(l, val); }
+		inline void insert(const index_t& l, const T& val, bool mode = true) { data.insert(l, val, mode); }
+		inline void push_back(const index_t& l, const T& val) { data.push_back(l, val); }
 		inline void canonicalize() { data.canonicalize(); }
 		inline void sort_indices() { data.sort_indices(); }
-		inline sparse_tensor_t transpose(const std::vector<ulong>& perm) {
+		inline sparse_tensor_t transpose(const std::vector<size_t>& perm) {
 			sparse_tensor_t B;
 			B.data = data.transpose(perm);
 			return B;
 		}
 
 		void convert_from_COO(const sparse_tensor_t<T, SPARSE_COO>& l) {
-			std::vector<ulong> dims(l.data.dims.begin() + 1, l.data.dims.end()); // remove the first dimension
-			ulong nnz = l.data.rowptr[1];
-			ulong rank = dims.size();
+			std::vector<size_t> dims(l.data.dims.begin() + 1, l.data.dims.end()); // remove the first dimension
+			size_t nnz = l.data.rowptr[1];
+			size_t rank = dims.size();
 			data.init(dims, nnz);
-			std::vector<ulong> index(rank);
-			for (ulong i = 0; i < nnz; i++) {
-				for (ulong j = 0; j < rank; j++)
+			std::vector<size_t> index(rank);
+			for (size_t i = 0; i < nnz; i++) {
+				for (size_t j = 0; j < rank; j++)
 					index[j] = l.data.colptr[i * rank + j];
 				data.push_back(index, l.data.valptr[i]);
 			}
@@ -425,10 +430,10 @@ namespace sparse_rref {
 
 		// only for test
 		void print_test() {
-			for (ulong i = 0; i < data.dims[0]; i++) {
-				for (ulong j = data.rowptr[i]; j < data.rowptr[i + 1]; j++) {
+			for (size_t i = 0; i < data.dims[0]; i++) {
+				for (size_t j = data.rowptr[i]; j < data.rowptr[i + 1]; j++) {
 					std::cout << i << " ";
-					for (ulong k = 0; k < data.rank - 1; k++)
+					for (size_t k = 0; k < data.rank - 1; k++)
 						std::cout << data.colptr[j * (data.rank - 1) + k] << " ";
 					std::cout << " : " << data.valptr[j] << std::endl;
 				}
@@ -439,35 +444,38 @@ namespace sparse_rref {
 	template <typename T> struct sparse_tensor_t<T, SPARSE_COO> {
 		sparse_tensor_struct<T> data;
 
-		std::vector<ulong> prepend_num(const std::vector<ulong>& l, ulong num = 0) {
-			std::vector<ulong> lp(l);
-			lp.insert(lp.begin(), num);
+		template <typename S>
+		std::vector<S> prepend_num(const std::vector<S>& l, S num = 0) {
+			std::vector<S> lp;
+			lp.reserve(l.size() + 1);
+			lp.push_back(num);
+			lp.insert(lp.end(), l.begin(), l.end());
 			return lp;
 		}
 
 		sparse_tensor_t() {}
 		~sparse_tensor_t() {}
-		sparse_tensor_t(std::vector<ulong> l, ulong aoc = 8) : data(prepend_num(l, 1), aoc) {}
+		sparse_tensor_t(const std::vector<size_t>& l, size_t aoc = 8) : data(prepend_num(l, 1ULL), aoc) {}
 		sparse_tensor_t(const sparse_tensor_t& l) : data(l.data) {}
 		sparse_tensor_t(sparse_tensor_t&& l) noexcept : data(std::move(l.data)) {}
 		sparse_tensor_t& operator=(const sparse_tensor_t& l) { data = l.data; return *this; }
 		sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept { data = std::move(l.data); return *this; }
 
-		inline ulong nnz() const { return data.rowptr[1]; }
-		inline ulong rank() const { return data.rank - 1; }
-		inline std::vector<ulong> dims() const {
-			std::vector<ulong> result(data.dims.begin() + 1, data.dims.end());
+		inline size_t nnz() const { return data.rowptr[1]; }
+		inline size_t rank() const { return data.rank - 1; }
+		inline std::vector<size_t> dims() const {
+			std::vector<size_t> result(data.dims.begin() + 1, data.dims.end());
 			return result;
 		}
 		inline void set_zero() { data.set_zero(); }
-		inline void reserve(ulong size) { data.reserve(size); }
-		inline void insert(std::vector<ulong> l, const T& val, bool mode = true) { data.insert(prepend_num(l), val, mode); }
-		inline void insert_add(std::vector<ulong> l, const T& val) { data.insert_add(prepend_num(l), val); }
-		inline void push_back(std::vector<ulong> l, const T& val) { data.push_back(prepend_num(l), val); }
+		inline void reserve(size_t size) { data.reserve(size); }
+		inline void insert(const index_t& l, const T& val, bool mode = true) { data.insert(prepend_num(l), val, mode); }
+		inline void insert_add(const index_t& l, const T& val) { data.insert_add(prepend_num(l), val); }
+		inline void push_back(const index_t& l, const T& val) { data.push_back(prepend_num(l), val); }
 		inline void canonicalize() { data.canonicalize(); }
 		inline void sort_indices() { data.sort_indices(); }
-		inline sparse_tensor_t transpose(const std::vector<ulong>& perm) {
-			std::vector<ulong> perm_new(perm);
+		inline sparse_tensor_t transpose(const std::vector<size_t>& perm) {
+			std::vector<size_t> perm_new(perm);
 			for (auto& a : perm_new) { a++; }
 			perm_new = prepend_num(perm_new, 0);
 			sparse_tensor_t B;
@@ -475,14 +483,18 @@ namespace sparse_rref {
 			return B;
 		}
 
-		void transpose_replace(const std::vector<ulong>& perm) {
-			std::vector<ulong> index_new(rank());
+		void transpose_replace(const std::vector<size_t>& perm) {
+			std::vector<size_t> index_new(rank());
 			for (size_t i = 0; i < nnz(); i++) {
 				auto ptr = index(i);
 				for (size_t j = 0; j < rank(); j++)
 					index_new[j] = ptr[perm[j]];
 				std::copy(index_new.begin(), index_new.end(), ptr);
 			}
+		}
+
+		sparse_tensor_t operator+(const sparse_tensor_t& l) {
+			return tensor_sum(*this, l);
 		}
 
 		void operator+=(const sparse_tensor_t& l) {
@@ -493,36 +505,35 @@ namespace sparse_rref {
 				return;
 			}
 
-			for (ulong i = 0; i < l.nnz(); i++)
-				insert_add(l.index_vector(i), l.data.valptr[i]);
+			*this = tensor_sum(*this, l);
 		}
 
 		// for the i-th column, return the indices
-		ulong* index(ulong i) const {
+		index_p index(size_t i) const {
 			return data.colptr + i * rank();
 		}
 
-		T& val(ulong i) const {
+		T& val(size_t i) const {
 			return data.valptr[i];
 		}
 
-		std::vector<ulong> index_vector(ulong i) const {
-			std::vector<ulong> result(rank());
-			for (ulong j = 0; j < rank(); j++)
-				result[j] = *(index(i) + j);
+		index_t index_vector(size_t i) const {
+			index_t result(rank());
+			for (size_t j = 0; j < rank(); j++)
+				result[j] = index(i)[j];
 			return result;
 		}
 
 		sparse_tensor_t<T, SPARSE_COO> chop(slong pos, slong aa) const {
-			std::vector<ulong> dims_new = dims();
+			std::vector<size_t> dims_new = dims();
 			dims_new.erase(dims_new.begin() + pos);
 			sparse_tensor_t<T, SPARSE_COO> result(dims_new);
-			std::vector<ulong> index_new;
+			index_t index_new;
 			index_new.reserve(rank() - 1);
-			for (ulong i = 0; i < nnz(); i++) {
+			for (size_t i = 0; i < nnz(); i++) {
 				if (index(i)[pos] != aa)
 					continue;
-				for (ulong j = 0; j < rank(); j++) {
+				for (size_t j = 0; j < rank(); j++) {
 					if (j != pos)
 						index_new.push_back(index(i)[j]);
 				}
@@ -534,12 +545,12 @@ namespace sparse_rref {
 
 		void convert_from_CSR(const sparse_tensor_t<T, SPARSE_CSR>& l) {
 			data.init(prepend_num(l.data.dims, 1), l.data.rowptr[l.data.dims[0]]);
-			std::vector<ulong> index(l.data.rank + 1);
+			std::vector<size_t> index(l.data.rank + 1);
 			index[0] = 0;
-			for (ulong i = 0; i < l.data.dims[0]; i++) {
+			for (size_t i = 0; i < l.data.dims[0]; i++) {
 				index[1] = i;
-				for (ulong j = l.data.rowptr[i]; j < l.data.rowptr[i + 1]; j++) {
-					for (ulong k = 0; k < l.data.rank - 1; k++)
+				for (size_t j = l.data.rowptr[i]; j < l.data.rowptr[i + 1]; j++) {
+					for (size_t k = 0; k < l.data.rank - 1; k++)
 						index[k + 2] = l.data.colptr[j * (l.data.rank - 1) + k];
 					data.push_back(index, l.data.valptr[j]);
 				}
@@ -557,64 +568,10 @@ namespace sparse_rref {
 		}
 
 		void print_test() {
-			for (ulong j = 0; j < data.rowptr[1]; j++) {
-				for (ulong k = 0; k < data.rank - 1; k++)
+			for (size_t j = 0; j < data.rowptr[1]; j++) {
+				for (size_t k = 0; k < data.rank - 1; k++)
 					std::cout << data.colptr[j * (data.rank - 1) + k] << " ";
 				std::cout << " : " << data.valptr[j] << std::endl;
-			}
-		}
-	};
-
-	template <typename T> struct sparse_tensor_t<T, SPARSE_LR> {
-		std::vector<sparse_tensor_t<T, SPARSE_COO>> data;
-
-		sparse_tensor_t() {}
-		~sparse_tensor_t() {}
-		sparse_tensor_t(std::vector<ulong> l, ulong aoc = 1) {
-			data.resize(l[0]);
-			for (ulong i = 0; i < l[0]; i++)
-				data[i] = sparse_tensor_t<T, SPARSE_COO>(std::vector<ulong>(l.begin() + 1, l.end()), aoc);
-		}
-		sparse_tensor_t(const sparse_tensor_t& l) : data(l.data) {}
-		sparse_tensor_t(sparse_tensor_t&& l) noexcept : data(std::move(l.data)) {}
-		sparse_tensor_t& operator=(const sparse_tensor_t& l) { data = l.data; return *this; }
-		sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept { data = std::move(l.data); return *this; }
-
-		inline ulong nnz() {
-			ulong res = 0;
-			for (auto& a : data)
-				res += a.nnz();
-			return res;
-		}
-		inline ulong rank() { return data[0].rank() + 1; }
-		inline std::vector<ulong> dims() {
-			std::vector<ulong> result(rank());
-			result[0] = data.size();
-			auto otherdims = data[0].dims();
-			for (ulong i = 1; i < rank(); i++)
-				result[i] = otherdims[i - 1];
-			return result;
-		}
-
-		inline void set_zero() {
-			for (auto& a : data)
-				a.set_zero();
-		}
-		inline void insert(std::vector<ulong> l, const T& val, bool mode = true) {
-			data[l[0]].insert(std::vector<ulong>(l.begin() + 1, l.end()), val, mode);
-		}
-		inline void push_back(std::vector<ulong> l, const T& val) {
-			data[l[0]].push_back(std::vector<ulong>(l.begin() + 1, l.end()), val);
-		}
-		inline void canonicalize() {
-			for (auto& a : data)
-				a.canonicalize();
-		}
-
-		void print_test() {
-			for (ulong i = 0; i < data.size(); i++) {
-				std::cout << "Row " << i << std::endl;
-				data[i].print_test();
 			}
 		}
 	};
@@ -625,8 +582,8 @@ namespace sparse_rref {
 		const sparse_tensor_t<T, SPARSE_COO>& A,
 		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F) {
 
-		std::vector<ulong> dimsB = B.dims();
-		std::vector<ulong> dimsC = A.dims();
+		std::vector<size_t> dimsB = B.dims();
+		std::vector<size_t> dimsC = A.dims();
 		dimsC.insert(dimsC.end(), dimsB.begin(), dimsB.end());
 
 		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
@@ -636,10 +593,10 @@ namespace sparse_rref {
 		}
 
 		C.reserve(A.nnz() * B.nnz());
-		std::vector<ulong> indexC;
-		for (ulong i = 0; i < A.nnz(); i++) {
+		index_t indexC;
+		for (size_t i = 0; i < A.nnz(); i++) {
 			indexC = A.index_vector(i);
-			for (ulong j = 0; j < B.nnz(); j++) {
+			for (size_t j = 0; j < B.nnz(); j++) {
 				indexC.insert(indexC.end(), B.index(j), B.index(j) + B.rank());
 				C.push_back(indexC, scalar_mul(A.val(i), B.val(j), F));
 				indexC.resize(A.rank());
@@ -657,22 +614,22 @@ namespace sparse_rref {
 
 		// we assume that A, B's indices are sorted
 
-		std::vector<ulong> dimsC = A.dims();
+		std::vector<size_t> dimsC = A.dims();
 
 		if (dimsC != B.dims()) {
 			std::cerr << "Error: The dimensions of the two tensors do not match." << std::endl;
 			exit(1);
 		}
 
-		if (A.nnz() == 0) 
+		if (A.nnz() == 0)
 			return B;
-		if (B.nnz() == 0) 
+		if (B.nnz() == 0)
 			return A;
 
 		sparse_tensor_t<T, SPARSE_COO> C(dimsC, A.nnz() + B.nnz());
 
 		// double pointer
-		ulong i = 0, j = 0;
+		size_t i = 0, j = 0;
 		while (i < A.nnz() && j < B.nnz()) {
 			auto indexA = A.index_vector(i);
 			auto indexB = B.index_vector(j);
@@ -704,30 +661,30 @@ namespace sparse_rref {
 
 	template <typename T> 
 	sparse_tensor_t<T, SPARSE_COO> tensor_contract(
-		const sparse_tensor_t<T, SPARSE_COO>& A, 
+		const sparse_tensor_t<T, SPARSE_COO>& A,
 		const sparse_tensor_t<T, SPARSE_COO>& B,
 		const slong i, const slong j, const field_t F) {
 
-		std::vector<ulong> dimsA = A.dims();
-		std::vector<ulong> dimsB = B.dims();
+		std::vector<size_t> dimsA = A.dims();
+		std::vector<size_t> dimsB = B.dims();
 
 		if (dimsA[i] != dimsB[j]) {
 			std::cerr << "Error: The dimensions of the two tensors do not match." << std::endl;
 			exit(1);
 		}
 
-		std::vector<ulong> dimsC;
-		for (ulong k = 0; k < dimsA.size(); k++) {
+		std::vector<size_t> dimsC;
+		for (size_t k = 0; k < dimsA.size(); k++) {
 			if (k != i)
 				dimsC.push_back(dimsA[k]);
 		}
-		for (ulong k = 0; k < dimsB.size(); k++) {
+		for (size_t k = 0; k < dimsB.size(); k++) {
 			if (k != j)
 				dimsC.push_back(dimsB[k]);
 		}
 
 		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
-		for (ulong k = 0; k < dimsA[i]; k++) {
+		for (size_t k = 0; k < dimsA[i]; k++) {
 			C = tensor_sum(C, tensor_product(A.chop(i, k), B.chop(j, k), F), F);
 		}
 
@@ -743,7 +700,7 @@ namespace sparse_rref {
 
 		auto C = A;
 		auto rank = A.rank();
-		for (ulong i = 0; i < rank; i++) {
+		for (size_t i = 0; i < rank; i++) {
 			C = tensor_contract(C, B, 0, 0, F);
 		}
 
@@ -751,15 +708,15 @@ namespace sparse_rref {
 	}
 
 	// IO
-	template <typename T> sparse_tensor_t<rat_t, SPARSE_COO> COO_tensor_read(T& st) {
+	template <typename T> sparse_tensor_t<rat_t> COO_tensor_read(T& st) {
 		if (!st.is_open())
-			return sparse_tensor_t<rat_t, SPARSE_COO>();
+			return sparse_tensor_t<rat_t>();
 		std::string strLine;
 
 		bool is_size = true;
 
-		std::vector<ulong> dims;
-		sparse_tensor_t<rat_t, SPARSE_COO> tensor;
+		std::vector<size_t> dims;
+		sparse_tensor_t<rat_t> tensor;
 
 		while (getline(st, strLine)) {
 			if (strLine[0] == '%')
@@ -769,7 +726,7 @@ namespace sparse_rref {
 			if (is_size) {
 				for (size_t i = 0; i < tokens.size() - 1; i++)
 					dims.push_back(std::stoull(tokens[i]));
-				ulong nnz = std::stoull(tokens.back());
+				size_t nnz = std::stoull(tokens.back());
 				tensor = sparse_tensor_t<rat_t, SPARSE_COO>(dims, nnz);
 				is_size = false;
 			}
@@ -778,7 +735,7 @@ namespace sparse_rref {
 					std::cerr << "Error: wrong format in the matrix file" << std::endl;
 					std::exit(-1);
 				}
-				std::vector<ulong> index;
+				index_t index;
 				for (size_t i = 0; i < tokens.size() - 1; i++)
 					index.push_back(std::stoull(tokens[i]) - 1);
 				sparse_rref::DeleteSpaces(tokens.back());
