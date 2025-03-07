@@ -213,6 +213,12 @@ namespace Flint {
 		template <signed_builtin_integral T> void operator/=(const T other) { fmpq_div_si(_data, _data, other); }
 		void operator/=(const int_t& other) { fmpq_div_fmpz(_data, _data, other._data); }
 
+        ulong operator%(const nmod_t other) const { 
+			auto nummod = num() % other;
+			auto denmod = den() % other;
+            return nmod_div(nummod, denmod, other);
+        }
+
         rat_t pow(const int_t& n) const { rat_t result; fmpq_pow_fmpz(result._data, _data, n._data); return result; }
         template <signed_builtin_integral T>
         rat_t pow(const T n) const { rat_t result; fmpq_pow_si(result._data, _data, n); return result; }
