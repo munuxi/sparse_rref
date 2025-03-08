@@ -148,7 +148,7 @@ namespace sparse_rref {
 			if (alloc == 0) {
 				init(l.dims, l.alloc);
 				std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
-				std::copy(l.colptr, l.colptr + alloc * rank, colptr);
+				std::copy(l.colptr, l.colptr + alloc * (rank - 1), colptr);
 				for (size_t i = 0; i < alloc; i++)
 					valptr[i] = l.valptr[i];
 				return *this;
@@ -159,7 +159,7 @@ namespace sparse_rref {
 			if (alloc < l.alloc)
 				reserve(l.alloc);
 			std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
-			std::copy(l.colptr, l.colptr + alloc * rank, colptr);
+			std::copy(l.colptr, l.colptr + alloc * (rank - 1), colptr);
 			for (size_t i = 0; i < alloc; i++)
 				valptr[i] = l.valptr[i];
 			return *this;
@@ -443,6 +443,17 @@ namespace sparse_rref {
 		sparse_tensor_t& operator=(const sparse_tensor_t& l) { data = l.data; return *this; }
 		sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept { data = std::move(l.data); return *this; }
 
+		// for the i-th column, return the indices
+		index_p index(size_t i) const { return data.colptr + i * rank(); }
+		T& val(size_t i) const { return data.valptr[i]; }
+
+		index_t index_vector(size_t i) const {
+			index_t result(rank());
+			for (size_t j = 0; j < rank(); j++)
+				result[j] = index(i)[j];
+			return result;
+		}
+
 		inline size_t nnz() const { return data.rowptr[1]; }
 		inline size_t rank() const { return data.rank - 1; }
 		inline std::vector<size_t> dims() const {
@@ -453,7 +464,22 @@ namespace sparse_rref {
 		inline void reserve(size_t size) { data.reserve(size); }
 		inline void insert(const index_t& l, const T& val, bool mode = true) { data.insert(prepend_num(l), val, mode); }
 		inline void insert_add(const index_t& l, const T& val) { data.insert_add(prepend_num(l), val); }
-		inline void push_back(const index_t& l, const T& val) { data.push_back(prepend_num(l), val); }
+		void push_back(const index_p l, const T& new_val) { 
+			auto n_nnz = nnz();
+			if (n_nnz + 1 > data.alloc)
+				reserve((data.alloc + 1) * 2);
+			std::copy(l, l + rank(), index(n_nnz));
+			val(n_nnz) = new_val;
+			data.rowptr[1]++; // increase the nnz
+		}
+		void push_back(const index_t& l, const T& new_val) { 
+			auto n_nnz = nnz();
+			if (n_nnz + 1 > data.alloc)
+				reserve((data.alloc + 1) * 2);
+			std::copy(l.begin(), l.end(), index(n_nnz));
+			val(n_nnz) = new_val;
+			data.rowptr[1]++; // increase the nnz
+		}
 		inline void canonicalize() { data.canonicalize(); }
 		inline void sort_indices() { data.sort_indices(); }
 		inline sparse_tensor_t transpose(const std::vector<size_t>& perm) {
@@ -497,24 +523,8 @@ namespace sparse_rref {
 			*this = tensor_sum(*this, l);
 		}
 
-		// for the i-th column, return the indices
-		index_p index(size_t i) const {
-			return data.colptr + i * rank();
-		}
-
-		T& val(size_t i) const {
-			return data.valptr[i];
-		}
-
-		index_t index_vector(size_t i) const {
-			index_t result(rank());
-			for (size_t j = 0; j < rank(); j++)
-				result[j] = index(i)[j];
-			return result;
-		}
-
-		std::unordered_map<index_type, index_t> chop_list(size_t pos) const {
-			std::unordered_map<index_type, index_t> result;
+		std::unordered_map<index_type, std::vector<size_t>> chop_list(size_t pos) const {
+			std::unordered_map<index_type, std::vector<size_t>> result;
 			for (size_t i = 0; i < nnz(); i++) {
 				result[index(i)[pos]].push_back(i);
 			}
@@ -603,6 +613,15 @@ namespace sparse_rref {
 		return C;
 	}
 
+	template <typename T>
+	sparse_tensor_t<T, SPARSE_COO> tensor_neg(sparse_tensor_t<T, SPARSE_COO>& A, const field_t F) {
+		auto B = A;
+		for (size_t i = 0; i < B.nnz(); i++) {
+			B.val(i) = scalar_neg(B.val(i), F);
+		}
+		return B;
+	}
+
 	// we assume that A, B are sorted, then C is also sorted
 	template <typename T>
 	sparse_tensor_t<T, SPARSE_COO> tensor_sum(
@@ -610,6 +629,7 @@ namespace sparse_rref {
 		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F) {
 
 		std::vector<size_t> dimsC = A.dims();
+		auto rank = A.rank();
 
 		if (dimsC != B.dims()) {
 			std::cerr << "Error: The dimensions of the two tensors do not match." << std::endl;
@@ -626,9 +646,9 @@ namespace sparse_rref {
 		// double pointer
 		size_t i = 0, j = 0;
 		while (i < A.nnz() && j < B.nnz()) {
-			auto indexA = A.index_vector(i);
-			auto indexB = B.index_vector(j);
-			int cmp = lexico_compare(indexA, indexB);
+			auto indexA = A.index(i);
+			auto indexB = B.index(j);
+			int cmp = lexico_compare(indexA, indexB, rank);
 			if (cmp < 0) {
 				C.push_back(indexA, A.val(i));
 				i++;
@@ -638,7 +658,9 @@ namespace sparse_rref {
 				j++;
 			}
 			else {
-				C.push_back(indexA, scalar_add(A.val(i), B.val(j), F));
+				auto val = scalar_add(A.val(i), B.val(j), F);
+				if (val != 0)
+					C.push_back(indexA, val);
 				i++; j++;
 			}
 		}
@@ -680,22 +702,24 @@ namespace sparse_rref {
 
 		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
 		sparse_tensor_t<T, SPARSE_COO> tmpC(dimsC);
+		std::vector<sparse_tensor_t<T, SPARSE_COO>> tmpCs(dimsA[i]);
 
 		// search for the same indices
 		auto choplist_1 = A.chop_list(i);
 		auto choplist_2 = B.chop_list(j);
 
-		for (size_t k = 0; k < dimsA[i]; k++) {
-			tmpC.zero();
-
+		index_t indexC(C.rank());
+		for (index_type k = 0; k < dimsA[i]; k++) {
 			if (choplist_1.contains(k) && choplist_2.contains(k)) {
-				index_t list_1 = choplist_1[k];
-				index_t list_2 = choplist_2[k];
+				tmpC.zero();
+				auto list_1 = choplist_1[k];
+				auto list_2 = choplist_2[k];
 				for (size_t m = 0; m < list_1.size(); m++) {
 					for (size_t n = 0; n < list_2.size(); n++) {
 						auto k1 = list_1[m];
 						auto k2 = list_2[n];
-						index_t indexC;
+						
+						indexC.clear();
 						for (size_t l = 0; l < A.rank(); l++) {
 							if (l != i)
 								indexC.push_back(A.index(k1)[l]);
@@ -708,7 +732,6 @@ namespace sparse_rref {
 						tmpC.push_back(indexC, scalar_mul(A.val(k1), B.val(k2), F));
 					}
 				}
-				C.sort_indices();
 				tmpC.sort_indices();
 				C = tensor_sum(C, tmpC, F);
 			}
@@ -752,7 +775,6 @@ namespace sparse_rref {
 				}
 				tmpC.push_back(indexC, A.val(list[m]));
 			}
-			C.sort_indices();
 			tmpC.sort_indices();
 			C = tensor_sum(C, tmpC, F);
 		}
