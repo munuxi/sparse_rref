@@ -45,16 +45,7 @@ namespace sparse_rref {
 		return 0;
 	}
 
-	inline std::vector<size_t> swap_perm(size_t a, size_t b, size_t n) {
-		std::vector<size_t> perm(n);
-		for (size_t i = 0; i < n; i++)
-			perm[i] = i;
-		perm[a] = b;
-		perm[b] = a;
-		return perm;
-	}
-
-	using index_type = uint8_t;
+	using index_type = uint16_t;
 	using index_t = std::vector<index_type>;
 	using index_p = index_type*;
 
@@ -145,7 +136,7 @@ namespace sparse_rref {
 			alloc = size;
 		}
 
-		void set_zero() {
+		void zero() {
 			if (rank != 0)
 				std::fill(rowptr.begin(), rowptr.end(), 0);
 		}
@@ -363,18 +354,9 @@ namespace sparse_rref {
 						ptra, ptra + rank - 1,
 						ptrb, ptrb + rank - 1);
 					});
-				index_t colptr_new(rownnz * (rank - 1));
-				std::vector<T> valptr_new(rownnz);
-				for (size_t j = 0; j < rownnz; j++) {
-					for (size_t k = 0; k < rank - 1; k++)
-						colptr_new[j * (rank - 1) + k] = colptr[(rowptr[i] + perm[j]) * (rank - 1) + k];
-					valptr_new[j] = valptr[rowptr[i] + perm[j]];
-				}
-				for (size_t j = 0; j < rownnz; j++) {
-					for (size_t k = 0; k < rank - 1; k++)
-						colptr[(rowptr[i] + j) * (rank - 1) + k] = colptr_new[j * (rank - 1) + k];
-					valptr[rowptr[i] + j] = valptr_new[j];
-				}
+
+				permute(perm, colptr + rowptr[i] * (rank - 1), rank - 1);
+				permute(perm, valptr + rowptr[i]);
 			}
 		}
 	};
@@ -396,7 +378,7 @@ namespace sparse_rref {
 		inline size_t nnz() { return data.rowptr[data.dims[0]]; }
 		inline size_t rank() { return data.rank; }
 		inline std::vector<size_t> dims() { return data.dims; }
-		inline void set_zero() { data.set_zero(); }
+		inline void zero() { data.zero(); }
 		inline void insert(const index_t& l, const T& val, bool mode = true) { data.insert(l, val, mode); }
 		inline void push_back(const index_t& l, const T& val) { data.push_back(l, val); }
 		inline void canonicalize() { data.canonicalize(); }
@@ -467,7 +449,7 @@ namespace sparse_rref {
 			std::vector<size_t> result(data.dims.begin() + 1, data.dims.end());
 			return result;
 		}
-		inline void set_zero() { data.set_zero(); }
+		inline void zero() { data.zero(); }
 		inline void reserve(size_t size) { data.reserve(size); }
 		inline void insert(const index_t& l, const T& val, bool mode = true) { data.insert(prepend_num(l), val, mode); }
 		inline void insert_add(const index_t& l, const T& val) { data.insert_add(prepend_num(l), val); }
@@ -484,6 +466,13 @@ namespace sparse_rref {
 		}
 
 		void transpose_replace(const std::vector<size_t>& perm) {
+			std::vector<size_t> new_dims(rank() + 1);
+			new_dims[0] = data.dims[0];
+
+			for (size_t i = 0; i < rank(); i++)
+				new_dims[i + 1] = data.dims[perm[i] + 1];
+			data.dims = new_dims;
+
 			std::vector<size_t> index_new(rank());
 			for (size_t i = 0; i < nnz(); i++) {
 				auto ptr = index(i);
@@ -521,6 +510,14 @@ namespace sparse_rref {
 			index_t result(rank());
 			for (size_t j = 0; j < rank(); j++)
 				result[j] = index(i)[j];
+			return result;
+		}
+
+		std::unordered_map<index_type, index_t> chop_list(size_t pos) const {
+			std::unordered_map<index_type, index_t> result;
+			for (size_t i = 0; i < nnz(); i++) {
+				result[index(i)[pos]].push_back(i);
+			}
 			return result;
 		}
 
@@ -606,13 +603,11 @@ namespace sparse_rref {
 		return C;
 	}
 
-	// if A, B are sorted, then C is also sorted
+	// we assume that A, B are sorted, then C is also sorted
 	template <typename T>
 	sparse_tensor_t<T, SPARSE_COO> tensor_sum(
 		const sparse_tensor_t<T, SPARSE_COO>& A,
 		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F) {
-
-		// we assume that A, B's indices are sorted
 
 		std::vector<size_t> dimsC = A.dims();
 
@@ -684,24 +679,105 @@ namespace sparse_rref {
 		}
 
 		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
+		sparse_tensor_t<T, SPARSE_COO> tmpC(dimsC);
+
+		// search for the same indices
+		auto choplist_1 = A.chop_list(i);
+		auto choplist_2 = B.chop_list(j);
+
 		for (size_t k = 0; k < dimsA[i]; k++) {
-			C = tensor_sum(C, tensor_product(A.chop(i, k), B.chop(j, k), F), F);
+			tmpC.zero();
+
+			if (choplist_1.contains(k) && choplist_2.contains(k)) {
+				index_t list_1 = choplist_1[k];
+				index_t list_2 = choplist_2[k];
+				for (size_t m = 0; m < list_1.size(); m++) {
+					for (size_t n = 0; n < list_2.size(); n++) {
+						auto k1 = list_1[m];
+						auto k2 = list_2[n];
+						index_t indexC;
+						for (size_t l = 0; l < A.rank(); l++) {
+							if (l != i)
+								indexC.push_back(A.index(k1)[l]);
+						}
+						for (size_t l = 0; l < B.rank(); l++) {
+							if (l != j)
+								indexC.push_back(B.index(k2)[l]);
+						}
+
+						tmpC.push_back(indexC, scalar_mul(A.val(k1), B.val(k2), F));
+					}
+				}
+				C.sort_indices();
+				tmpC.sort_indices();
+				C = tensor_sum(C, tmpC, F);
+			}
 		}
 
 		return C;
+	}
+
+	template <typename T>
+	sparse_tensor_t<T, SPARSE_COO> tensor_contract(
+		const sparse_tensor_t<T, SPARSE_COO>& A,
+		const slong i, const slong j, const field_t F) {
+
+		std::vector<size_t> dimsA = A.dims();
+
+		std::vector<size_t> dimsC;
+		for (size_t k = 0; k < dimsA.size(); k++) {
+			if (k != i && k != j)
+				dimsC.push_back(dimsA[k]);
+		}
+
+		std::vector<index_t> chop_list;
+
+		// search for the same indices
+		for (size_t k = 0; k < A.nnz(); k++) {
+			if (A.index(k)[i] == A.index(k)[j]) {
+				chop_list[A.index(k)[i]].push_back(k);
+			}
+		}
+
+		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
+		sparse_tensor_t<T, SPARSE_COO> tmpC(dimsC);
+
+		for (auto& list : chop_list) {
+			tmpC.zero();
+			for (size_t m = 0; m < list.size(); m++) {
+				index_t indexC;
+				for (size_t l = 0; l < A.rank(); l++) {
+					if (l != i && l != j)
+						indexC.push_back(A.index(list[m])[l]);
+				}
+				tmpC.push_back(indexC, A.val(list[m]));
+			}
+			C.sort_indices();
+			tmpC.sort_indices();
+			C = tensor_sum(C, tmpC, F);
+		}
+
+		return C;
+	}
+
+	template <typename T>
+	sparse_tensor_t<T, SPARSE_COO> tensor_dot(
+		const sparse_tensor_t<T, SPARSE_COO>& A,
+		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F) {
+		return tensor_contract(A, B, A.rank() - 1, 0, F);
 	}
 
 	// usually B is a matrix, and A is a tensor, we want to contract all the dimensions of A with B
 	// e.g. change a basis of a tensor
 	template <typename T>
 	sparse_tensor_t<T, SPARSE_COO> tensor_transform(
-		const sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F) {
+		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B, 
+		const size_t start_index, const field_t F) {
 
 		auto C = A;
 		auto rank = A.rank();
-		for (size_t i = 0; i < rank; i++) {
-			C = tensor_contract(C, B, 0, 0, F);
+		for (size_t i = start_index; i < rank; i++) {
+			C = tensor_contract(C, B, start_index, 0, F);
 		}
 
 		return C;

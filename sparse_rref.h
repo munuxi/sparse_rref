@@ -277,6 +277,76 @@ namespace sparse_rref {
 			return end;
 	}
 
+	std::vector<size_t> perm_init(size_t n) {
+		std::vector<size_t> perm(n);
+		for (size_t i = 0; i < n; i++)
+			perm[i] = i;
+		return perm;
+	}
+
+	std::vector<size_t> perm_inverse(const std::vector<size_t>& perm) {
+		size_t n = perm.size();
+		std::vector<size_t> result(n);
+		for (size_t i = 0; i < n; i++)
+			result[perm[i]] = i;
+		return result;
+	}
+
+	template <typename T>
+	void permute(const std::vector<size_t>& Pt, std::vector<T>& A, size_t block_size = 1) {
+		size_t n = Pt.size();
+		std::vector<bool> visited(n, false);
+		auto P = perm_inverse(Pt);
+		std::vector<T> temp(block_size);
+
+		for (size_t i = 0; i < n; i++) {
+			if (!visited[i]) {
+				size_t current = i;
+				T* temp = &(A[i * block_size]);
+
+				do {
+					int next = P[current];
+					for (size_t j = 0; j < block_size; j++)
+						std::swap(A[next * block_size + j], temp[j]);
+					visited[current] = true;
+					current = next;
+				} while (current != i);
+			}
+		}
+	}
+
+	template <typename T>
+	void permute(const std::vector<size_t>& Pt, T* A, size_t block_size = 1) {
+		size_t n = Pt.size();
+		std::vector<bool> visited(n, false);
+		auto P = perm_inverse(Pt);
+		std::vector<T> temp(block_size);
+
+		for (size_t i = 0; i < n; i++) {
+			if (!visited[i]) {
+				size_t current = i;
+				T* temp = &(A[i * block_size]);
+
+				do {
+					int next = P[current];
+					for (size_t j = 0; j < block_size; j++)
+						std::swap(A[next * block_size + j], temp[j]);
+					visited[current] = true;
+					current = next;
+				} while (current != i);
+			}
+		}
+	}
+
+	inline std::vector<size_t> swap_perm(size_t a, size_t b, size_t n) {
+		std::vector<size_t> perm(n);
+		for (size_t i = 0; i < n; i++)
+			perm[i] = i;
+		perm[a] = b;
+		perm[b] = a;
+		return perm;
+	}
+
 	// LockFreeQueue
 	template <typename T>
 	class LockFreeQueue {
