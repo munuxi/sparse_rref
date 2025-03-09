@@ -50,7 +50,7 @@ namespace sparse_rref {
 		void init(const std::vector<size_t>& l, size_t aoc = 8) {
 			dims = l;
 			rank = l.size();
-			rowptr.resize(l[0] + 1);
+			rowptr = std::vector<size_t>(l[0] + 1, 0);
 			alloc = aoc;
 			colptr = s_malloc<index_type>((rank - 1) * alloc);
 			valptr = s_malloc<T>(alloc);
@@ -120,25 +120,29 @@ namespace sparse_rref {
 				std::fill(rowptr.begin(), rowptr.end(), 0);
 		}
 
+		inline size_t nnz() {
+			return rowptr[dims[0]];
+		}
+
 		// Copy assignment
 		sparse_tensor_struct& operator=(const sparse_tensor_struct& l) {
 			if (this == &l)
 				return *this;
+			auto nz = l.nnz();
 			if (alloc == 0) {
-				init(l.dims, l.alloc);
+				init(l.dims, nz);
 				std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
-				std::copy(l.colptr, l.colptr + alloc * (rank - 1), colptr);
-				std::copy(l.valptr, l.valptr + alloc, valptr);
+				std::copy(l.colptr, l.colptr + nz * (rank - 1), colptr);
+				std::copy(l.valptr, l.valptr + nz, valptr);
 				return *this;
 			}
 			dims = l.dims;
 			rank = l.rank;
-			rowptr.resize(dims[0] + 1);
-			if (alloc < l.alloc)
-				reserve(l.alloc);
-			std::copy(l.rowptr.begin(), l.rowptr.end(), rowptr.begin());
-			std::copy(l.colptr, l.colptr + alloc * (rank - 1), colptr);
-			std::copy(l.valptr, l.valptr + alloc, valptr);
+			rowptr = l.rowptr;
+			if (alloc < nz)
+				reserve(nz);
+			std::copy(l.colptr, l.colptr + nz * (rank - 1), colptr);
+			std::copy(l.valptr, l.valptr + nz, valptr);
 			return *this;
 		}
 
@@ -157,10 +161,6 @@ namespace sparse_rref {
 			l.valptr = NULL;
 			l.alloc = 0; // important for no repeating clear
 			return *this;
-		}
-
-		inline size_t nnz() {
-			return rowptr[dims[0]];
 		}
 
 		std::vector<size_t> row_nums() {
@@ -651,6 +651,7 @@ namespace sparse_rref {
 
 		// double pointer
 		size_t i = 0, j = 0;
+		// C.zero();
 		while (i < A.nnz() && j < B.nnz()) {
 			auto posA = Aperm[i];
 			auto posB = Bperm[j];
