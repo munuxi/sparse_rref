@@ -56,8 +56,13 @@ namespace sparse_rref {
 	}
 
 	template <typename T>
-	void s_memset(T* s, const T val, const T size) {
+	void s_memset(T* s, const T val, const size_t size) {
 		std::fill(s, s + size, val);
+	}
+
+	template <typename T>
+	void s_copy(T* des, T* ini, const size_t size) {
+		std::copy(ini, ini + size, des);
 	}
 
 	// thread
@@ -133,6 +138,7 @@ namespace sparse_rref {
 			std::chrono::microseconds::period::den);
 	}
 
+	// some algorithms
 	template <typename T> std::vector<T> difference(std::vector<T> l) {
 		std::vector<T> result;
 		for (size_t i = 1; i < l.size(); i++) {
@@ -141,6 +147,37 @@ namespace sparse_rref {
 		return result;
 	}
 
+	template <typename T>
+	int lexico_compare(const std::vector<T>& a, const std::vector<T>& b) {
+		for (size_t i = 0; i < a.size(); i++) {
+			if (a[i] < b[i])
+				return -1;
+			if (a[i] > b[i])
+				return 1;
+		}
+		return 0;
+	}
+
+	template <typename T>
+	int lexico_compare(const T* a, const T* b, const size_t len) {
+		for (size_t i = 0; i < len; i++) {
+			if (a[i] < b[i])
+				return -1;
+			if (a[i] > b[i])
+				return 1;
+		}
+		return 0;
+	}
+
+	inline int lexico_compare(const uint8_t* a, const uint8_t* b, size_t len) {
+		return std::memcmp(a, b, len);
+	}
+
+	inline int lexico_compare(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+		return lexico_compare(a.data(), b.data(), a.size());
+	}
+
+	// uset
 	struct uset {
 		constexpr static size_t bitset_size = std::numeric_limits<unsigned long long>::digits; // 64 or 32
 		std::vector<std::bitset<bitset_size>> data;
@@ -290,6 +327,15 @@ namespace sparse_rref {
 		for (size_t i = 0; i < n; i++)
 			result[perm[i]] = i;
 		return result;
+	}
+
+	bool is_identity_perm(const std::vector<size_t>& perm) {
+		size_t n = perm.size();
+		for (size_t i = 0; i < n; i++) {
+			if (perm[i] != i)
+				return false;
+		}
+		return true;
 	}
 
 	template <typename T>
