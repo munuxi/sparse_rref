@@ -446,12 +446,12 @@ namespace sparse_rref {
 		inline void insert(const index_t& l, const T& val, bool mode = true) { data.insert(prepend_num(l), val, mode); }
 		inline void insert_add(const index_t& l, const T& val) { data.insert_add(prepend_num(l), val); }
 		void push_back(const index_p l, const T& new_val) { 
-			auto n_nnz = nnz();
-			if (n_nnz + 1 > data.alloc)
-				reserve((data.alloc + 1) * 2);
-			std::copy(l, l + rank(), index(n_nnz));
-			val(n_nnz) = new_val;
-			data.rowptr[1]++; // increase the nnz
+			 auto n_nnz = nnz();
+			 if (n_nnz + 1 > data.alloc)
+			 	reserve((data.alloc + 1) * 2);
+			 std::copy(l, l + rank(), index(n_nnz));
+			 val(n_nnz) = new_val;
+			 data.rowptr[1]++; // increase the nnz
 		}
 		void push_back(const index_t& l, const T& new_val) { 
 			auto n_nnz = nnz();
@@ -582,7 +582,7 @@ namespace sparse_rref {
 	template <typename T> 
 	sparse_tensor_t<T, SPARSE_COO> tensor_product(
 		const sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F, const bool mode = true) {
+		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F) {
 
 		std::vector<size_t> dimsB = B.dims();
 		std::vector<size_t> dimsC = A.dims();
@@ -597,37 +597,32 @@ namespace sparse_rref {
 		C.reserve(A.nnz() * B.nnz());
 		index_t indexC;
 
-		if (mode) {
-			for (size_t i = 0; i < A.nnz(); i++) {
-				indexC = A.index_vector(i);
-				for (size_t j = 0; j < B.nnz(); j++) {
-					indexC.insert(indexC.end(), B.index(j), B.index(j) + B.rank());
-					C.push_back(indexC, scalar_mul(A.val(i), B.val(j), F));
-					indexC.resize(A.rank());
-				}
-			}
-		}
-		else {
-			auto permA = A.gen_perm();
-			auto permB = B.gen_perm();
-			for (auto i : permA) {
-				indexC = A.index_vector(i);
-				for (auto j : permB) {
-					indexC.insert(indexC.end(), B.index(j), B.index(j) + B.rank());
-					C.push_back(indexC, scalar_mul(A.val(i), B.val(j), F));
-					indexC.resize(A.rank());
-				}
+		auto permA = A.gen_perm();
+		auto permB = B.gen_perm();
+		for (auto i : permA) {
+			indexC = A.index_vector(i);
+			for (auto j : permB) {
+				indexC.insert(indexC.end(), B.index(j), B.index(j) + B.rank());
+				C.push_back(indexC, scalar_mul(A.val(i), B.val(j), F));
+				indexC.resize(A.rank());
 			}
 		}
 
 		return C;
 	}
 
+	// only for debug
+	template<typename T>
+	void print_p(T* a, size_t t) {
+		for (size_t i = 0; i < t; i++)
+			std::cout << (ulong)(a[i]) << " ";
+	}
+
 	// returned tensor is sorted
 	template <typename T>
 	sparse_tensor_t<T, SPARSE_COO> tensor_sum(
-		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B, 
-		const field_t F, const bool mode = true) {
+		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B,
+		const field_t F) {
 
 		// if one of the tensors is empty, it is ok that dims of A or B are not defined
 		if (A.alloc() == 0)
@@ -651,76 +646,45 @@ namespace sparse_rref {
 
 		sparse_tensor_t<T, SPARSE_COO> C(dimsC, A.nnz() + B.nnz());
 
-		if (!mode) {
-			auto Aperm = A.gen_perm();
-			auto Bperm = B.gen_perm();
+		auto Aperm = A.gen_perm();
+		auto Bperm = B.gen_perm();
 
-			// double pointer
-			size_t i = 0, j = 0;
-			while (i < A.nnz() && j < B.nnz()) {
-				auto posA = Aperm[i];
-				auto posB = Bperm[j];
-				auto indexA = A.index(posA);
-				auto indexB = B.index(posA);
-				int cmp = lexico_compare(indexA, indexB, rank);
-				if (cmp < 0) {
-					C.push_back(indexA, A.val(posA));
-					i++;
-				}
-				else if (cmp > 0) {
-					C.push_back(indexB, B.val(posB));
-					j++;
-				}
-				else {
-					auto val = scalar_add(A.val(posA), B.val(posB), F);
-					if (val != 0)
-						C.push_back(indexA, val);
-					i++; j++;
-				}
-			}
-			while (i < A.nnz()) {
-				auto posA = Aperm[i];
-				C.push_back(A.index_vector(posA), A.val(posA));
+		// double pointer
+		size_t i = 0, j = 0;
+		while (i < A.nnz() && j < B.nnz()) {
+			auto posA = Aperm[i];
+			auto posB = Bperm[j];
+			auto indexA = A.index(posA);
+			auto indexB = B.index(posB);
+			int cmp = lexico_compare(indexA, indexB, rank);
+
+			if (cmp < 0) {
+				C.push_back(indexA, A.val(posA));
 				i++;
 			}
-			while (j < B.nnz()) {
-				auto posB = Bperm[j];
-				C.push_back(B.index_vector(posB), B.val(posB));
+			else if (cmp > 0) {
+				C.push_back(indexB, B.val(posB));
 				j++;
 			}
-		}
-		else {
-			// double pointer
-			size_t i = 0, j = 0;
-			while (i < A.nnz() && j < B.nnz()) {
-				auto indexA = A.index(i);
-				auto indexB = B.index(i);
-				int cmp = lexico_compare(indexA, indexB, rank);
-				if (cmp < 0) {
-					C.push_back(indexA, A.val(i));
-					i++;
-				}
-				else if (cmp > 0) {
-					C.push_back(indexB, B.val(j));
-					j++;
-				}
-				else {
-					auto val = scalar_add(A.val(i), B.val(j), F);
-					if (val != 0)
-						C.push_back(indexA, val);
-					i++; j++;
-				}
-			}
-			while (i < A.nnz()) {
-				C.push_back(A.index_vector(i), A.val(i));
-				i++;
-			}
-			while (j < B.nnz()) {
-				C.push_back(B.index_vector(j), B.val(j));
-				j++;
-			}
-		}
+			else {
+				auto val = scalar_add(A.val(posA), B.val(posB), F);
 
+				if (val != 0)
+					C.push_back(indexA, val);
+				i++; j++;
+			}
+		}
+		while (i < A.nnz()) {
+			auto posA = Aperm[i];
+			C.push_back(A.index(posA), A.val(posA));
+			i++;
+		}
+		while (j < B.nnz()) {
+			auto posB = Bperm[j];
+			C.push_back(B.index(posB), B.val(posB));
+			j++;
+		}
+		
 		return C;
 	}
 
@@ -807,12 +771,6 @@ namespace sparse_rref {
 
 		// // then remove the zero entries
 		// A.canonicalize();
-	}
-
-	template<typename T>
-	void print_p(T* a, size_t t) {
-		for (size_t i = 0; i < t; i++)
-			std::cout << (ulong)(a[i]) << " ";
 	}
 
 	// the result is sorted
