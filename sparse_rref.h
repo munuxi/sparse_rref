@@ -62,6 +62,8 @@ namespace sparse_rref {
 
 	template <typename T>
 	void s_copy(T* des, T* ini, const size_t size) {
+		if (des == ini)
+			return;
 		std::copy(ini, ini + size, des);
 	}
 
@@ -169,12 +171,20 @@ namespace sparse_rref {
 		return 0;
 	}
 
-	inline int lexico_compare(const uint8_t* a, const uint8_t* b, size_t len) {
-		return std::memcmp(a, b, len);
+	template <typename T>
+	int lexico_compare(const T* a, const T* b, const std::vector<size_t>& perm) {
+		auto len = perm.size();
+		for (auto i : perm) {
+			if (a[i] < b[i])
+				return -1;
+			if (a[i] > b[i])
+				return 1;
+		}
+		return 0;
 	}
 
-	inline int lexico_compare(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
-		return lexico_compare(a.data(), b.data(), a.size());
+	inline int lexico_compare(const uint8_t* a, const uint8_t* b, size_t len) {
+		return std::memcmp(a, b, len);
 	}
 
 	// uset

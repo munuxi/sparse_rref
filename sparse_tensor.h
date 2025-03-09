@@ -483,48 +483,19 @@ namespace sparse_rref {
 			return perm;
 		}
 
-		// if head_or_tail on, first sort pos-th index, then the other
-		// if head_or_tail off, first sort the other, then pos-th index
-		std::vector<size_t> gen_perm(size_t pos, const bool head_or_tail) const {
-			auto r = rank();
-			if ((head_or_tail && pos == 0) || (!head_or_tail && pos == r - 1))
-				return gen_perm();
-
+		std::vector<size_t> gen_perm(const std::vector<size_t>& index_perm) const {
+			if (index_perm.size() != rank()) {
+				std::cerr << "Error: gen_perm: index_perm size is not equal to rank" << std::endl;
+				exit(1);
+			}
 			std::vector<size_t> perm = perm_init(nnz());
-
-			if (head_or_tail) {
-				std::sort(std::execution::par, perm.begin(), perm.end(), [&](size_t a, size_t b) {
-					auto index_a = index(a);
-					auto index_b = index(b);
-					return index_a[pos] < index_b[pos] || (index_a[pos] == index_b[pos] && lexico_compare(index_a, index_b, r) < 0);
-					});
-			}
-			else {
-				std::sort(std::execution::par, perm.begin(), perm.end(), [&](size_t a, size_t b) {
-					auto index_a = index(a);
-					auto index_b = index(b);
-
-					// first compare the index before pos, len = pos not pos - 1!!!
-					int t1 = (pos == 0 ? 0 : lexico_compare(index_a, index_b, pos));
-					if (t1 < 0)
-						return true;
-					// then after compare the index after pos, len = r - pos - 1
-					if (t1 == 0) {
-						int t2 = lexico_compare(index_a + pos + 1, index_b + pos + 1, r - pos - 1);
-						if (t2 < 0)
-							return true;
-						// finally compare the pos-th index
-						if (t2 == 0)
-							return index_a[pos] < index_b[pos];
-					}
-					return false;
-					});
-			}
-
+			std::sort(std::execution::par, perm.begin(), perm.end(), [&](size_t a, size_t b) {
+				return lexico_compare(index(a), index(b), index_perm) < 0;
+				});
 			return perm;
 		}
 
-		void transpose_replace(const std::vector<size_t>& perm) {
+		void transpose_replace(const std::vector<size_t>& perm, thread_pool* pool = nullptr) {
 			std::vector<size_t> new_dims(rank() + 1);
 			new_dims[0] = data.dims[0];
 
@@ -532,39 +503,26 @@ namespace sparse_rref {
 				new_dims[i + 1] = data.dims[perm[i] + 1];
 			data.dims = new_dims;
 
-			std::vector<size_t> index_new(rank());
-			for (size_t i = 0; i < nnz(); i++) {
-				auto ptr = index(i);
-				for (size_t j = 0; j < rank(); j++)
-					index_new[j] = ptr[perm[j]];
-				std::copy(index_new.begin(), index_new.end(), ptr);
-			}
-		}
-
-		// true for sorted tensor
-		std::unordered_map<index_type, std::vector<size_t>> chop_list(size_t pos, const bool mode = true) const {
-			if (mode) {
-				std::unordered_map<index_type, std::vector<size_t>> result;
+			if (pool == nullptr) {
+				std::vector<size_t> index_new(rank());
 				for (size_t i = 0; i < nnz(); i++) {
-					result[index(i)[pos]].push_back(i);
+					auto ptr = index(i);
+					for (size_t j = 0; j < rank(); j++)
+						index_new[j] = ptr[perm[j]];
+					std::copy(index_new.begin(), index_new.end(), ptr);
 				}
-				return result;
 			}
 			else {
-				auto perm = perm_init(nnz());
-				// first sort pos-th index, then the other
-				std::sort(std::execution::par, perm.begin(), perm.end(), [&](size_t a, size_t b) {
-					auto index_a = index(a);
-					auto index_b = index(b);
-					return index_a[pos] < index_b[pos]|| (index_a[pos] == index_b[pos] && 
-						lexico_compare(index_a, index_b, rank()) < 0);
+				pool->detach_blocks(0, nnz(), [&](size_t ss, size_t ee) {
+					std::vector<size_t> index_new(rank());
+					for (size_t i = ss; i < ee; i++) {
+						auto ptr = index(i);
+						for (size_t j = 0; j < rank(); j++)
+							index_new[j] = ptr[perm[j]];
+						std::copy(index_new.begin(), index_new.end(), ptr);
+					}
 					});
-
-				std::unordered_map<index_type, std::vector<size_t>> result;
-				for (auto i : perm) {
-					result[index(i)[pos]].push_back(i);
-				}
-				return result;
+				pool->wait();
 			}
 		}
 
@@ -851,73 +809,6 @@ namespace sparse_rref {
 		// A.canonicalize();
 	}
 
-	//// the result is sorted
-	//template <typename T> 
-	//sparse_tensor_t<T, SPARSE_COO> tensor_contract(
-	//	const sparse_tensor_t<T, SPARSE_COO>& A,
-	//	const sparse_tensor_t<T, SPARSE_COO>& B,
-	//	const size_t i, const size_t j, const field_t F, const bool mode = true) {
-
-	//	std::vector<size_t> dimsA = A.dims();
-	//	std::vector<size_t> dimsB = B.dims();
-
-	//	if (dimsA[i] != dimsB[j]) {
-	//		std::cerr << "Error: The dimensions of the two tensors do not match." << std::endl;
-	//		exit(1);
-	//	}
-
-	//	std::vector<size_t> dimsC;
-	//	for (size_t k = 0; k < dimsA.size(); k++) {
-	//		if (k != i)
-	//			dimsC.push_back(dimsA[k]);
-	//	}
-	//	for (size_t k = 0; k < dimsB.size(); k++) {
-	//		if (k != j)
-	//			dimsC.push_back(dimsB[k]);
-	//	}
-
-	//	sparse_tensor_t<T, SPARSE_COO> C(dimsC);
-	//	sparse_tensor_t<T, SPARSE_COO> tmpC(dimsC);
-	//	std::vector<sparse_tensor_t<T, SPARSE_COO>> tmpCs(dimsA[i]);
-
-	//	// search for the same indices
-	//	// it is ok for unsorted tensors, chop_list will sort the indices
-	//	auto choplist_1 = A.chop_list(i, mode);
-	//	auto choplist_2 = B.chop_list(j, mode);
-
-	//	index_t indexC(C.rank());
-	//	for (index_type k = 0; k < dimsA[i]; k++) {
-	//		if (choplist_1.contains(k) && choplist_2.contains(k)) {
-	//			tmpC.zero();
-	//			auto list_1 = choplist_1[k];
-	//			auto list_2 = choplist_2[k];
-	//			for (size_t m = 0; m < list_1.size(); m++) {
-	//				for (size_t n = 0; n < list_2.size(); n++) {
-	//					auto k1 = list_1[m];
-	//					auto k2 = list_2[n];
-	//					
-	//					indexC.clear();
-	//					for (size_t l = 0; l < A.rank(); l++) {
-	//						if (l != i)
-	//							indexC.push_back(A.index(k1)[l]);
-	//					}
-	//					for (size_t l = 0; l < B.rank(); l++) {
-	//						if (l != j)
-	//							indexC.push_back(B.index(k2)[l]);
-	//					}
-
-	//					tmpC.push_back(indexC, scalar_mul(A.val(k1), B.val(k2), F));
-	//				}
-	//			}
-	//			tensor_sum_replace(C, tmpC, F);
-	//		}
-	//	}
-
-	//	C.canonicalize();
-
-	//	return C;
-	//}
-
 	template<typename T>
 	void print_p(T* a, size_t t) {
 		for (size_t i = 0; i < t; i++)
@@ -927,321 +818,198 @@ namespace sparse_rref {
 	// the result is sorted
 	template <typename T>
 	sparse_tensor_t<T, SPARSE_COO> tensor_contract(
-		const sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B,
-		const size_t i, const size_t j, const field_t F, thread_pool& pool) {
+		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B,
+		const std::vector<size_t>& i1, const std::vector<size_t>& i2, const field_t F, 
+		thread_pool* pool = nullptr) {
 
 		std::vector<size_t> dimsA = A.dims();
 		std::vector<size_t> dimsB = B.dims();
 
-		if (dimsA[i] != dimsB[j]) {
-			std::cerr << "Error: The dimensions of the two tensors do not match." << std::endl;
+		if (i1.size() != i2.size()) {
+			std::cerr << "Error: tensor_contract: The size of the two contract sets do not match." << std::endl;
 			exit(1);
 		}
 
-		std::vector<size_t> dimsC;
-		for (size_t k = 0; k < dimsA.size(); k++) {
-			if (k != i)
-				dimsC.push_back(dimsA[k]);
-		}
-		for (size_t k = 0; k < dimsB.size(); k++) {
-			if (k != j)
-				dimsC.push_back(dimsB[k]);
+		if (i1.size() == 0) {
+			return tensor_product(A, B, F);
 		}
 
-		auto permA = A.gen_perm(i, false);
-		auto permB = B.gen_perm(j, false);
-		// this means we move the i-th, j-th index to the last position
+		for (size_t k = 0; k < i1.size(); k++) {
+			if (dimsA[i1[k]] != dimsB[i2[k]]) {
+				std::cerr << "Error: The dimensions of the two tensors do not match." << std::endl;
+				exit(1);
+			}
+		}
+
+		// the dimensions of the result
+		std::vector<size_t> dimsC, index_perm_A, index_perm_B;
+		for (size_t k = 0; k < dimsA.size(); k++) {
+			// if k is not in i1, we add it to dimsC and index_perm_A
+			if (std::find(i1.begin(), i1.end(), k) == i1.end()) {
+				dimsC.push_back(dimsA[k]);
+				index_perm_A.push_back(k);
+			}
+		}
+		index_perm_A.insert(index_perm_A.end(), i1.begin(), i1.end());
+		for (size_t k = 0; k < dimsB.size(); k++) {
+			// if k is not in i2, we add it to dimsC and index_perm_B
+			if (std::find(i2.begin(), i2.end(), k) == i2.end()) {
+				dimsC.push_back(dimsB[k]);
+				index_perm_B.push_back(k);
+			}
+		}
+		index_perm_B.insert(index_perm_B.end(), i2.begin(), i2.end());
+
+		auto permA = A.gen_perm(index_perm_A);
+		auto permB = B.gen_perm(index_perm_B);
 
 		std::vector<size_t> rowptrA;
 		std::vector<size_t> rowptrB;
-		
-		auto equalexcept = [](const index_p a, const index_p b, const size_t pos, const size_t rank) {
-			// do not compare the pos-th index
-			for (size_t i = 0; i < rank; i++) 
-				if (i != pos && a[i] != b[i])
+
+		auto equal_except = [](const index_p a, const index_p b, const std::vector<size_t>& perm, const size_t len) {
+			for (size_t i = 0; i < len; i++) {
+				if (a[perm[i]] != b[perm[i]])
 					return false;
+			}
 			return true;
 			};
 
-		auto r = A.rank();
+		auto i1i2_size = i1.size();
+		auto left_size_A = A.rank() - i1i2_size;
+		auto left_size_B = B.rank() - i1i2_size;
+
 		rowptrA.push_back(0);
 		for (size_t k = 1; k < A.nnz(); k++) {
-			if (A.index(permA[k])[i] <= A.index(permA[rowptrA.back()])[i])
-				rowptrA.push_back(k);
-			else if (!equalexcept(A.index(permA[rowptrA.back()]), A.index(permA[k]), i, r))
+			if (!equal_except(A.index(permA[rowptrA.back()]), A.index(permA[k]), index_perm_A, left_size_A))
 				rowptrA.push_back(k);
 		}
 		rowptrA.push_back(A.nnz());
 
-		r = B.rank();
 		rowptrB.push_back(0);
 		for (size_t k = 1; k < B.nnz(); k++) {
-			if (B.index(permB[k])[j] <= B.index(permB[rowptrB.back()])[j])
-				rowptrB.push_back(k);
-			else if (!equalexcept(B.index(permB[rowptrB.back()]), B.index(permB[k]), j, r))
+			if (!equal_except(B.index(permB[rowptrB.back()]), B.index(permB[k]), index_perm_B, left_size_B))
 				rowptrB.push_back(k);
 		}
 		rowptrB.push_back(B.nnz());
 
 		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
-
-		//for (size_t k = 0; k < rowptrA.size() - 1; k++) {
-		//	// from rowptrA[k] to rowptrA[k + 1] are the same
-		//	auto startA = rowptrA[k];
-		//	auto endA = rowptrA[k + 1];
-
-		//	index_t indexC;
-		//	for (size_t l = 0; l < A.rank(); l++) 
-		//		if (l != i)
-		//			indexC.push_back(A.index(permA[startA])[l]);
-
-		//	for (size_t l = 0; l < rowptrB.size() - 1; l++) {
-		//		auto startB = rowptrB[l];
-		//		auto endB = rowptrB[l + 1];
-
-		//		// if the maximum index of A is less than the minimum index of B, then continue
-		//		if (A.index(permA[endA - 1])[i] < B.index(permB[startB])[j])
-		//			continue;
-
-		//		// double pointer to calculate the inner product
-		//		size_t ptrA = startA, ptrB = startB;
-		//		T entry = 0;
-		//		while (ptrA < endA && ptrB < endB) {
-		//			auto indA = A.index(permA[ptrA])[i];
-		//			auto indB = B.index(permB[ptrB])[j];
-		//			if (indA < indB) 
-		//				ptrA++;
-		//			else if (indB < indA)
-		//				ptrB++;
-		//			else {
-		//				entry = scalar_add(entry, scalar_mul(A.val(permA[ptrA]), B.val(permB[ptrB]), F), F);
-		//				ptrA++;
-		//				ptrB++;
-		//			}
-		//		}
-
-		//		if (entry != 0) {
-		//			for (size_t m = 0; m < B.rank(); m++)
-		//				if (m != j)
-		//					indexC.push_back(B.index(permB[startB])[m]);
-
-		//			C.push_back(indexC, entry);
-		//			indexC.resize(A.rank() - 1);
-		//		}
-		//	}
-		//}
-		
 		// parallel version
-		auto nthread = pool.get_thread_count();
+		size_t nthread;
+		if (pool == nullptr)
+			nthread = 1;
+		else
+			nthread = pool->get_thread_count();
 		std::vector<sparse_tensor_t<T, SPARSE_COO>> Cs(nthread, C);
-		pool.detach_loop(0, rowptrA.size() - 1, [&](size_t k) {
-			// from rowptrA[k] to rowptrA[k + 1] are the same
-			auto startA = rowptrA[k];
-			auto endA = rowptrA[k + 1];
 
-			auto id = thread_id();
+		auto method = [&](size_t ss, size_t ee) {
 
-			index_t indexC;
-			for (size_t l = 0; l < A.rank(); l++)
-				if (l != i)
-					indexC.push_back(A.index(permA[startA])[l]);
+			std::vector<size_t> left_indA(i1i2_size);
+			std::vector<size_t> left_indB(i1i2_size);
+			// indA and indB is for the rest of the indices
+			auto indA = [&](size_t a) {
+				auto ptr = A.index(permA[a]);
+				for (size_t l = 0; l < i1i2_size; l++) {
+					left_indA[l] = ptr[i1[l]];
+				}
+				};
+			auto indB = [&](size_t b) {
+				auto ptr = B.index(permB[b]);
+				for (size_t l = 0; l < i1i2_size; l++) {
+					left_indB[l] = ptr[i2[l]];
+				}
+				};
 
-			for (size_t l = 0; l < rowptrB.size() - 1; l++) {
-				auto startB = rowptrB[l];
-				auto endB = rowptrB[l + 1];
+			size_t id = 0;
+			if (pool != nullptr)
+				id = thread_id();
 
-				// if the maximum index of A is less than the minimum index of B, then continue
-				if (A.index(permA[endA - 1])[i] < B.index(permB[startB])[j])
-					continue;
+			index_t indexC(dimsC.size());
 
-				// double pointer to calculate the inner product
-				size_t ptrA = startA, ptrB = startB;
-				T entry = 0;
-				while (ptrA < endA && ptrB < endB) {
-					auto indA = A.index(permA[ptrA])[i];
-					auto indB = B.index(permB[ptrB])[j];
-					if (indA < indB)
-						ptrA++;
-					else if (indB < indA)
-						ptrB++;
-					else {
-						entry = scalar_add(entry, scalar_mul(A.val(permA[ptrA]), B.val(permB[ptrB]), F), F);
-						ptrA++;
-						ptrB++;
+			for (size_t k = ss; k < ee; k++) {
+				// from rowptrA[k] to rowptrA[k + 1] are the same
+				auto startA = rowptrA[k];
+				auto endA = rowptrA[k + 1];
+
+				for (size_t l = 0; l < left_size_A; l++) {
+					indexC[l] = A.index(permA[startA])[index_perm_A[l]];
+				}
+
+				for (size_t l = 0; l < rowptrB.size() - 1; l++) {
+					auto startB = rowptrB[l];
+					auto endB = rowptrB[l + 1];
+
+					// if the maximum index of A is less than the minimum index of B, then continue
+					indA(endA - 1); indB(startB);
+					if (lexico_compare(left_indA, left_indB) < 0)
+						continue;
+
+					// double pointer to calculate the inner product
+					size_t ptrA = startA, ptrB = startB;
+					T entry = 0;
+					while (ptrA < endA && ptrB < endB) {
+						indA(ptrA); indB(ptrB);
+						auto t1 = lexico_compare(left_indA, left_indB);
+						if (t1 < 0)
+							ptrA++;
+						else if (t1 > 0)
+							ptrB++;
+						else {
+							entry = scalar_add(entry, scalar_mul(A.val(permA[ptrA]), B.val(permB[ptrB]), F), F);
+							ptrA++;
+							ptrB++;
+						}
+					}
+
+					if (entry != 0) {
+						for (size_t l = 0; l < left_size_B; l++) {
+							indexC[left_size_A + l] = B.index(permB[startB])[index_perm_B[l]];
+						}
+
+						Cs[id].push_back(indexC, entry);
 					}
 				}
-
-				if (entry != 0) {
-					for (size_t m = 0; m < B.rank(); m++)
-						if (m != j)
-							indexC.push_back(B.index(permB[startB])[m]);
-
-					Cs[id].push_back(indexC, entry);
-					indexC.resize(A.rank() - 1);
-				}
 			}
-			}, 
-			nthread); // num_block = num_thread
+			};
 
-		pool.wait();
+		// parallel version
 
-		// merge the results
-		size_t allnnz = 0;
-		size_t nownnz = 0;
-		for (size_t i = 0; i < nthread; i++) {
-			allnnz += Cs[i].nnz();
+		if (pool != nullptr) {
+			pool->detach_blocks(0, rowptrA.size() - 1, method, nthread); // num_block = num_thread
+			pool->wait();
+
+			// merge the results
+			size_t allnnz = 0;
+			size_t nownnz = 0;
+			for (size_t i = 0; i < nthread; i++) {
+				allnnz += Cs[i].nnz();
+			}
+
+			C.reserve(allnnz);
+			C.resize(allnnz);
+			for (size_t i = 0; i < nthread; i++) {
+				// it is ordered, so we can directly push them back
+				auto tmpnnz = Cs[i].nnz();
+				T* valptr = C.data.valptr + nownnz;
+				index_p colptr = C.data.colptr + nownnz * C.rank();
+				s_copy(valptr, Cs[i].data.valptr, tmpnnz);
+				s_copy(colptr, Cs[i].data.colptr, tmpnnz * C.rank());
+				nownnz += tmpnnz;
+			}
+
+			return C;
 		}
-
-		C.reserve(allnnz);
-		C.resize(allnnz);
-		for (size_t i = 0; i < nthread; i++) {
-			// it is ordered, so we can directly push them back
-			auto tmpnnz = Cs[i].nnz();
-			T* valptr = C.data.valptr + nownnz;
-			index_p colptr = C.data.colptr + nownnz * C.rank();
-			s_copy(valptr, Cs[i].data.valptr, tmpnnz);
-			s_copy(colptr, Cs[i].data.colptr, tmpnnz * C.rank());
-			nownnz += tmpnnz;
+		else {
+			method(0, rowptrA.size() - 1);
+			return Cs[0];
 		}
-
-		return C;
 	}
 
-	// the result is sorted
 	template <typename T>
-	void tensor_contract_r(
-		sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B,
-		const size_t i, const size_t j, const field_t F, thread_pool& pool) {
+	sparse_tensor_t<T, SPARSE_COO> tensor_contract(
+		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B,
+		const size_t i, const size_t j, const field_t F, thread_pool* pool = nullptr) {
 
-		std::vector<size_t> dimsA = A.dims();
-		std::vector<size_t> dimsB = B.dims();
-
-		if (dimsA[i] != dimsB[j]) {
-			std::cerr << "Error: The dimensions of the two tensors do not match." << std::endl;
-			exit(1);
-		}
-
-		std::vector<size_t> dimsC;
-		for (size_t k = 0; k < dimsA.size(); k++) {
-			if (k != i)
-				dimsC.push_back(dimsA[k]);
-		}
-		for (size_t k = 0; k < dimsB.size(); k++) {
-			if (k != j)
-				dimsC.push_back(dimsB[k]);
-		}
-
-		auto permA = A.gen_perm(i, false);
-		auto permB = B.gen_perm(j, false);
-		// this means we move the i-th, j-th index to the last position
-
-		std::vector<size_t> rowptrA;
-		std::vector<size_t> rowptrB;
-
-		auto equalexcept = [](const index_p a, const index_p b, const size_t pos, const size_t rank) {
-			// do not compare the pos-th index
-			for (size_t i = 0; i < rank; i++)
-				if (i != pos && a[i] != b[i])
-					return false;
-			return true;
-			};
-
-		auto r = A.rank();
-		rowptrA.push_back(0);
-		for (size_t k = 1; k < A.nnz(); k++) {
-			if (A.index(permA[k])[i] <= A.index(permA[rowptrA.back()])[i])
-				rowptrA.push_back(k);
-			else if (!equalexcept(A.index(permA[rowptrA.back()]), A.index(permA[k]), i, r))
-				rowptrA.push_back(k);
-		}
-		rowptrA.push_back(A.nnz());
-
-		r = B.rank();
-		rowptrB.push_back(0);
-		for (size_t k = 1; k < B.nnz(); k++) {
-			if (B.index(permB[k])[j] <= B.index(permB[rowptrB.back()])[j])
-				rowptrB.push_back(k);
-			else if (!equalexcept(B.index(permB[rowptrB.back()]), B.index(permB[k]), j, r))
-				rowptrB.push_back(k);
-		}
-		rowptrB.push_back(B.nnz());
-
-		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
-		// parallel version
-		auto nthread = pool.get_thread_count();
-		std::vector<sparse_tensor_t<T, SPARSE_COO>> Cs(nthread, C);
-		pool.detach_loop(0, rowptrA.size() - 1, [&](size_t k) {
-			// from rowptrA[k] to rowptrA[k + 1] are the same
-			auto startA = rowptrA[k];
-			auto endA = rowptrA[k + 1];
-
-			auto id = thread_id();
-
-			index_t indexC;
-			for (size_t l = 0; l < A.rank(); l++)
-				if (l != i)
-					indexC.push_back(A.index(permA[startA])[l]);
-
-			for (size_t l = 0; l < rowptrB.size() - 1; l++) {
-				auto startB = rowptrB[l];
-				auto endB = rowptrB[l + 1];
-
-				// if the maximum index of A is less than the minimum index of B, then continue
-				if (A.index(permA[endA - 1])[i] < B.index(permB[startB])[j])
-					continue;
-
-				// double pointer to calculate the inner product
-				size_t ptrA = startA, ptrB = startB;
-				T entry = 0;
-				while (ptrA < endA && ptrB < endB) {
-					auto indA = A.index(permA[ptrA])[i];
-					auto indB = B.index(permB[ptrB])[j];
-					if (indA < indB)
-						ptrA++;
-					else if (indB < indA)
-						ptrB++;
-					else {
-						entry = scalar_add(entry, scalar_mul(A.val(permA[ptrA]), B.val(permB[ptrB]), F), F);
-						ptrA++;
-						ptrB++;
-					}
-				}
-
-				if (entry != 0) {
-					for (size_t m = 0; m < B.rank(); m++)
-						if (m != j)
-							indexC.push_back(B.index(permB[startB])[m]);
-
-					Cs[id].push_back(indexC, entry);
-					indexC.resize(A.rank() - 1);
-				}
-			}
-			},
-			nthread); // num_block = num_thread
-
-		pool.wait();
-
-		// merge the results
-		size_t allnnz = 0;
-		size_t nownnz = 0;
-		for (size_t i = 0; i < nthread; i++) {
-			allnnz += Cs[i].nnz();
-		}
-
-		A.change_dims(dimsC);
-		if (A.alloc() < allnnz) 
-			A.reserve(allnnz);
-		A.resize(allnnz);
-		for (size_t i = 0; i < nthread; i++) {
-			// it is ordered, so we can directly push them back
-			auto tmpnnz = Cs[i].nnz();
-			T* valptr = A.data.valptr + nownnz;
-			index_p colptr = A.data.colptr + nownnz * A.rank();
-			s_copy(valptr, Cs[i].data.valptr, tmpnnz);
-			s_copy(colptr, Cs[i].data.colptr, tmpnnz * A.rank());
-			nownnz += tmpnnz;
-		}
+		return tensor_contract(A, B, std::vector<size_t>{ i }, std::vector<size_t>{ j }, F, pool);
 	}
 
 	// the result is not sorted
@@ -1250,7 +1018,7 @@ namespace sparse_rref {
 	sparse_tensor_t<T, SPARSE_COO> tensor_contract_2(
 		const sparse_tensor_t<T, SPARSE_COO>& A,
 		const sparse_tensor_t<T, SPARSE_COO>& B,
-		const slong a, const field_t F, thread_pool& pool) {
+		const slong a, const field_t F, thread_pool* pool = nullptr) {
 
 		auto C = tensor_contract(A, B, a, 0, F, pool);
 		std::vector<size_t> perm;
@@ -1264,28 +1032,10 @@ namespace sparse_rref {
 		return C;
 	}
 
-	// the result is not sorted
-	// mode is only for tensor_contract inside
+	// self contraction
 	template <typename T>
-	void tensor_contract_2_r(
-		sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B,
-		const slong a, const field_t F, thread_pool& pool) {
-
-		tensor_contract_r(A, B, a, 0, F, pool);
-		std::vector<size_t> perm;
-		for (size_t k = 0; k < A.rank() + B.rank() - 1; k++) {
-			perm.push_back(k);
-		}
-		perm.erase(perm.begin() + A.rank() - 1);
-		perm.insert(perm.begin() + a, A.rank() - 1);
-		A.transpose_replace(perm);
-	}
-
-	template <typename T>
-	sparse_tensor_t<T, SPARSE_COO> tensor_contract(
-		const sparse_tensor_t<T, SPARSE_COO>& A,
-		const size_t i, const size_t j, const field_t F, thread_pool& pool) {
+	sparse_tensor_t<T, SPARSE_COO> tensor_contract(const sparse_tensor_t<T, SPARSE_COO>& A,
+		const size_t i, const size_t j, const field_t F, thread_pool* pool = nullptr) {
 		
 		if (i > j)
 			return tensor_contract(A, j, i, F, pool);
@@ -1313,32 +1063,21 @@ namespace sparse_rref {
 			}
 		}
 
-		// sort the indices
+		std::vector<size_t> index_perm;
+		for (size_t k = 0; k < rank; k++) {
+			if (k != i && k != j)
+				index_perm.push_back(k);
+		}
+		index_perm.push_back(i);
+		index_perm.push_back(j);
+
 		auto perm = perm_init(equal_ind_list.size());
 		std::sort(std::execution::par, perm.begin(), perm.end(), [&](size_t a, size_t b) {
-			// do not compare the i-th and j-th index
-			auto ptr1 = A.index(equal_ind_list[a]);
-			auto ptr2 = A.index(equal_ind_list[b]);
-
-			// first compare the index before i, len = i, 1...i-1
-			int t1 = lexico_compare(ptr1, ptr2, i);
-			if (t1 != 0)
-				return t1 < 0;
-			// then compare the index before j, len = j - i - 1, i+1...j-1
-			t1 = lexico_compare(ptr1 + i + 1, ptr2 + i + 1, j - i - 1);
-			if (t1 != 0)
-				return t1 < 0;
-			// then compare the index after j, len = rank - j - 1, j+1...rank-1
-			t1 = lexico_compare(ptr1 + j + 1, ptr2 + j + 1, A.rank() - j - 1);
-			if (t1 != 0)
-				return t1 < 0;
-			// finally compare the i-th index
-			return ptr1[i] < ptr2[i];
+			return lexico_compare(A.index(equal_ind_list[a]), A.index(equal_ind_list[b]), index_perm) < 0;
 			});
 
 		std::vector<size_t> rowptr;
 		rowptr.push_back(0);
-		
 		auto equal_except_ij = [&](const index_p a, const index_p b) {
 			// do not compare the i-th and j-th index
 			for (size_t k = 0; k < rank; k++)
@@ -1348,189 +1087,88 @@ namespace sparse_rref {
 			};
 
 		for (size_t k = 1; k < equal_ind_list.size(); k++) {
-			if (A.index(equal_ind_list[perm[k]])[i] >= A.index(equal_ind_list[perm[rowptr.back()]])[i] 
-				|| !equal_except_ij(A.index(equal_ind_list[perm[k]]), A.index(equal_ind_list[perm[rowptr.back()]])))
+			if (!equal_except_ij(A.index(equal_ind_list[perm[k]]), A.index(equal_ind_list[perm[rowptr.back()]])))
 				rowptr.push_back(k);
 		}
 		rowptr.push_back(equal_ind_list.size());
 
-		auto nthread = pool.get_thread_count();
 		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
-		std::vector<sparse_tensor_t<T, SPARSE_COO>> Cs(nthread, C);
 
-		pool.detach_loop(0, rowptr.size() - 1, [&](size_t k) {
-			// from rowptr[k] to rowptr[k + 1] are the same
-			auto start = rowptr[k];
-			auto end = rowptr[k + 1];
-			T entry = 0;
-			auto id = thread_id();
-			for (size_t m = start; m < end; m++) {
-				entry = scalar_add(entry, A.val(equal_ind_list[perm[m]]), F);
-			}
-			if (entry != 0) {
+		if (pool != nullptr) {
+			auto nthread = pool->get_thread_count();
+			std::vector<sparse_tensor_t<T, SPARSE_COO>> Cs(nthread, C);
+
+			pool->detach_blocks(0, rowptr.size() - 1, [&](size_t ss, size_t ee) {
 				index_t indexC;
-				for (size_t l = 0; l < A.rank(); l++)
-					if (l != i && l != j)
-						indexC.push_back(A.index(equal_ind_list[perm[start]])[l]);
-				Cs[id].push_back(indexC, entry);
+				indexC.reserve(rank - 2);
+				for (size_t k = ss; k < ee; k++) {
+					// from rowptr[k] to rowptr[k + 1] are the same
+					auto start = rowptr[k];
+					auto end = rowptr[k + 1];
+					T entry = 0;
+					auto id = thread_id();
+					for (size_t m = start; m < end; m++) {
+						entry = scalar_add(entry, A.val(equal_ind_list[perm[m]]), F);
+					}
+					if (entry != 0) {
+						indexC.clear();
+						for (size_t l = 0; l < A.rank(); l++)
+							if (l != i && l != j)
+								indexC.push_back(A.index(equal_ind_list[perm[start]])[l]);
+						Cs[id].push_back(indexC, entry);
+					}
+				}}, nthread);
+
+			pool->wait();
+
+			// merge the results
+			size_t allnnz = 0;
+			size_t nownnz = 0;
+			for (size_t i = 0; i < nthread; i++) {
+				allnnz += Cs[i].nnz();
 			}
-			}, nthread);
 
-		pool.wait();
-
-		// merge the results
-		size_t allnnz = 0;
-		size_t nownnz = 0;
-		for (size_t i = 0; i < nthread; i++) {
-			allnnz += Cs[i].nnz();
+			C.reserve(allnnz);
+			C.resize(allnnz);
+			for (size_t i = 0; i < nthread; i++) {
+				// it is ordered, so we can directly push them back
+				auto tmpnnz = Cs[i].nnz();
+				T* valptr = C.data.valptr + nownnz;
+				index_p colptr = C.data.colptr + nownnz * C.rank();
+				s_copy(valptr, Cs[i].data.valptr, tmpnnz);
+				s_copy(colptr, Cs[i].data.colptr, tmpnnz * C.rank());
+				nownnz += tmpnnz;
+			}
 		}
-
-		C.reserve(allnnz);
-		C.resize(allnnz);
-		for (size_t i = 0; i < nthread; i++) {
-			// it is ordered, so we can directly push them back
-			auto tmpnnz = Cs[i].nnz();
-			T* valptr = C.data.valptr + nownnz;
-			index_p colptr = C.data.colptr + nownnz * C.rank();
-			s_copy(valptr, Cs[i].data.valptr, tmpnnz);
-			s_copy(colptr, Cs[i].data.colptr, tmpnnz * C.rank());
-			nownnz += tmpnnz;
+		else {
+			index_t indexC;
+			indexC.reserve(rank - 2);
+			for (size_t k = 0; k < rowptr.size() - 1; k++) {
+				// from rowptr[k] to rowptr[k + 1] are the same
+				auto start = rowptr[k];
+				auto end = rowptr[k + 1];
+				T entry = 0;
+				for (size_t m = start; m < end; m++) {
+					entry = scalar_add(entry, A.val(equal_ind_list[perm[m]]), F);
+				}
+				if (entry != 0) {
+					indexC.clear();
+					for (size_t l = 0; l < A.rank(); l++)
+						if (l != i && l != j)
+							indexC.push_back(A.index(equal_ind_list[perm[start]])[l]);
+					C.push_back(indexC, entry);
+				}
+			}
 		}
 
 		return C;
 	}
 
 	template <typename T>
-	void tensor_contract_r(
-		sparse_tensor_t<T, SPARSE_COO>& A,
-		const size_t i, const size_t j, const field_t F, thread_pool& pool) {
-
-		if (i > j) {
-			tensor_contract_r(A, j, i, F, pool);
-		}
-
-		if (i == j)
-			return; // do nothing
-
-		// then i < j
-
-		std::vector<size_t> dimsA = A.dims();
-		auto rank = A.rank();
-
-		std::vector<size_t> dimsC;
-		for (size_t k = 0; k < dimsA.size(); k++) {
-			if (k != i && k != j)
-				dimsC.push_back(dimsA[k]);
-		}
-
-		std::vector<size_t> equal_ind_list;
-
-		// search for the same indices
-		for (size_t k = 0; k < A.nnz(); k++) {
-			if (A.index(k)[i] == A.index(k)[j]) {
-				equal_ind_list.push_back(k);
-			}
-		}
-
-		// sort the indices
-		auto perm = perm_init(equal_ind_list.size());
-		std::sort(std::execution::par, perm.begin(), perm.end(), [&](size_t a, size_t b) {
-			// do not compare the i-th and j-th index
-			auto ptr1 = A.index(equal_ind_list[a]);
-			auto ptr2 = A.index(equal_ind_list[b]);
-
-			// first compare the index before i, len = i, 1...i-1
-			int t1 = lexico_compare(ptr1, ptr2, i);
-			if (t1 != 0)
-				return t1 < 0;
-			// then compare the index before j, len = j - i - 1, i+1...j-1
-			t1 = lexico_compare(ptr1 + i + 1, ptr2 + i + 1, j - i - 1);
-			if (t1 != 0)
-				return t1 < 0;
-			// then compare the index after j, len = rank - j - 1, j+1...rank-1
-			t1 = lexico_compare(ptr1 + j + 1, ptr2 + j + 1, A.rank() - j - 1);
-			if (t1 != 0)
-				return t1 < 0;
-			// finally compare the i-th index
-			return ptr1[i] < ptr2[i];
-			});
-
-		std::vector<size_t> rowptr;
-		rowptr.push_back(0);
-
-		auto equal_except_ij = [&](const index_p a, const index_p b) {
-			// do not compare the i-th and j-th index
-			for (size_t k = 0; k < rank; k++)
-				if (k != i && k != j && a[k] != b[k])
-					return false;
-			return true;
-			};
-
-		for (size_t k = 1; k < equal_ind_list.size(); k++) {
-			if (A.index(equal_ind_list[perm[k]])[i] >= A.index(equal_ind_list[perm[rowptr.back()]])[i]
-				|| !equal_except_ij(A.index(equal_ind_list[perm[k]]), A.index(equal_ind_list[perm[rowptr.back()]])))
-				rowptr.push_back(k);
-		}
-		rowptr.push_back(equal_ind_list.size());
-
-		auto nthread = pool.get_thread_count();
-		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
-		std::vector<sparse_tensor_t<T, SPARSE_COO>> Cs(nthread, C);
-
-		pool.detach_loop(0, rowptr.size() - 1, [&](size_t k) {
-			// from rowptr[k] to rowptr[k + 1] are the same
-			auto start = rowptr[k];
-			auto end = rowptr[k + 1];
-			T entry = 0;
-			auto id = thread_id();
-			for (size_t m = start; m < end; m++) {
-				entry = scalar_add(entry, A.val(equal_ind_list[perm[m]]), F);
-			}
-			if (entry != 0) {
-				index_t indexC;
-				for (size_t l = 0; l < A.rank(); l++)
-					if (l != i && l != j)
-						indexC.push_back(A.index(equal_ind_list[perm[start]])[l]);
-				Cs[id].push_back(indexC, entry);
-			}
-			}, nthread);
-
-		pool.wait();
-
-		// merge the results
-		size_t allnnz = 0;
-		size_t nownnz = 0;
-		for (size_t i = 0; i < nthread; i++) {
-			allnnz += Cs[i].nnz();
-		}
-
-		A.change_dims(dimsC);
-		if (A.alloc() < allnnz)
-			A.reserve(allnnz);
-		A.resize(allnnz);
-		for (size_t i = 0; i < nthread; i++) {
-			// it is ordered, so we can directly push them back
-			auto tmpnnz = Cs[i].nnz();
-			T* valptr = A.data.valptr + nownnz;
-			index_p colptr = A.data.colptr + nownnz * A.rank();
-			s_copy(valptr, Cs[i].data.valptr, tmpnnz);
-			s_copy(colptr, Cs[i].data.colptr, tmpnnz * A.rank());
-			nownnz += tmpnnz;
-		}
-	}
-
-	template <typename T>
 	sparse_tensor_t<T, SPARSE_COO> tensor_dot(
 		const sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F, thread_pool& pool) {
+		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F, thread_pool* pool = nullptr) {
 		return tensor_contract(A, B, A.rank() - 1, 0, F, pool);
-	}
-
-	template <typename T>
-	void tensor_dot_r(
-		sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F, thread_pool& pool) {
-		tensor_contract_r(A, B, A.rank() - 1, 0, F, pool);
 	}
 
 	// usually B is a matrix, and A is a tensor, we want to contract all the dimensions of A with B
@@ -1539,7 +1177,7 @@ namespace sparse_rref {
 	template <typename T>
 	sparse_tensor_t<T, SPARSE_COO> tensor_transform(
 		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B, 
-		const size_t start_index, const field_t F, thread_pool& pool) {
+		const size_t start_index, const field_t F, thread_pool* pool = nullptr) {
 
 		auto C = A;
 		auto rank = A.rank();
@@ -1548,17 +1186,6 @@ namespace sparse_rref {
 		}
 
 		return C;
-	}
-
-	template <typename T>
-	void tensor_transform_r(
-		sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B,
-		const size_t start_index, const field_t F, thread_pool& pool) {
-
-		auto rank = A.rank();
-		for (size_t i = start_index; i < rank; i++) {
-			tensor_contract_r(A, B, start_index, 0, F, pool);
-		}
 	}
 
 	// IO
