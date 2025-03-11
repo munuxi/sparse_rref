@@ -56,8 +56,15 @@ namespace sparse_rref {
 	}
 
 	template <typename T>
-	void s_memset(T* s, const T val, const T size) {
+	void s_memset(T* s, const T val, const size_t size) {
 		std::fill(s, s + size, val);
+	}
+
+	template <typename T>
+	void s_copy(T* des, T* ini, const size_t size) {
+		if (des == ini)
+			return;
+		std::copy(ini, ini + size, des);
 	}
 
 	// thread
@@ -66,34 +73,19 @@ namespace sparse_rref {
 		return BS::this_thread::get_index().value();
 	}
 
-	// field
-	enum RING {
-		FIELD_QQ,    // fmpq
-		FIELD_Fp,    // ulong
-		OTHER_RING // not implemented now
-	};
-
-	struct field_struct {
-		enum RING ring;
-		nmod_t mod;
-	};
-	typedef struct field_struct field_t[1];
-
 	// rref_option
 	struct rref_option {
 		bool verbose = false;
 		bool is_back_sub = true;
-		bool pivot_dir = true; // true: col, false: row
 		uint8_t method = 0;
 		int print_step = 100;
 		int search_depth = INT_MAX;
 		thread_pool pool = thread_pool(1); // default: thread pool with 1 thread
 	};
-	typedef struct rref_option rref_option_t[1];
+	using rref_option_t = rref_option[1];
 
 	// version
-	constexpr static const char version[] = "v0.2.5";
-
+	constexpr static const char version[] = "v0.3.0";
 
 
 	// if c++20, use std::countr_zero
@@ -148,6 +140,7 @@ namespace sparse_rref {
 			std::chrono::microseconds::period::den);
 	}
 
+	// some algorithms
 	template <typename T> std::vector<T> difference(std::vector<T> l) {
 		std::vector<T> result;
 		for (size_t i = 1; i < l.size(); i++) {
@@ -156,6 +149,45 @@ namespace sparse_rref {
 		return result;
 	}
 
+	template <typename T>
+	int lexico_compare(const std::vector<T>& a, const std::vector<T>& b) {
+		for (size_t i = 0; i < a.size(); i++) {
+			if (a[i] < b[i])
+				return -1;
+			if (a[i] > b[i])
+				return 1;
+		}
+		return 0;
+	}
+
+	template <typename T>
+	int lexico_compare(const T* a, const T* b, const size_t len) {
+		for (size_t i = 0; i < len; i++) {
+			if (a[i] < b[i])
+				return -1;
+			if (a[i] > b[i])
+				return 1;
+		}
+		return 0;
+	}
+
+	template <typename T>
+	int lexico_compare(const T* a, const T* b, const std::vector<size_t>& perm) {
+		auto len = perm.size();
+		for (auto i : perm) {
+			if (a[i] < b[i])
+				return -1;
+			if (a[i] > b[i])
+				return 1;
+		}
+		return 0;
+	}
+
+	inline int lexico_compare(const uint8_t* a, const uint8_t* b, size_t len) {
+		return std::memcmp(a, b, len);
+	}
+
+	// uset
 	struct uset {
 		constexpr static size_t bitset_size = std::numeric_limits<unsigned long long>::digits; // 64 or 32
 		std::vector<std::bitset<bitset_size>> data;
@@ -292,6 +324,85 @@ namespace sparse_rref {
 			return end;
 	}
 
+	std::vector<size_t> perm_init(size_t n) {
+		std::vector<size_t> perm(n);
+		for (size_t i = 0; i < n; i++)
+			perm[i] = i;
+		return perm;
+	}
+
+	std::vector<size_t> perm_inverse(const std::vector<size_t>& perm) {
+		size_t n = perm.size();
+		std::vector<size_t> result(n);
+		for (size_t i = 0; i < n; i++)
+			result[perm[i]] = i;
+		return result;
+	}
+
+	bool is_identity_perm(const std::vector<size_t>& perm) {
+		size_t n = perm.size();
+		for (size_t i = 0; i < n; i++) {
+			if (perm[i] != i)
+				return false;
+		}
+		return true;
+	}
+
+	template <typename T>
+	void permute(const std::vector<size_t>& Pt, std::vector<T>& A, size_t block_size = 1) {
+		size_t n = Pt.size();
+		std::vector<bool> visited(n, false);
+		auto P = perm_inverse(Pt);
+		std::vector<T> temp(block_size);
+
+		for (size_t i = 0; i < n; i++) {
+			if (!visited[i]) {
+				size_t current = i;
+				T* temp = &(A[i * block_size]);
+
+				do {
+					int next = P[current];
+					for (size_t j = 0; j < block_size; j++)
+						std::swap(A[next * block_size + j], temp[j]);
+					visited[current] = true;
+					current = next;
+				} while (current != i);
+			}
+		}
+	}
+
+	template <typename T>
+	void permute(const std::vector<size_t>& Pt, T* A, size_t block_size = 1) {
+		size_t n = Pt.size();
+		std::vector<bool> visited(n, false);
+		auto P = perm_inverse(Pt);
+		std::vector<T> temp(block_size);
+
+		for (size_t i = 0; i < n; i++) {
+			if (!visited[i]) {
+				size_t current = i;
+				T* temp = &(A[i * block_size]);
+
+				do {
+					int next = P[current];
+					for (size_t j = 0; j < block_size; j++)
+						std::swap(A[next * block_size + j], temp[j]);
+					visited[current] = true;
+					current = next;
+				} while (current != i);
+			}
+		}
+	}
+
+	inline std::vector<size_t> swap_perm(size_t a, size_t b, size_t n) {
+		std::vector<size_t> perm(n);
+		for (size_t i = 0; i < n; i++)
+			perm[i] = i;
+		perm[a] = b;
+		perm[b] = a;
+		return perm;
+	}
+
 	// LockFreeQueue
 	template <typename T>
 	class LockFreeQueue {
@@ -420,6 +531,12 @@ namespace sparse_rref {
 		file.close();
 		return buffer.str();
 	}
+
+	enum SPARSE_FILE_TYPE {
+		SPARSE_FILE_TYPE_SMS,
+		SPARSE_FILE_TYPE_MTX,
+		SPARSE_FILE_TYPE_BIN
+	};
 }
 
 #endif

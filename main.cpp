@@ -34,9 +34,9 @@ int main(int argc, char** argv) {
 	program.set_usage_max_line_width(80);
 	program.add_description("(exact) Sparse Reduced Row Echelon Form " + std::string(sparse_rref::version));
 	program.add_argument("input_file")
-		.help("input file in matrix market format");
+		.help("input file in the Matrix Market exchange formats (MTX) or\nSparse/Symbolic Matrix Storage (SMS)");
 	program.add_argument("-o", "--output")
-		.help("output file in matrix market format")
+		.help("output file in SMS format")
 		.default_value("<input_file>.rref")
 		.nargs(1);
 	program.add_usage_newline();
@@ -64,10 +64,6 @@ int main(int argc, char** argv) {
 		.default_value(1)
 		.nargs(1)
 		.scan<'i', int>();
-	program.add_argument("-pd", "--pivot_direction")
-		.help("the direction to select pivots")
-		.default_value("col")
-		.nargs(1);
 	program.add_usage_newline();
 	program.add_argument("-V", "--verbose")
 		.default_value(false)
@@ -146,13 +142,13 @@ int main(int argc, char** argv) {
 	auto& pool = opt->pool;
 	std::cout << "using " << nthread << " threads" << std::endl;
 
-	field_t F;
+	sparse_rref::field_t F;
 	if (prime == 0)
-		field_init(F, FIELD_QQ, 1);
+		field_init(F, sparse_rref::RING::FIELD_QQ, 1);
 	else
-		field_init(F, FIELD_Fp, prime);
+		field_init(F, sparse_rref::RING::FIELD_Fp, prime);
 
-	sparse_mat<fmpq> mat_Q;
+	sparse_mat<rat_t> mat_Q;
 	sparse_mat<ulong> mat_Zp;
 
 	auto start = sparse_rref::clocknow();
@@ -165,6 +161,7 @@ int main(int argc, char** argv) {
 
 	std::ifstream file(filePath);
 	sfmpq_mat_read(mat_Q, file);
+
 	if (prime != 0) {
 		mat_Zp.init(mat_Q.nrow, mat_Q.ncol);
 		snmod_mat_from_sfmpq(mat_Zp, mat_Q, p);
@@ -185,7 +182,6 @@ int main(int argc, char** argv) {
 	opt->verbose = (program["--verbose"] == true);
 	opt->is_back_sub = (program["--no-backward-substitution"] == false);
 	opt->print_step = program.get<int>("--print_step");
-	opt->pivot_dir = (program.get<std::string>("--pivot_direction") == "col");
 
 	if (opt->verbose) {
 		std::cout << "-------------------" << std::endl;
@@ -243,10 +239,10 @@ int main(int argc, char** argv) {
 
 	file2.open(outname + outname_add);
 	if (prime == 0) {
-		sparse_mat_write(mat_Q, file2);
+		sparse_mat_write(mat_Q, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
 	}
 	else {
-		sparse_mat_write(mat_Zp, file2);
+		sparse_mat_write(mat_Zp, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
 	}
 	file2.close();
 
@@ -256,14 +252,14 @@ int main(int argc, char** argv) {
 		if (prime == 0) {
 			auto K = sparse_mat_rref_kernel(mat_Q, pivots, F, opt);
 			if (K.nrow > 0)
-				sparse_mat_write(K, file2);
+				sparse_mat_write(K, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
 			else
 				std::cout << "kernel is empty" << std::endl;
 		}
 		else {
 			auto K = sparse_mat_rref_kernel(mat_Zp, pivots, F, opt);
 			if (K.nrow > 0)
-				sparse_mat_write(K, file2);
+				sparse_mat_write(K, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
 			else 
 				std::cout << "kernel is empty" << std::endl;
 		}
