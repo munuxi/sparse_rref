@@ -1195,8 +1195,15 @@ namespace sparse_rref {
 					std::cerr << "Error: wrong format in the matrix file" << std::endl;
 					std::exit(-1);
 				}
-				slong row = std::stoll(tokens[0]) - 1;
-				slong col = std::stoll(tokens[1]) - 1;
+				index_type row, col;
+				if constexpr (std::is_same_v<index_type, slong>) {
+					row = std::stoll(tokens[0]) - 1;
+					col = std::stoll(tokens[1]) - 1;
+				}
+				else {
+					row = std::stoi(tokens[0]) - 1;
+					col = std::stoi(tokens[1]) - 1;
+				}
 				// SMS stop at 0 0 0
 				if (row < 0 || col < 0)
 					break;
