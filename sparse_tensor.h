@@ -327,18 +327,18 @@ namespace sparse_rref {
 	};
 
 	// define the default sparse tensor
-	template <typename T, SPARSE_TYPE Type = SPARSE_COO> struct sparse_tensor_t;
+	template <typename T, SPARSE_TYPE Type = SPARSE_COO> struct sparse_tensor;
 
-	template <typename T> struct sparse_tensor_t<T, SPARSE_CSR> {
+	template <typename T> struct sparse_tensor<T, SPARSE_CSR> {
 		sparse_tensor_struct<T> data;
 
-		sparse_tensor_t() {}
-		~sparse_tensor_t() {}
-		sparse_tensor_t(std::vector<size_t> l, size_t aoc = 8) : data(l, aoc) {}
-		sparse_tensor_t(const sparse_tensor_t& l) : data(l.data) {}
-		sparse_tensor_t(sparse_tensor_t&& l) noexcept : data(std::move(l.data)) {}
-		sparse_tensor_t& operator=(const sparse_tensor_t& l) { data = l.data; return *this; }
-		sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept { data = std::move(l.data); return *this; }
+		sparse_tensor() {}
+		~sparse_tensor() {}
+		sparse_tensor(std::vector<size_t> l, size_t aoc = 8) : data(l, aoc) {}
+		sparse_tensor(const sparse_tensor& l) : data(l.data) {}
+		sparse_tensor(sparse_tensor&& l) noexcept : data(std::move(l.data)) {}
+		sparse_tensor& operator=(const sparse_tensor& l) { data = l.data; return *this; }
+		sparse_tensor& operator=(sparse_tensor&& l) noexcept { data = std::move(l.data); return *this; }
 
 		inline size_t alloc() { return data.alloc; }
 		inline size_t nnz() { return data.rowptr[data.dims[0]]; }
@@ -349,13 +349,13 @@ namespace sparse_rref {
 		inline void push_back(const index_t& l, const T& val) { data.push_back(l, val); }
 		inline void canonicalize() { data.canonicalize(); }
 		inline void sort_indices() { data.sort_indices(); }
-		inline sparse_tensor_t transpose(const std::vector<size_t>& perm) {
-			sparse_tensor_t B;
+		inline sparse_tensor transpose(const std::vector<size_t>& perm) {
+			sparse_tensor B;
 			B.data = data.transpose(perm);
 			return B;
 		}
 
-		void convert_from_COO(const sparse_tensor_t<T, SPARSE_COO>& l) {
+		void convert_from_COO(const sparse_tensor<T, SPARSE_COO>& l) {
 			std::vector<size_t> dims(l.data.dims.begin() + 1, l.data.dims.end()); // remove the first dimension
 			size_t nnz = l.data.rowptr[1];
 			size_t rank = dims.size();
@@ -369,8 +369,8 @@ namespace sparse_rref {
 		}
 
 		// constructor from COO
-		sparse_tensor_t(const sparse_tensor_t<T, SPARSE_COO>& l) { convert_from_COO(l); }
-		sparse_tensor_t& operator=(const sparse_tensor_t<T, SPARSE_COO>& l) {
+		sparse_tensor(const sparse_tensor<T, SPARSE_COO>& l) { convert_from_COO(l); }
+		sparse_tensor& operator=(const sparse_tensor<T, SPARSE_COO>& l) {
 			data.clear();
 			convert_from_COO(l);
 			return *this;
@@ -389,7 +389,7 @@ namespace sparse_rref {
 		}
 	};
 
-	template <typename T> struct sparse_tensor_t<T, SPARSE_COO> {
+	template <typename T> struct sparse_tensor<T, SPARSE_COO> {
 		sparse_tensor_struct<T> data;
 
 		template <typename S>
@@ -401,13 +401,13 @@ namespace sparse_rref {
 			return lp;
 		}
 
-		sparse_tensor_t() {}
-		~sparse_tensor_t() {}
-		sparse_tensor_t(const std::vector<size_t>& l, size_t aoc = 8) : data(prepend_num(l, 1ULL), aoc) {}
-		sparse_tensor_t(const sparse_tensor_t& l) : data(l.data) {}
-		sparse_tensor_t(sparse_tensor_t&& l) noexcept : data(std::move(l.data)) {}
-		sparse_tensor_t& operator=(const sparse_tensor_t& l) { data = l.data; return *this; }
-		sparse_tensor_t& operator=(sparse_tensor_t&& l) noexcept { data = std::move(l.data); return *this; }
+		sparse_tensor() {}
+		~sparse_tensor() {}
+		sparse_tensor(const std::vector<size_t>& l, size_t aoc = 8) : data(prepend_num(l, 1ULL), aoc) {}
+		sparse_tensor(const sparse_tensor& l) : data(l.data) {}
+		sparse_tensor(sparse_tensor&& l) noexcept : data(std::move(l.data)) {}
+		sparse_tensor& operator=(const sparse_tensor& l) { data = l.data; return *this; }
+		sparse_tensor& operator=(sparse_tensor&& l) noexcept { data = std::move(l.data); return *this; }
 
 		// for the i-th column, return the indices
 		index_p index(size_t i) const { return data.colptr + i * rank(); }
@@ -463,11 +463,11 @@ namespace sparse_rref {
 		}
 		inline void canonicalize() { data.canonicalize(); }
 		inline void sort_indices() { data.sort_indices(); }
-		inline sparse_tensor_t transpose(const std::vector<size_t>& perm) {
+		inline sparse_tensor transpose(const std::vector<size_t>& perm) {
 			std::vector<size_t> perm_new(perm);
 			for (auto& a : perm_new) { a++; }
 			perm_new = prepend_num(perm_new, 0);
-			sparse_tensor_t B;
+			sparse_tensor B;
 			B.data = data.transpose(perm_new);
 			B.sort_indices();
 			return B;
@@ -526,10 +526,10 @@ namespace sparse_rref {
 			}
 		}
 
-		sparse_tensor_t<T, SPARSE_COO> chop(slong pos, slong aa) const {
+		sparse_tensor<T, SPARSE_COO> chop(slong pos, slong aa) const {
 			std::vector<size_t> dims_new = dims();
 			dims_new.erase(dims_new.begin() + pos);
-			sparse_tensor_t<T, SPARSE_COO> result(dims_new);
+			sparse_tensor<T, SPARSE_COO> result(dims_new);
 			index_t index_new;
 			index_new.reserve(rank() - 1);
 			for (size_t i = 0; i < nnz(); i++) {
@@ -545,7 +545,7 @@ namespace sparse_rref {
 			return result;
 		}
 
-		void convert_from_CSR(const sparse_tensor_t<T, SPARSE_CSR>& l) {
+		void convert_from_CSR(const sparse_tensor<T, SPARSE_CSR>& l) {
 			data.init(prepend_num(l.data.dims, 1), l.data.rowptr[l.data.dims[0]]);
 			std::vector<size_t> index(l.data.rank + 1);
 			index[0] = 0;
@@ -560,10 +560,10 @@ namespace sparse_rref {
 		}
 
 		// constructor from CSR
-		sparse_tensor_t(const sparse_tensor_t<T, SPARSE_CSR>& l) {
+		sparse_tensor(const sparse_tensor<T, SPARSE_CSR>& l) {
 			convert_from_CSR(l);
 		}
-		sparse_tensor_t& operator=(const sparse_tensor_t<T, SPARSE_CSR>& l) {
+		sparse_tensor& operator=(const sparse_tensor<T, SPARSE_CSR>& l) {
 			data.clear();
 			convert_from_CSR(l);
 			return *this;
@@ -580,15 +580,15 @@ namespace sparse_rref {
 
 	// we assume that A, B are sorted, then C is also sorted
 	template <typename T> 
-	sparse_tensor_t<T, SPARSE_COO> tensor_product(
-		const sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F) {
+	sparse_tensor<T, SPARSE_COO> tensor_product(
+		const sparse_tensor<T, SPARSE_COO>& A,
+		const sparse_tensor<T, SPARSE_COO>& B, const field_t F) {
 
 		std::vector<size_t> dimsB = B.dims();
 		std::vector<size_t> dimsC = A.dims();
 		dimsC.insert(dimsC.end(), dimsB.begin(), dimsB.end());
 
-		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
+		sparse_tensor<T, SPARSE_COO> C(dimsC);
 
 		if (A.nnz() == 0 || B.nnz() == 0) {
 			return C;
@@ -620,8 +620,8 @@ namespace sparse_rref {
 
 	// returned tensor is sorted
 	template <typename T>
-	sparse_tensor_t<T, SPARSE_COO> tensor_sum(
-		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B,
+	sparse_tensor<T, SPARSE_COO> tensor_sum(
+		const sparse_tensor<T, SPARSE_COO>& A, const sparse_tensor<T, SPARSE_COO>& B,
 		const field_t F) {
 
 		// if one of the tensors is empty, it is ok that dims of A or B are not defined
@@ -644,7 +644,7 @@ namespace sparse_rref {
 		if (B.nnz() == 0)
 			return A;
 
-		sparse_tensor_t<T, SPARSE_COO> C(dimsC, A.nnz() + B.nnz());
+		sparse_tensor<T, SPARSE_COO> C(dimsC, A.nnz() + B.nnz());
 
 		auto Aperm = A.gen_perm();
 		auto Bperm = B.gen_perm();
@@ -692,8 +692,8 @@ namespace sparse_rref {
 	// A += B, we assume that A and B are sorted
 	template <typename T>
 	void tensor_sum_replace( 
-		sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F) {
+		sparse_tensor<T, SPARSE_COO>& A,
+		const sparse_tensor<T, SPARSE_COO>& B, const field_t F) {
 
 		// if one of the tensors is empty, it is ok that dims of A or B are not defined
 		if (A.alloc() == 0) {
@@ -776,8 +776,8 @@ namespace sparse_rref {
 
 	// the result is sorted
 	template <typename T>
-	sparse_tensor_t<T, SPARSE_COO> tensor_contract(
-		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B,
+	sparse_tensor<T, SPARSE_COO> tensor_contract(
+		const sparse_tensor<T, SPARSE_COO>& A, const sparse_tensor<T, SPARSE_COO>& B,
 		const std::vector<size_t>& i1, const std::vector<size_t>& i2, const field_t F, 
 		thread_pool* pool = nullptr) {
 
@@ -851,14 +851,14 @@ namespace sparse_rref {
 		}
 		rowptrB.push_back(B.nnz());
 
-		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
+		sparse_tensor<T, SPARSE_COO> C(dimsC);
 		// parallel version
 		size_t nthread;
 		if (pool == nullptr)
 			nthread = 1;
 		else
 			nthread = pool->get_thread_count();
-		std::vector<sparse_tensor_t<T, SPARSE_COO>> Cs(nthread, C);
+		std::vector<sparse_tensor<T, SPARSE_COO>> Cs(nthread, C);
 
 		auto method = [&](size_t ss, size_t ee) {
 
@@ -964,8 +964,8 @@ namespace sparse_rref {
 	}
 
 	template <typename T>
-	sparse_tensor_t<T, SPARSE_COO> tensor_contract(
-		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B,
+	sparse_tensor<T, SPARSE_COO> tensor_contract(
+		const sparse_tensor<T, SPARSE_COO>& A, const sparse_tensor<T, SPARSE_COO>& B,
 		const size_t i, const size_t j, const field_t F, thread_pool* pool = nullptr) {
 
 		return tensor_contract(A, B, std::vector<size_t>{ i }, std::vector<size_t>{ j }, F, pool);
@@ -974,9 +974,9 @@ namespace sparse_rref {
 	// the result is not sorted
 	// mode is only for tensor_contract inside
 	template <typename T>
-	sparse_tensor_t<T, SPARSE_COO> tensor_contract_2(
-		const sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B,
+	sparse_tensor<T, SPARSE_COO> tensor_contract_2(
+		const sparse_tensor<T, SPARSE_COO>& A,
+		const sparse_tensor<T, SPARSE_COO>& B,
 		const slong a, const field_t F, thread_pool* pool = nullptr) {
 
 		auto C = tensor_contract(A, B, a, 0, F, pool);
@@ -993,7 +993,7 @@ namespace sparse_rref {
 
 	// self contraction
 	template <typename T>
-	sparse_tensor_t<T, SPARSE_COO> tensor_contract(const sparse_tensor_t<T, SPARSE_COO>& A,
+	sparse_tensor<T, SPARSE_COO> tensor_contract(const sparse_tensor<T, SPARSE_COO>& A,
 		const size_t i, const size_t j, const field_t F, thread_pool* pool = nullptr) {
 		
 		if (i > j)
@@ -1051,11 +1051,11 @@ namespace sparse_rref {
 		}
 		rowptr.push_back(equal_ind_list.size());
 
-		sparse_tensor_t<T, SPARSE_COO> C(dimsC);
+		sparse_tensor<T, SPARSE_COO> C(dimsC);
 
 		if (pool != nullptr) {
 			auto nthread = pool->get_thread_count();
-			std::vector<sparse_tensor_t<T, SPARSE_COO>> Cs(nthread, C);
+			std::vector<sparse_tensor<T, SPARSE_COO>> Cs(nthread, C);
 
 			pool->detach_blocks(0, rowptr.size() - 1, [&](size_t ss, size_t ee) {
 				index_t indexC;
@@ -1124,9 +1124,9 @@ namespace sparse_rref {
 	}
 
 	template <typename T>
-	sparse_tensor_t<T, SPARSE_COO> tensor_dot(
-		const sparse_tensor_t<T, SPARSE_COO>& A,
-		const sparse_tensor_t<T, SPARSE_COO>& B, const field_t F, thread_pool* pool = nullptr) {
+	sparse_tensor<T, SPARSE_COO> tensor_dot(
+		const sparse_tensor<T, SPARSE_COO>& A,
+		const sparse_tensor<T, SPARSE_COO>& B, const field_t F, thread_pool* pool = nullptr) {
 		return tensor_contract(A, B, A.rank() - 1, 0, F, pool);
 	}
 
@@ -1134,8 +1134,8 @@ namespace sparse_rref {
 	// e.g. change a basis of a tensor
 	// we always require that B is sorted
 	template <typename T>
-	sparse_tensor_t<T, SPARSE_COO> tensor_transform(
-		const sparse_tensor_t<T, SPARSE_COO>& A, const sparse_tensor_t<T, SPARSE_COO>& B, 
+	sparse_tensor<T, SPARSE_COO> tensor_transform(
+		const sparse_tensor<T, SPARSE_COO>& A, const sparse_tensor<T, SPARSE_COO>& B, 
 		const size_t start_index, const field_t F, thread_pool* pool = nullptr) {
 
 		auto C = A;
@@ -1149,15 +1149,15 @@ namespace sparse_rref {
 
 	// IO
 
-	template <typename T> sparse_tensor_t<size_t> COO_tensor_read(T& st, const field_t F) {
+	template <typename T> sparse_tensor<size_t> COO_tensor_read(T& st, const field_t F) {
 		if (!st.is_open())
-			return sparse_tensor_t<size_t>();
+			return sparse_tensor<size_t>();
 		std::string strLine;
 
 		bool is_size = true;
 
 		std::vector<size_t> dims;
-		sparse_tensor_t<size_t> tensor;
+		sparse_tensor<size_t> tensor;
 		index_t index;
 
 		while (getline(st, strLine)) {
@@ -1169,7 +1169,7 @@ namespace sparse_rref {
 				for (size_t i = 0; i < tokens.size() - 1; i++)
 					dims.push_back(std::stoull(tokens[i]));
 				size_t nnz = std::stoull(tokens.back());
-				tensor = sparse_tensor_t<size_t, SPARSE_COO>(dims, nnz);
+				tensor = sparse_tensor<size_t, SPARSE_COO>(dims, nnz);
 				index.reserve(dims.size());
 				is_size = false;
 			}
