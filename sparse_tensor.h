@@ -18,7 +18,7 @@
 
 enum SPARSE_TYPE {
 	SPARSE_CSR, // Compressed sparse row
-	SPARSE_COO, // List of lists
+	SPARSE_COO, // Coordinate list
 	SPARSE_LR  // List of rows
 };
 
@@ -500,16 +500,11 @@ namespace sparse_rref {
 				exit(1);
 			}
 
-			auto start = clocknow();
-
 			std::vector<size_t> perm = perm_init(nnz());
 			std::sort(std::execution::par, perm.begin(), perm.end(), [&](size_t a, size_t b) {
 				return lexico_compare(index(a), index(b), index_perm) < 0;
 				});
 
-			auto end = clocknow();
-
-			std::cout << "gen_perm time: " << usedtime(start, end) << std::endl;
 			return perm;
 		}
 
@@ -1068,7 +1063,6 @@ namespace sparse_rref {
 	}
 
 	// the result is not sorted
-	// mode is only for tensor_contract inside
 	template <typename index_type, typename T>
 	sparse_tensor<index_type, T, SPARSE_COO> tensor_contract_2(
 		const sparse_tensor<index_type, T, SPARSE_COO>& A,
