@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
 		opt->pool.reset(); // automatic mode, use all possible threads
 	else
 		opt->pool.reset(nthread);
-	
+
 	auto& pool = opt->pool;
 	std::cout << "using " << nthread << " threads" << std::endl;
 
@@ -148,8 +148,9 @@ int main(int argc, char** argv) {
 	else
 		field_init(F, sparse_rref::RING::FIELD_Fp, prime);
 
-	sparse_mat<rat_t> mat_Q;
-	sparse_mat<ulong> mat_Zp;
+	using index_type = long long;
+
+	sparse_mat<index_type, ulong> mat_Zp;
 
 	auto start = sparse_rref::clocknow();
 	auto input_file = program.get<std::string>("input_file");
@@ -160,11 +161,10 @@ int main(int argc, char** argv) {
 	}
 
 	std::ifstream file(filePath);
-	sfmpq_mat_read(mat_Q, file);
+	auto mat_Q = sfmpq_mat_read<index_type>(file);
 
 	if (prime != 0) {
-		mat_Zp.init(mat_Q.nrow, mat_Q.ncol);
-		snmod_mat_from_sfmpq(mat_Zp, mat_Q, p);
+		mat_Zp = snmod_mat_from_sfmpq(mat_Q, p);
 	}
 	file.close();
 
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
 	else {
 		printmatinfo(mat_Zp);
 	}
-	
+
 	opt->verbose = (program["--verbose"] == true);
 	opt->is_back_sub = (program["--no-backward-substitution"] == false);
 	opt->print_step = program.get<int>("--print_step");
@@ -189,7 +189,7 @@ int main(int argc, char** argv) {
 	}
 
 	start = sparse_rref::clocknow();
-	std::vector<std::vector<pivot_t>> pivots;
+	std::vector<std::vector<std::pair<index_type, index_type>>> pivots;
 	if (prime == 0) {
 		// pivots = sparse_mat_rref(mat_Q, F, pool, opt);
 		pivots = sparse_mat_rref_reconstruct(mat_Q, opt);
@@ -231,10 +231,10 @@ int main(int argc, char** argv) {
 		}
 		file2.close();
 	}
-	
+
 	if (outname == input_file)
 		outname_add = ".rref";
-	else 
+	else
 		outname_add = "";
 
 	file2.open(outname + outname_add);
@@ -260,7 +260,7 @@ int main(int argc, char** argv) {
 			auto K = sparse_mat_rref_kernel(mat_Zp, pivots, F, opt);
 			if (K.nrow > 0)
 				sparse_mat_write(K, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
-			else 
+			else
 				std::cout << "kernel is empty" << std::endl;
 		}
 		file2.close();

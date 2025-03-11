@@ -56,11 +56,6 @@ namespace sparse_rref {
 	}
 
 	template <typename T>
-	void s_memset(T* s, const T val, const size_t size) {
-		std::fill(s, s + size, val);
-	}
-
-	template <typename T>
 	void s_copy(T* des, T* ini, const size_t size) {
 		if (des == ini)
 			return;

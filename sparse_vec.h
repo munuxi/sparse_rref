@@ -16,13 +16,11 @@
 
 namespace sparse_rref {
 	// sparse vector
-	template <typename T> struct sparse_vec {
-		slong* indices;
+	template <typename index_type, typename T> struct sparse_vec {
+		index_type* indices;
 		T* entries;
-		ulong _nnz;
-		ulong _alloc;
-
-		// using PE_pair = std::pair<slong&, T&>;
+		size_t _nnz;
+		size_t _alloc;
 
 		sparse_vec() {
 			indices = NULL;
@@ -35,7 +33,7 @@ namespace sparse_rref {
 			if (indices)
 				s_free(indices);
 			if (entries) {
-				for (ulong i = 0; i < _alloc; i++)
+				for (size_t i = 0; i < _alloc; i++)
 					entries[i].~T();
 				s_free(entries);
 			}
@@ -47,14 +45,14 @@ namespace sparse_rref {
 			clear();
 		}
 
-		void reserve(ulong n) {
+		void reserve(size_t n) {
 			if (n == _alloc || n == 0)
 				return;
 
 			if (_alloc == 0) {
-				indices = s_malloc<slong>(n);
+				indices = s_malloc<index_type>(n);
 				entries = s_malloc<T>(n);
-				for (ulong i = 0; i < n; i++)
+				for (size_t i = 0; i < n; i++)
 					new (entries + i) T();
 				_alloc = n;
 				return;
@@ -63,20 +61,20 @@ namespace sparse_rref {
 			indices = s_realloc(indices, n);
 
 			if (n < _alloc) {
-				for (ulong i = n; i < _alloc; i++)
+				for (size_t i = n; i < _alloc; i++)
 					entries[i].~T();
 				entries = s_realloc<T>(entries, n);
 			}
 			else {
 				entries = s_realloc<T>(entries, n);
-				for (ulong i = _alloc; i < n; i++)
+				for (size_t i = _alloc; i < n; i++)
 					new (entries + i) T();
 			}
 
 			_alloc = n;
 		}
 
-		void resize(ulong n) {
+		void resize(size_t n) {
 			_nnz = n;
 		}
 
@@ -85,7 +83,7 @@ namespace sparse_rref {
 				return;
 			if (_alloc < l._nnz)
 				reserve(l._nnz);
-			for (ulong i = 0; i < l._nnz; i++) {
+			for (size_t i = 0; i < l._nnz; i++) {
 				indices[i] = l.indices[i];
 				entries[i] = l.entries[i];
 			}
@@ -109,28 +107,6 @@ namespace sparse_rref {
 			l.entries = NULL;
 			l._nnz = 0;
 			l._alloc = 0;
-		}
-
-		template <typename U = T, typename std::enable_if<Flint::IsOneOf<U, ulong, int_t>,int>::type = 0>
-		operator sparse_vec<rat_t>() {
-			sparse_vec<rat_t> result;
-			result.reserve(_nnz);
-			result.zero();
-			for (size_t i = 0; i < _nnz; i++) {
-				result.push_back(indices[i], rat_t(entries[i]));
-			}
-			return result;
-		}
-
-		template <typename U = T, typename std::enable_if<Flint::IsOneOf<U, ulong>, int>::type = 0>
-		operator sparse_vec<int_t>() {
-			sparse_vec<int_t> result;
-			result.reserve(_nnz);
-			result.zero();
-			for (size_t i = 0; i < _nnz; i++) {
-				result.push_back(indices[i], int_t(entries[i]));
-			}
-			return result;
 		}
 
 		sparse_vec& operator=(const sparse_vec& l) {
@@ -157,7 +133,7 @@ namespace sparse_rref {
 			return *this;
 		}
 
-		void push_back(const slong index, const T& val) {
+		void push_back(const index_type index, const T& val) {
 			if (_nnz + 1 > _alloc)
 				reserve((1 + _alloc) * 2); // +1 to avoid _alloc = 0
 			indices[_nnz] = index;
@@ -165,41 +141,41 @@ namespace sparse_rref {
 			_nnz++;
 		}
 
-		void push_back(const std::pair<slong, T>& a) {
-			push_back(a.first, a.second);
+		inline void zero() { _nnz = 0; }
+		inline void push_back(const std::pair<index_type, T>& a) { push_back(a.first, a.second); }
+		index_type& operator()(const size_t pos) { return indices[pos]; }
+		const index_type& operator()(const size_t pos) const { return indices[pos]; }
+		T& operator[](const size_t pos) { return entries[pos]; }
+		const T& operator[](const size_t pos) const { return entries[pos]; }
+
+		std::pair<index_type&, T&> at(index_type pos) { return std::make_pair(indices[pos], entries[pos]); }
+		const std::pair<index_type&, T&> at(index_type pos) const { return std::make_pair(indices[pos], entries[pos]); }
+
+		template <typename U = T, typename std::enable_if<Flint::IsOneOf<U, ulong, int_t>, int>::type = 0>
+		operator sparse_vec<index_type, rat_t>() {
+			sparse_vec<index_type, rat_t> result;
+			result.reserve(_nnz);
+			result.zero();
+			for (size_t i = 0; i < _nnz; i++) {
+				result.push_back(indices[i], rat_t(entries[i]));
+			}
+			return result;
 		}
 
-		slong& operator()(const ulong pos) {
-			return indices[pos];
-		}
-
-		const slong& operator()(const ulong pos) const {
-			return indices[pos];
-		}
-
-		void zero() {
-			_nnz = 0;
-		}
-
-		T& operator[](const ulong pos) {
-			return entries[pos];
-		}
-
-		const T& operator[](const ulong pos) const {
-			return entries[pos];
-		}
-
-		std::pair<slong&, T&> at(ulong pos) {
-			return std::make_pair(indices[pos], entries[pos]);
-		}
-
-		const std::pair<slong&, T&> at(ulong pos) const {
-			return std::make_pair(indices[pos], entries[pos]);
+		template <typename U = T, typename std::enable_if<Flint::IsOneOf<U, ulong>, int>::type = 0>
+		operator sparse_vec<index_type, int_t>() {
+			sparse_vec<index_type, int_t> result;
+			result.reserve(_nnz);
+			result.zero();
+			for (size_t i = 0; i < _nnz; i++) {
+				result.push_back(indices[i], int_t(entries[i]));
+			}
+			return result;
 		}
 
 		void canonicalize() {
-			ulong new_nnz = 0;
-			ulong i = 0;
+			size_t new_nnz = 0;
+			size_t i = 0;
 			for (; i < _nnz; i++) {
 				if (entries[i] != 0)
 					break;
@@ -218,11 +194,8 @@ namespace sparse_rref {
 			if (_nnz <= 1)
 				return;
 
-			std::vector<slong> perm(_nnz);
-			for (size_t i = 0; i < _nnz; i++)
-				perm[i] = i;
-
-			std::sort(perm.begin(), perm.end(), [&](slong a, slong b) {
+			auto perm = perm_init(_nnz);
+			std::sort(perm.begin(), perm.end(), [&](index_type a, index_type b) {
 				return indices[a] < indices[b];
 				});
 
@@ -255,10 +228,10 @@ namespace sparse_rref {
 		}
 	};
 
-	template <> struct sparse_vec<bool> {
-		slong* indices;
-		ulong _nnz;
-		ulong _alloc;
+	template <typename index_type> struct sparse_vec<index_type, bool> {
+		index_type* indices;
+		size_t _nnz;
+		size_t _alloc;
 
 		sparse_vec() {
 			indices = NULL;
@@ -275,12 +248,12 @@ namespace sparse_rref {
 
 		~sparse_vec() { clear(); }
 
-		void reserve(ulong n) {
+		void reserve(size_t n) {
 			if (n == _alloc)
 				return;
 
 			if (_alloc == 0) {
-				indices = s_malloc<slong>(n);
+				indices = s_malloc<index_type>(n);
 				_alloc = n;
 				return;
 			}
@@ -289,14 +262,14 @@ namespace sparse_rref {
 			_alloc = n;
 		}
 
-		void resize(ulong n) { _nnz = n; }
+		void resize(size_t n) { _nnz = n; }
 
 		inline void copy(const sparse_vec& l) {
 			if (this == &l)
 				return;
 			if (_alloc < l._nnz)
 				reserve(l._nnz);
-			for (ulong i = 0; i < l._nnz; i++) {
+			for (size_t i = 0; i < l._nnz; i++) {
 				indices[i] = l.indices[i];
 			}
 			_nnz = l._nnz;
@@ -336,25 +309,25 @@ namespace sparse_rref {
 			return *this;
 		}
 
-		void push_back(const slong index, const bool val = true) {
+		void push_back(const index_type index, const bool val = true) {
 			if (_nnz + 1 > _alloc)
 				reserve((1 + _alloc) * 2); // +1 to avoid _alloc = 0
 			indices[_nnz] = index;
 			_nnz++;
 		}
 
-		slong& operator()(const ulong pos) { return indices[pos]; }
-		const slong& operator()(const ulong pos) const { return indices[pos]; }
+		index_type& operator()(const size_t pos) { return indices[pos]; }
+		const index_type& operator()(const size_t pos) const { return indices[pos]; }
 		void zero() { _nnz = 0; }
 		void sort_indices() { std::sort(indices, indices + _nnz); }
 		void compress() { sort_indices(); }
 	};
 
-	template <typename T>
-	inline T* sparse_vec_entry(sparse_vec<T>& vec, const slong index, const bool isbinary = true) {
+	template <typename index_type, typename T>
+	inline T* sparse_vec_entry(const sparse_vec<index_type, T>& vec, const index_type index, const bool isbinary = true) {
 		if (vec.nnz() == 0)
 			return NULL;
-		slong* ptr;
+		index_type* ptr;
 		if (isbinary)
 			ptr = sparse_rref::binarysearch(vec.indices, vec.indices + vec.nnz(), index);
 		else
@@ -364,22 +337,24 @@ namespace sparse_rref {
 		return vec.entries + (ptr - vec.indices);
 	}
 
-	using snmod_vec = sparse_vec<ulong>;
-	using sfmpq_vec = sparse_vec<rat_t>;
+	template <typename index_type> using snmod_vec = sparse_vec<index_type, ulong>;
+	template <typename index_type> using sfmpq_vec = sparse_vec<index_type, rat_t>;
 
-	template <typename T>
-	inline void sparse_vec_rescale(sparse_vec<T>& vec, const T scalar, const field_t F) {
+	template <typename index_type, typename T>
+	inline void sparse_vec_rescale(sparse_vec<index_type, T>& vec, const T scalar, const field_t F) {
 		if constexpr (std::is_same_v<T, ulong>) {
 			_nmod_vec_scalar_mul_nmod_shoup(vec.entries, vec.entries, vec.nnz(), scalar, F->mod);
 		}
 		else if constexpr (Flint::IsOneOf<T, int_t, rat_t>) {
-			for (ulong i = 0; i < vec.nnz(); i++)
+			for (size_t i = 0; i < vec.nnz(); i++)
 				vec.entries[i] *= scalar;
 		}
 	}
 
-	static void snmod_vec_from_sfmpq(snmod_vec& vec, const sfmpq_vec& src, nmod_t p) {
-		vec.reserve(src.nnz());
+	template <typename index_type>
+	static void snmod_vec_from_sfmpq(snmod_vec<index_type>& vec, const sfmpq_vec<index_type>& src, nmod_t p) {
+		if (vec._alloc < src.nnz())
+			vec.reserve(src.nnz());
 		vec.zero();
 		for (size_t i = 0; i < src.nnz(); i++) {
 			ulong num = src[i].num() % p;
@@ -390,7 +365,9 @@ namespace sparse_rref {
 	}
 
 	// we assume that vec and src are sorted, and the result is also sorted
-	static int snmod_vec_add_mul(snmod_vec& vec, const snmod_vec& src,
+	template <typename index_type>
+	static int snmod_vec_add_mul(
+		snmod_vec<index_type>& vec, const snmod_vec<index_type>& src,
 		const ulong a, field_t F) {
 		if (src.nnz() == 0)
 			return 0;
@@ -405,9 +382,9 @@ namespace sparse_rref {
 		ulong na = a;
 		ulong na_pr = n_mulmod_precomp_shoup(na, p.n);
 
-		ulong ptr1 = vec.nnz();
-		ulong ptr2 = src.nnz();
-		ulong ptr = vec.nnz() + src.nnz();
+		size_t ptr1 = vec.nnz();
+		size_t ptr2 = src.nnz();
+		size_t ptr = vec.nnz() + src.nnz();
 
 		if (vec._alloc < ptr)
 			vec.reserve(ptr);
@@ -415,7 +392,7 @@ namespace sparse_rref {
 
 		while (ptr1 > 0 && ptr2 > 0) {
 			if (vec(ptr1 - 1) == src(ptr2 - 1)) {
-				ulong entry =
+				auto entry =
 					_nmod_add(vec[ptr1 - 1],
 						n_mulmod_shoup(na, src[ptr2 - 1], na_pr, p.n), p);
 				if (entry != 0) {
@@ -458,8 +435,8 @@ namespace sparse_rref {
 		return 0;
 	}
 
-	template <bool dir>
-	int sfmpq_vec_addsub_mul(sfmpq_vec& vec, const sfmpq_vec& src, const rat_t& a) {
+	template <typename index_type, bool dir>
+	int sfmpq_vec_addsub_mul(sfmpq_vec<index_type>& vec, const sfmpq_vec<index_type>& src, const rat_t& a) {
 		if (src.nnz() == 0)
 			return 0;
 
@@ -476,9 +453,9 @@ namespace sparse_rref {
 			na = -a;
 		}
 
-		ulong ptr1 = vec.nnz();
-		ulong ptr2 = src.nnz();
-		ulong ptr = vec.nnz() + src.nnz();
+		size_t ptr1 = vec.nnz();
+		size_t ptr2 = src.nnz();
+		size_t ptr = vec.nnz() + src.nnz();
 
 		if (vec._alloc < ptr)
 			vec.reserve(ptr);
@@ -530,39 +507,45 @@ namespace sparse_rref {
 		return 0;
 	}
 
-	static inline int sfmpq_vec_add_mul(sfmpq_vec& vec, const sfmpq_vec& src, const rat_t& a) {
+	template <typename index_type>
+	static inline int sfmpq_vec_add_mul(sfmpq_vec<index_type>& vec, const sfmpq_vec<index_type>& src, const rat_t& a) {
 		return sfmpq_vec_addsub_mul<true>(vec, src, a);
 	}
 
-	static inline int sfmpq_vec_sub_mul(sfmpq_vec& vec, const sfmpq_vec& src, const rat_t& a) {
+	template <typename index_type>
+	static inline int sfmpq_vec_sub_mul(sfmpq_vec<index_type>& vec, const sfmpq_vec<index_type>& src, const rat_t& a) {
 		return sfmpq_vec_addsub_mul<false>(vec, src, a);
 	}
 
-	static inline int snmod_vec_sub_mul(snmod_vec& vec, const snmod_vec& src, const ulong a, field_t F) {
+	template <typename index_type>
+	static inline int snmod_vec_sub_mul(snmod_vec<index_type>& vec, const snmod_vec<index_type>& src, const ulong a, field_t F) {
 		return snmod_vec_add_mul(vec, src, F->mod.n - a, F);
 	}
 
-	static inline int sparse_vec_add(snmod_vec& vec, const snmod_vec& src, field_t F) {
+	template <typename index_type>
+	static inline int sparse_vec_add(snmod_vec<index_type>& vec, const snmod_vec<index_type>& src, field_t F) {
 		return snmod_vec_add_mul(vec, src, 1, F);
 	}
 
-	static inline int sparse_vec_sub(snmod_vec& vec, const snmod_vec& src, field_t F) {
+	template <typename index_type>
+	static inline int sparse_vec_sub(snmod_vec<index_type>& vec, const snmod_vec<index_type>& src, field_t F) {
 		return snmod_vec_add_mul(vec, src, F->mod.n - 1, F);
 	}
 
-	static inline int sparse_vec_sub_mul(snmod_vec& vec, const snmod_vec& src, const ulong a, field_t F) {
+	template <typename index_type>
+	static inline int sparse_vec_sub_mul(snmod_vec<index_type>& vec, const snmod_vec<index_type>& src, const ulong a, field_t F) {
 		return snmod_vec_sub_mul(vec, src, a, F);
 	}
 
 
 	// dot product
 	// return true if the result is zero
-	template <typename T>
-	T sparse_vec_dot(const sparse_vec<T> v1, const sparse_vec<T> v2, field_t F) {
+	template <typename index_type, typename T>
+	T sparse_vec_dot(const sparse_vec<index_type, T> v1, const sparse_vec<index_type, T> v2, field_t F) {
 		if (v1->nnz == 0 || v2->nnz == 0) {
 			return T(0);
 		}
-		slong ptr1 = 0, ptr2 = 0;
+		size_t ptr1 = 0, ptr2 = 0;
 		T result = 0;
 		while (ptr1 < v1.nnz() && ptr2 < v2.nnz()) {
 			if (v1(ptr1) == v2(ptr2)) {
@@ -578,28 +561,38 @@ namespace sparse_rref {
 		return result;
 	}
 
-	static std::pair<size_t, char*> snmod_vec_to_binary(const sparse_vec<ulong>& vec) {
-		constexpr auto ratio = sizeof(ulong) / sizeof(char);
+	template <typename index_type>
+	std::pair<char*, char*> snmod_vec_to_binary(const sparse_vec<index_type, ulong>& vec, char* buffer = NULL) {
+		constexpr auto ratio_i = sizeof(index_type) / sizeof(char);
+		constexpr auto ratio_e = sizeof(ulong) / sizeof(char);
 		auto nnz = vec.nnz();
-		char* buffer = s_malloc<char>((1 + 2 * nnz) * ratio);
-		std::memcpy(buffer, &nnz, sizeof(ulong));
-		std::memcpy(buffer + ratio, vec.indices, nnz * sizeof(ulong));
-		std::memcpy(buffer + (1 + nnz) * ratio, vec.entries, nnz * sizeof(ulong));
-		return std::make_pair((1 + 2 * nnz) * ratio, buffer);
+		if (buffer == NULL)
+			buffer = s_malloc<char>(ratio_e + nnz * (ratio_i + ratio_e));
+		auto ptr = buffer;
+		std::memcpy(ptr, &nnz, sizeof(ulong));
+		ptr += ratio_e;
+		std::memcpy(ptr, vec.indices, nnz * sizeof(index_type));
+		ptr += nnz * ratio_i;
+		std::memcpy(ptr, vec.entries, nnz * sizeof(ulong));
+		ptr += nnz * ratio_e;
+		return std::make_tuple(buffer, ptr);
 	}
 
-	static void snmod_vec_from_binary(sparse_vec<ulong>& vec, const char* buffer) {
-		constexpr auto ratio = sizeof(ulong) / sizeof(char);
+	template <typename index_type>
+	char* snmod_vec_from_binary(sparse_vec<index_type, ulong>& vec, const char* buffer) {
+		constexpr auto ratio_i = sizeof(index_type) / sizeof(char);
+		constexpr auto ratio_e = sizeof(ulong) / sizeof(char);
 		ulong nnz;
 		std::memcpy(&nnz, buffer, sizeof(ulong));
 		vec.reserve(nnz);
 		vec.resize(nnz);
-		std::memcpy(vec.indices, buffer + ratio, nnz * sizeof(ulong));
-		std::memcpy(vec.entries, buffer + (1 + nnz) * ratio, nnz * sizeof(ulong));
+		std::memcpy(vec.indices, buffer + ratio_e, nnz * sizeof(index_type));
+		std::memcpy(vec.entries, buffer + ratio_e + nnz * ratio_i, nnz * sizeof(ulong));
+		return buffer + ratio_e + nnz * (ratio_i + ratio_e);
 	}
 
 	// debug only, not used to the large vector
-	template <typename T> void print_vec_info(const sparse_vec<T>& vec) {
+	template <typename index_type, typename T> void print_vec_info(const sparse_vec<index_type, T>& vec) {
 		std::cout << "-------------------" << std::endl;
 		std::cout << "nnz: " << vec.nnz() << std::endl;
 		std::cout << "indices: ";
