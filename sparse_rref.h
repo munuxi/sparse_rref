@@ -168,7 +168,6 @@ namespace sparse_rref {
 
 	template <typename T>
 	int lexico_compare(const T* a, const T* b, const std::vector<size_t>& perm) {
-		auto len = perm.size();
 		for (auto i : perm) {
 			if (a[i] < b[i])
 				return -1;
@@ -319,10 +318,10 @@ namespace sparse_rref {
 			return end;
 	}
 
-	std::vector<size_t> perm_init(size_t n) {
-		std::vector<size_t> perm(n);
-		for (size_t i = 0; i < n; i++)
-			perm[i] = i;
+	template <typename T>
+	std::vector<T> perm_init(T n) {
+		std::vector<T> perm(n);
+		std::iota(perm.begin(), perm.end(), 0);
 		return perm;
 	}
 

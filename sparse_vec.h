@@ -94,9 +94,8 @@ namespace sparse_rref {
 			copy(l);
 		}
 
-		size_t nnz() const {
-			return _nnz;
-		}
+		size_t nnz() const { return _nnz; }
+		size_t alloc() const { return _alloc; }
 
 		sparse_vec(sparse_vec&& l) noexcept {
 			indices = l.indices;
@@ -353,7 +352,7 @@ namespace sparse_rref {
 
 	template <typename index_type>
 	static void snmod_vec_from_sfmpq(snmod_vec<index_type>& vec, const sfmpq_vec<index_type>& src, nmod_t p) {
-		if (vec._alloc < src.nnz())
+		if (vec.alloc() < src.nnz())
 			vec.reserve(src.nnz());
 		vec.zero();
 		for (size_t i = 0; i < src.nnz(); i++) {
@@ -386,7 +385,7 @@ namespace sparse_rref {
 		size_t ptr2 = src.nnz();
 		size_t ptr = vec.nnz() + src.nnz();
 
-		if (vec._alloc < ptr)
+		if (vec.alloc() < ptr)
 			vec.reserve(ptr);
 		vec.resize(ptr);
 
@@ -429,7 +428,7 @@ namespace sparse_rref {
 		}
 
 		vec.canonicalize();
-		if (vec._alloc > 4 * vec.nnz())
+		if (vec.alloc() > 4 * vec.nnz())
 			vec.reserve(2 * vec.nnz());
 
 		return 0;

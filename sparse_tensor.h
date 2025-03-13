@@ -460,7 +460,7 @@ namespace sparse_rref {
 			 auto n_nnz = nnz();
 			 if (n_nnz + 1 > data.alloc)
 			 	reserve((data.alloc + 1) * 2);
-			 std::copy(l, l + rank(), index(n_nnz));
+			 s_copy(index(n_nnz), l, rank());
 			 val(n_nnz) = new_val;
 			 data.rowptr[1]++; // increase the nnz
 		}
@@ -950,24 +950,19 @@ namespace sparse_rref {
 			nthread = pool->get_thread_count();
 		std::vector<sparse_tensor<index_type, T, SPARSE_COO>> Cs(nthread, C);
 
+		auto temp_lexico_compare = [&](size_t a, size_t b) {
+			auto ptrA = A.index(permA[a]);
+			auto ptrB = B.index(permB[b]);
+			for (size_t l = 0; l < i1i2_size; l++) {
+				if (ptrA[i1[l]] < ptrB[i2[l]])
+					return -1;
+				if (ptrA[i1[l]] > ptrB[i2[l]])
+					return 1;
+			}
+			return 0;
+			};
+
 		auto method = [&](size_t ss, size_t ee) {
-
-			std::vector<size_t> left_indA(i1i2_size);
-			std::vector<size_t> left_indB(i1i2_size);
-			// indA and indB is for the rest of the indices
-			auto indA = [&](size_t a) {
-				auto ptr = A.index(permA[a]);
-				for (size_t l = 0; l < i1i2_size; l++) {
-					left_indA[l] = ptr[i1[l]];
-				}
-				};
-			auto indB = [&](size_t b) {
-				auto ptr = B.index(permB[b]);
-				for (size_t l = 0; l < i1i2_size; l++) {
-					left_indB[l] = ptr[i2[l]];
-				}
-				};
-
 			size_t id = 0;
 			if (pool != nullptr)
 				id = thread_id();
@@ -979,25 +974,22 @@ namespace sparse_rref {
 				auto startA = rowptrA[k];
 				auto endA = rowptrA[k + 1];
 
-				for (size_t l = 0; l < left_size_A; l++) {
+				for (size_t l = 0; l < left_size_A; l++)
 					indexC[l] = A.index(permA[startA])[index_perm_A[l]];
-				}
 
 				for (size_t l = 0; l < rowptrB.size() - 1; l++) {
 					auto startB = rowptrB[l];
 					auto endB = rowptrB[l + 1];
 
 					// if the maximum index of A is less than the minimum index of B, then continue
-					indA(endA - 1); indB(startB);
-					if (lexico_compare(left_indA, left_indB) < 0)
+					if (temp_lexico_compare(endA - 1, startB) < 0)
 						continue;
 
 					// double pointer to calculate the inner product
 					size_t ptrA = startA, ptrB = startB;
 					T entry = 0;
 					while (ptrA < endA && ptrB < endB) {
-						indA(ptrA); indB(ptrB);
-						auto t1 = lexico_compare(left_indA, left_indB);
+						auto t1 = temp_lexico_compare(ptrA, ptrB);
 						if (t1 < 0)
 							ptrA++;
 						else if (t1 > 0)
@@ -1010,16 +1002,15 @@ namespace sparse_rref {
 					}
 
 					if (entry != 0) {
-						for (size_t l = 0; l < left_size_B; l++) {
+						for (size_t l = 0; l < left_size_B; l++)
 							indexC[left_size_A + l] = B.index(permB[startB])[index_perm_B[l]];
-						}
 
 						Cs[id].push_back(indexC, entry);
 					}
 				}
 			}
 			};
-
+	
 		// parallel version
 
 		if (pool != nullptr) {
@@ -1233,9 +1224,9 @@ namespace sparse_rref {
 		const sparse_tensor<index_type, T, SPARSE_COO>& B,
 		const size_t start_index, const field_t F, thread_pool* pool = nullptr) {
 
-		auto C = A;
 		auto rank = A.rank();
-		for (size_t i = start_index; i < rank; i++) {
+		auto C = tensor_contract(A, B, start_index, 0, F, pool);
+		for (size_t i = start_index + 1; i < rank; i++) {
 			C = tensor_contract(C, B, start_index, 0, F, pool);
 		}
 
