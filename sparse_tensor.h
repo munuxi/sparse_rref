@@ -11,6 +11,7 @@
 #define SPARSE_TENSOR_H
 
 #include <execution> 
+#include <map>
 #include "sparse_rref.h"
 #include "scalar.h"
 
@@ -1245,6 +1246,170 @@ namespace sparse_rref {
 		for (size_t i = start_index; i < rank; i++) {
 			A = tensor_contract(A, B, start_index, 0, F, pool);
 		}
+	}
+
+	// tensors {A,B,...}
+	// index_sets {{i1,j1,...}, {i2,j2,...}, ...}
+	// |{i1,j1,...}| = A.rank(), |{i2,j2,...}| = B.rank(), ...
+	// index with the same number will be contracted
+	// and the other indices will be sorted
+
+	// e.g. D = einstein_sum({ A,B,C }, { {0,1,4}, {2,1}, {2,3} })
+	// D_{i0,i3,i4} = sum_{i1,i2} A_{i0,i1,i4} B_{i2,i1} C_{i2,i3}
+
+	// TODO: it works, but the performance is not good
+	template <typename index_type, typename T> 
+	sparse_tensor<index_type, T, SPARSE_COO> einstein_sum(
+		const std::vector<sparse_tensor<index_type, T, SPARSE_COO>*> tensors,
+		const std::vector<std::vector<size_t>> index_sets,
+		const field_t F, thread_pool* pool = nullptr) {
+
+		auto nt = tensors.size();
+		if (nt != index_sets.size()) {
+			std::cerr << "Error: The number of tensors does not match the number of index sets." << std::endl;
+			exit(1);
+		}
+		for (size_t i = 1; i < nt; i++) {
+			if (tensors[i]->rank() != index_sets[i].size()) {
+				std::cerr << "Error: The rank of the tensor does not match the index set." << std::endl;
+				exit(1);
+			}
+		}
+
+		// now is the valid case
+
+		// first case is zero
+		for (size_t i = 0; i < nt; i++) {
+			if (tensors[i]->nnz() == 0)
+				return sparse_tensor<index_type, T, SPARSE_COO>();
+		}
+
+		// compute the summed index
+		std::map<size_t, std::vector<std::pair<size_t, size_t>>> index_map;
+		for (size_t i = 0; i < nt; i++) {
+			for (size_t j = 0; j < tensors[i]->rank(); j++) {
+				index_map[index_sets[i][j]].push_back(std::make_pair(i, j));
+			}
+		}
+
+		std::vector<std::vector<std::pair<size_t, size_t>>> contract_index;
+		std::vector<std::pair<size_t, size_t>> free_index;
+		for (auto& it : index_map) {
+			if (it.second.size() > 1)
+				contract_index.push_back(it.second);
+			else
+				free_index.push_back((it.second)[0]);
+		}
+		std::stable_sort(free_index.begin(), free_index.end(), 
+			[&index_sets](const std::pair<size_t, size_t>& a, const std::pair<size_t, size_t>& b) {
+				return index_sets[a.first][a.second] < index_sets[b.first][b.second];
+			});
+
+		std::vector<size_t> ptrs(nt, 0);
+		std::vector<size_t> nnzs(nt);
+		for (size_t i = 0; i < nt; i++)
+			nnzs[i] = tensors[i]->nnz();
+
+		// first find the first nonzero index
+		std::vector<std::vector<size_t>> nonzero_index;
+		while (true) {
+			bool is_zero = false;
+			for (auto& aa : contract_index) {
+				// index in aa should be the same, otherwise zero
+				auto num = tensors[aa[0].first]->index(ptrs[aa[0].first])[aa[0].second];
+				for (size_t i = 1; i < aa.size(); i++) {
+					auto num2 = tensors[aa[i].first]->index(ptrs[aa[i].first])[aa[i].second];
+					if (num != num2) {
+						is_zero = true;
+						break;
+					}
+				}
+				if (is_zero)
+					break;
+			}
+			if (!is_zero)
+				nonzero_index.push_back(ptrs);
+
+			bool is_end = false;
+			for (auto i = 0; i < nt + 1; i++) {
+				if (i == nt) {
+					is_end = true;
+					break;
+				}
+				ptrs[i]++; 
+				if (ptrs[i] < nnzs[i]) 
+					break;  
+				ptrs[i] = 0; 
+			}
+
+			if (is_end)
+				break;
+		}
+
+		auto compare_index = [&](size_t a, size_t b) {
+			auto& ptr1 = nonzero_index[a];
+			auto& ptr2 = nonzero_index[b];
+			for (auto& aa : free_index) {
+				if (tensors[aa.first]->index(ptr1[aa.first])[aa.second]
+					< tensors[aa.first]->index(ptr2[aa.first])[aa.second])
+					return -1;
+				if (tensors[aa.first]->index(ptr1[aa.first])[aa.second]
+					> tensors[aa.first]->index(ptr2[aa.first])[aa.second])
+					return 1;
+			}
+			return 0;
+			};
+
+		// TODO: first permute each tensor, then the sort is not necessary
+		// ...
+		// avoid copy the index, just permute the index
+		auto perm = perm_init(nonzero_index.size());
+		std::sort(std::execution::par, perm.begin(), perm.end(),
+			[&](size_t a, size_t b) {
+				return compare_index(a, b) < 0;
+			});
+
+		// compute the rowptr
+		std::vector<size_t> rowptr;
+		rowptr.push_back(0);
+		for (size_t i = 1; i < nonzero_index.size(); i++) {
+			if (compare_index(perm[i], perm[rowptr.back()]) != 0)
+				rowptr.push_back(i);
+		}
+		rowptr.push_back(nonzero_index.size());
+
+		// now compute the result
+
+		// first compute the dims of the result
+		std::vector<size_t> dimsC;
+		for (auto& aa : free_index) 
+			dimsC.push_back(tensors[aa.first]->dim(aa.second));
+
+		sparse_tensor<index_type, T, SPARSE_COO> C(dimsC, rowptr.size());
+
+		std::vector<index_type> index(free_index.size());
+		for (size_t i = 0; i < rowptr.size() - 1; i++) {
+			auto& ptr = nonzero_index[perm[rowptr[i]]];
+			// first compute the index
+			for (size_t j = 0; j < free_index.size(); j++) {
+				index[j] = tensors[free_index[j].first]->index(ptr[free_index[j].first])[free_index[j].second];
+			}
+
+			T entry = 0;
+			T tmp = 1;
+			for (size_t k = rowptr[i]; k < rowptr[i + 1]; k++) {
+				auto& ptr = nonzero_index[perm[k]];
+				tmp = 1;
+				for (size_t l = 0; l < nt; l++) 
+					tmp = scalar_mul(tmp, tensors[l]->val(ptr[l]), F);
+				entry = scalar_add(entry, tmp, F);
+			}
+
+			if (entry != 0)
+				C.push_back(index, entry);
+		}
+
+		return C;
 	}
 
 	// IO
