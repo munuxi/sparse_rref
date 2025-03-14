@@ -790,7 +790,7 @@ namespace sparse_rref {
 		if (B.alloc() == 0)
 			return;
 
-		std::vector<size_t> dimsC = A.dims();
+		auto dimsC = A.dims();
 		auto rank = A.rank();
 
 		if (dimsC != B.dims()) {
@@ -864,15 +864,13 @@ namespace sparse_rref {
 	// the result is sorted
 	template <typename index_type, typename T>
 	sparse_tensor<index_type, T, SPARSE_COO> tensor_contract(
-		const sparse_tensor<index_type, T, SPARSE_COO>& A, const sparse_tensor<index_type, T, SPARSE_COO>& B,
-		const std::vector<size_t>& i1, const std::vector<size_t>& i2, const field_t F, 
-		thread_pool* pool = nullptr) {
+		const sparse_tensor<index_type, T, SPARSE_COO>& A, 
+		const sparse_tensor<index_type, T, SPARSE_COO>& B,
+		const std::vector<size_t>& i1, const std::vector<size_t>& i2, 
+		const field_t F, thread_pool* pool = nullptr) {
 
 		using index_v = std::vector<index_type>;
 		using index_p = index_type*;
-
-		std::vector<size_t> dimsA = A.dims();
-		std::vector<size_t> dimsB = B.dims();
 
 		if (i1.size() != i2.size()) {
 			std::cerr << "Error: tensor_contract: The size of the two contract sets do not match." << std::endl;
@@ -882,6 +880,9 @@ namespace sparse_rref {
 		if (i1.size() == 0) {
 			return tensor_product(A, B, F);
 		}
+
+		auto dimsA = A.dims();
+		auto dimsB = B.dims();
 
 		for (size_t k = 0; k < i1.size(); k++) {
 			if (dimsA[i1[k]] != dimsB[i2[k]]) {
@@ -1211,7 +1212,8 @@ namespace sparse_rref {
 	template <typename index_type, typename T>
 	sparse_tensor<index_type, T, SPARSE_COO> tensor_dot(
 		const sparse_tensor<index_type, T, SPARSE_COO>& A,
-		const sparse_tensor<index_type, T, SPARSE_COO>& B, const field_t F, thread_pool* pool = nullptr) {
+		const sparse_tensor<index_type, T, SPARSE_COO>& B, 
+		const field_t F, thread_pool* pool = nullptr) {
 		return tensor_contract(A, B, A.rank() - 1, 0, F, pool);
 	}
 
@@ -1231,6 +1233,18 @@ namespace sparse_rref {
 		}
 
 		return C;
+	}
+
+	template <typename index_type, typename T>
+	void tensor_transform_replace(
+		sparse_tensor<index_type, T, SPARSE_COO>& A,
+		const sparse_tensor<index_type, T, SPARSE_COO>& B,
+		const size_t start_index, const field_t F, thread_pool* pool = nullptr) {
+
+		auto rank = A.rank();
+		for (size_t i = start_index; i < rank; i++) {
+			A = tensor_contract(A, B, start_index, 0, F, pool);
+		}
 	}
 
 	// IO

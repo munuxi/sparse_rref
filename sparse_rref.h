@@ -177,10 +177,6 @@ namespace sparse_rref {
 		return 0;
 	}
 
-	inline int lexico_compare(const uint8_t* a, const uint8_t* b, size_t len) {
-		return std::memcmp(a, b, len);
-	}
-
 	// uset
 	struct uset {
 		constexpr static size_t bitset_size = std::numeric_limits<unsigned long long>::digits; // 64 or 32
@@ -321,7 +317,8 @@ namespace sparse_rref {
 	template <typename T>
 	std::vector<T> perm_init(T n) {
 		std::vector<T> perm(n);
-		std::iota(perm.begin(), perm.end(), 0);
+		for (T i = 0; i < n; i++)
+			perm[i] = i;
 		return perm;
 	}
 
