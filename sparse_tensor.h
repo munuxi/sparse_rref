@@ -1304,6 +1304,249 @@ namespace sparse_rref {
 			[&index_sets](const std::pair<size_t, size_t>& a, const std::pair<size_t, size_t>& b) {
 				return index_sets[a.first][a.second] < index_sets[b.first][b.second];
 			});
+		
+		std::vector<std::vector<size_t>> each_free_index(nt);
+		std::vector<std::vector<size_t>> each_perm(nt);
+		for (auto [p, q] : free_index) {
+			each_free_index[p].push_back(q);
+			each_perm[p].push_back(q);
+		}
+		for (auto& a : contract_index) {
+			for (auto [p, q] : a) {
+				each_perm[p].push_back(q);
+			}
+		}
+
+		// restore the perm of the tensor
+		std::vector<std::pair<sparse_tensor<index_type, T, SPARSE_COO>*, std::vector<size_t>>> tensor_perm_map;
+		std::vector<std::vector<size_t>> pindx;
+		std::vector<size_t> tindx(nt);
+		for (size_t i = 0; i < nt; i++) {
+			auto checkexist = [&](const std::pair<sparse_tensor<index_type, T, SPARSE_COO>*, std::vector<size_t>>& a) {
+				if (a.first != tensors[i])
+					return false;
+				if (a.second.size() != each_perm[i].size())
+					return false;
+				for (size_t j = 0; j < a.second.size(); j++) {
+					if (a.second[j] != each_perm[i][j])
+						return false;
+				}
+				return true;
+				};
+			bool is_exist = false;
+			for (size_t j = 0; j < tensor_perm_map.size(); j++) {
+				if (checkexist(tensor_perm_map[j])) {
+					is_exist = true;
+					tindx[i] = j;
+				}
+			}
+			if (!is_exist) {
+				tensor_perm_map.push_back(std::make_pair(tensors[i], each_perm[i]));
+				pindx.push_back(tensors[i]->gen_perm(each_perm[i]));
+				tindx[i] = pindx.size() - 1;
+			}
+		}
+	
+
+		std::vector<std::vector<size_t>> each_rowptr(nt);
+		for (size_t i = 0; i < nt; i++) {
+			each_rowptr[i].push_back(0);
+			for (size_t j = 1; j < tensors[i]->nnz(); j++) {
+				bool is_same = true;
+				for (auto aa : each_free_index[i]) {
+					if (tensors[i]->index(pindx[tindx[i]][j])[aa] != tensors[i]->index(pindx[tindx[i]][j - 1])[aa]) {
+						is_same = false;
+						break;
+					}
+				}
+				if (!is_same)
+					each_rowptr[i].push_back(j);
+			}
+			each_rowptr[i].push_back(tensors[i]->nnz());
+		}
+
+		// first compute the dims of the result
+		std::vector<size_t> dimsC;
+		for (auto& aa : free_index)
+			dimsC.push_back(tensors[aa.first]->dim(aa.second));
+
+		sparse_tensor<index_type, T, SPARSE_COO> C(dimsC);
+
+		int nthread = 1;
+		if (pool != nullptr) {
+			nthread = pool->get_thread_count();
+		}
+
+		std::vector<sparse_tensor<index_type, T, SPARSE_COO>> Cs(nthread, C);
+
+		auto method = [&](size_t ss, size_t ee) {
+			int id = 0;
+			if (pool != nullptr)
+				id = thread_id();
+
+			std::vector<size_t> ptrs(nt, 0);
+			ptrs[0] = ss;
+			std::vector<size_t> internel_ptrs(nt);
+
+			std::vector<index_type> index(free_index.size());
+
+			// the outer loop 
+			// 0 <= ptrs[i] < each_rowptr[i].size() - 1
+			while (true) {
+				// the internel loop 
+				// each_rowptr[i][ptrs[i]] <= internel_ptrs[i] <  to each_rowptr[i][ptrs[i] + 1]
+				
+				for (size_t i = 0; i < nt; i++) {
+					internel_ptrs[i] = each_rowptr[i][ptrs[i]];
+				}
+
+				T entry = 0;
+
+				while (true) {
+					// check the indices in contract_index
+					bool is_zero = false;
+					for (auto& a : contract_index) {
+						auto num = tensors[a[0].first]->index(pindx[tindx[a[0].first]][internel_ptrs[a[0].first]])[a[0].second];
+						for (size_t j = 1; j < a.size(); j++) {
+							if (num != tensors[a[j].first]->index(pindx[tindx[a[j].first]][internel_ptrs[a[j].first]])[a[j].second]) {
+								is_zero = true;
+								break;
+							}
+						}
+					}
+
+					if (!is_zero) {
+						T tmp = 1;
+						for (auto j = 0; j < nt; j++)
+							tmp = scalar_mul(tmp, tensors[j]->val(pindx[tindx[j]][internel_ptrs[j]]), F);
+						entry = scalar_add(entry, tmp, F);
+					}
+
+					// add the index
+					bool is_internel_end = false;
+					for (int i = nt - 1; i > -2; i--) {
+						if (i == -1) {
+							is_internel_end = true;
+							break;
+						}
+						internel_ptrs[i]++;
+						if (internel_ptrs[i] < each_rowptr[i][ptrs[i] + 1])
+							break;
+						internel_ptrs[i] = each_rowptr[i][ptrs[i]];
+					}
+					if (is_internel_end)
+						break;
+				}
+
+				if (entry != 0) {
+					// compute the index
+					for (size_t j = 0; j < free_index.size(); j++) {
+						index[j] = tensors[free_index[j].first]->index(ptrs[free_index[j].first])[free_index[j].second];
+					}
+
+					Cs[id].push_back(index, entry);
+				}
+
+				bool is_end = false;
+				for (int i = nt - 1; i > -2; i--) {
+					if (i == -1) {
+						is_end = true;
+						break;
+					}
+					ptrs[i]++;
+					if (i == 0) {
+						if (ptrs[i] < ee)
+							break;
+						ptrs[i] = ss;
+					}
+					else {
+						if (ptrs[i] < each_rowptr[i].size() - 1)
+							break;
+						ptrs[i] = 0;
+					}
+				}
+
+				if (is_end)
+					break;
+			}
+			};
+
+		if (pool == nullptr) {
+			method(0, each_rowptr[0].size() - 1);
+			return Cs[0];
+		}
+
+		pool->detach_blocks(0, each_rowptr[0].size() - 1, method, nthread);
+		pool->wait();
+
+		// merge the results
+		size_t allnnz = 0;
+		size_t nownnz = 0;
+		for (size_t i = 0; i < nthread; i++) {
+			allnnz += Cs[i].nnz();
+		}
+
+		C.reserve(allnnz);
+		C.resize(allnnz);
+		for (size_t i = 0; i < nthread; i++) {
+			// it is ordered, so we can directly push them back
+			auto tmpnnz = Cs[i].nnz();
+			T* valptr = C.data.valptr + nownnz;
+			index_type* colptr = C.data.colptr + nownnz * C.rank();
+			s_copy(valptr, Cs[i].data.valptr, tmpnnz);
+			s_copy(colptr, Cs[i].data.colptr, tmpnnz * C.rank());
+			nownnz += tmpnnz;
+		}
+
+		return C;
+	}
+
+	template <typename index_type, typename T>
+	sparse_tensor<index_type, T, SPARSE_COO> einstein_sum_2(
+		const std::vector<sparse_tensor<index_type, T, SPARSE_COO>*> tensors,
+		const std::vector<std::vector<size_t>> index_sets,
+		const field_t F, thread_pool* pool = nullptr) {
+
+		auto nt = tensors.size();
+		if (nt != index_sets.size()) {
+			std::cerr << "Error: The number of tensors does not match the number of index sets." << std::endl;
+			exit(1);
+		}
+		for (size_t i = 1; i < nt; i++) {
+			if (tensors[i]->rank() != index_sets[i].size()) {
+				std::cerr << "Error: The rank of the tensor does not match the index set." << std::endl;
+				exit(1);
+			}
+		}
+
+		// now is the valid case
+
+		// first case is zero
+		for (size_t i = 0; i < nt; i++) {
+			if (tensors[i]->nnz() == 0)
+				return sparse_tensor<index_type, T, SPARSE_COO>();
+		}
+
+		// compute the summed index
+		std::map<size_t, std::vector<std::pair<size_t, size_t>>> index_map;
+		for (size_t i = 0; i < nt; i++) {
+			for (size_t j = 0; j < tensors[i]->rank(); j++) {
+				index_map[index_sets[i][j]].push_back(std::make_pair(i, j));
+			}
+		}
+
+		std::vector<std::vector<std::pair<size_t, size_t>>> contract_index;
+		std::vector<std::pair<size_t, size_t>> free_index;
+		for (auto& it : index_map) {
+			if (it.second.size() > 1)
+				contract_index.push_back(it.second);
+			else
+				free_index.push_back((it.second)[0]);
+		}
+		std::stable_sort(free_index.begin(), free_index.end(),
+			[&index_sets](const std::pair<size_t, size_t>& a, const std::pair<size_t, size_t>& b) {
+				return index_sets[a.first][a.second] < index_sets[b.first][b.second];
+			});
 
 		std::vector<size_t> ptrs(nt, 0);
 		std::vector<size_t> nnzs(nt);
@@ -1336,10 +1579,10 @@ namespace sparse_rref {
 					is_end = true;
 					break;
 				}
-				ptrs[i]++; 
-				if (ptrs[i] < nnzs[i]) 
-					break;  
-				ptrs[i] = 0; 
+				ptrs[i]++;
+				if (ptrs[i] < nnzs[i])
+					break;
+				ptrs[i] = 0;
 			}
 
 			if (is_end)
@@ -1382,7 +1625,7 @@ namespace sparse_rref {
 
 		// first compute the dims of the result
 		std::vector<size_t> dimsC;
-		for (auto& aa : free_index) 
+		for (auto& aa : free_index)
 			dimsC.push_back(tensors[aa.first]->dim(aa.second));
 
 		sparse_tensor<index_type, T, SPARSE_COO> C(dimsC, rowptr.size());
@@ -1400,7 +1643,7 @@ namespace sparse_rref {
 			for (size_t k = rowptr[i]; k < rowptr[i + 1]; k++) {
 				auto& ptr = nonzero_index[perm[k]];
 				tmp = 1;
-				for (size_t l = 0; l < nt; l++) 
+				for (size_t l = 0; l < nt; l++)
 					tmp = scalar_mul(tmp, tensors[l]->val(ptr[l]), F);
 				entry = scalar_add(entry, tmp, F);
 			}
