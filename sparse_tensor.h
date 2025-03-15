@@ -1396,14 +1396,16 @@ namespace sparse_rref {
 				// the internel loop 
 				// each_rowptr[i][ptrs[i]] <= internel_ptrs[i] <  to each_rowptr[i][ptrs[i] + 1]
 				
+				std::vector<size_t> start_ptrs(nt);
+				std::vector<size_t> end_ptrs(nt);
 				for (size_t i = 0; i < nt; i++) {
-					internel_ptrs[i] = each_rowptr[i][ptrs[i]];
+					start_ptrs[i] = each_rowptr[i][ptrs[i]];
+					end_ptrs[i] = each_rowptr[i][ptrs[i] + 1];
 				}
 
 				T entry = 0;
 
-				while (true) {
-					// check the indices in contract_index
+				multi_for(start_ptrs, end_ptrs, [&](const std::vector<size_t>& internel_ptrs) {
 					bool is_zero = false;
 					for (auto& a : contract_index) {
 						auto num = tensors[a[0].first]->index(pindx[tindx[a[0].first]][internel_ptrs[a[0].first]])[a[0].second];
@@ -1421,22 +1423,7 @@ namespace sparse_rref {
 							tmp = scalar_mul(tmp, tensors[j]->val(pindx[tindx[j]][internel_ptrs[j]]), F);
 						entry = scalar_add(entry, tmp, F);
 					}
-
-					// add the index
-					bool is_internel_end = false;
-					for (int i = nt - 1; i > -2; i--) {
-						if (i == -1) {
-							is_internel_end = true;
-							break;
-						}
-						internel_ptrs[i]++;
-						if (internel_ptrs[i] < each_rowptr[i][ptrs[i] + 1])
-							break;
-						internel_ptrs[i] = each_rowptr[i][ptrs[i]];
-					}
-					if (is_internel_end)
-						break;
-				}
+					});
 
 				if (entry != 0) {
 					// compute the index

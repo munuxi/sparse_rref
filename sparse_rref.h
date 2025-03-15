@@ -177,6 +177,74 @@ namespace sparse_rref {
 		return 0;
 	}
 
+	// mulit for
+	void multi_for(
+		const std::vector<size_t>& start, 
+		const std::vector<size_t>& end, 
+		const std::function<void(std::vector<size_t>&)> func) {
+
+		if (start.size() != end.size()) {
+			std::cerr << "Error: start and end size not match." << std::endl;
+			exit(1);
+		}
+
+		std::vector<size_t> index(start);
+		size_t nt = start.size();
+
+		while (true) {
+			func(index);
+
+			for (int i = nt - 1; i > -2; i--) {
+				if (i == -1) 
+					return;
+				index[i]++;
+				if (index[i] < end[i])
+					break;
+				index[i] = start[i];
+			}
+		}
+	}
+
+	// mulit for parallel
+	void multi_for(
+		const std::vector<size_t>& start,
+		const std::vector<size_t>& end,
+		const std::function<void(std::vector<size_t>&)> func,
+		thread_pool* pool) {
+
+		if (start.size() != end.size()) {
+			std::cerr << "Error: start and end size not match." << std::endl;
+			exit(1);
+		}
+
+		if (pool == nullptr) {
+			multi_for(start, end, func);
+		}
+
+		int nthread = pool->get_thread_count();
+
+		size_t allsize = 1;
+		for (size_t i = 0; i < start.size(); i++)
+			allsize *= (end[i] - start[i]);
+		size_t block_size = allsize / nthread;
+
+		size_t n = 0;
+		std::vector<std::vector<size_t>> indexes;
+
+		multi_for(start, end, [&](std::vector<size_t>& index) {
+			if (n % block_size == 0) {
+				indexes.push_back(index);
+			}
+			n++;
+			});
+		indexes.push_back(end);
+
+		pool->detach_loop(0, indexes.size() - 1, [&](size_t i) {
+			multi_for(indexes[i], indexes[i + 1], func);
+			});
+		pool->wait();
+	}
+
 	// uset
 	struct uset {
 		constexpr static size_t bitset_size = std::numeric_limits<unsigned long long>::digits; // 64 or 32
