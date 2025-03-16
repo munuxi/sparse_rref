@@ -40,7 +40,7 @@ namespace sparse_rref {
 		sparse_mat(sparse_mat&& l) noexcept {
 			nrow = l.nrow;
 			ncol = l.ncol;
-			rows = l.rows;
+			rows = std::move(l.rows);
 		}
 
 		void realloc(size_t r) {
@@ -61,7 +61,7 @@ namespace sparse_rref {
 				return *this;
 			nrow = l.nrow;
 			ncol = l.ncol;
-			rows = l.rows;
+			rows = std::move(l.rows);
 			return *this;
 		}
 

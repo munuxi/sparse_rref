@@ -99,8 +99,16 @@ namespace sparse_rref {
 		}
 
 		void reserve(size_t size) {
-			if (size == alloc)
+			if (size == 0 || size == alloc)
 				return;
+			if (alloc == 0) {
+				alloc = size;
+				colptr = s_malloc<index_type>(size * (rank - 1));
+				valptr = s_malloc<T>(size);
+				for (size_t i = 0; i < size; i++)
+					new (valptr + i) T();
+				return;
+			}
 			colptr = s_realloc<index_type>(colptr, size * (rank - 1));
 			if (size > alloc) {
 				valptr = s_realloc<T>(valptr, size);
