@@ -150,7 +150,7 @@ namespace sparse_rref {
 		std::pair<index_type&, T&> at(index_type pos) { return std::make_pair(indices[pos], entries[pos]); }
 		const std::pair<index_type&, T&> at(index_type pos) const { return std::make_pair(indices[pos], entries[pos]); }
 
-		template <typename U = T, typename std::enable_if<Flint::IsOneOf<U, ulong, int_t>, int>::type = 0>
+		template <typename U = T> requires Flint::IsOneOf<U, unsigned long, int_t>
 		operator sparse_vec<index_type, rat_t>() {
 			sparse_vec<index_type, rat_t> result;
 			result.reserve(_nnz);
@@ -161,7 +161,7 @@ namespace sparse_rref {
 			return result;
 		}
 
-		template <typename U = T, typename std::enable_if<Flint::IsOneOf<U, ulong>, int>::type = 0>
+		template <typename U = T> requires Flint::IsOneOf<U, ulong>
 		operator sparse_vec<index_type, int_t>() {
 			sparse_vec<index_type, int_t> result;
 			result.reserve(_nnz);
@@ -574,7 +574,7 @@ namespace sparse_rref {
 		ptr += nnz * ratio_i;
 		std::memcpy(ptr, vec.entries, nnz * sizeof(ulong));
 		ptr += nnz * ratio_e;
-		return std::make_tuple(buffer, ptr);
+		return std::make_pair(buffer, ptr);
 	}
 
 	template <typename index_type>
