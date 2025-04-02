@@ -1279,7 +1279,7 @@ namespace sparse_rref {
 		char* ptr = buffer;
 		ulong some_n[3]; // nrow, ncol, nnz
 		std::memcpy(some_n, ptr, 3 * sizeof(ulong)); ptr += 3 * ratio_e;
-		sparse_mat<ulong> mat(some_n[0], some_n[1]);
+		sparse_mat<index_type, ulong> mat(some_n[0], some_n[1]);
 		for (size_t i = 0; i < mat.nrow; i++)
 			ptr = snmod_vec_from_binary(mat[i], ptr);
 
