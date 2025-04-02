@@ -73,7 +73,7 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     fmpz_t tmp;
     fmpz_init(tmp);
     nmod_init(&pp, (ulong)p);
-    sparse_mat<ulong> A(nrows, ncols);
+    sparse_mat<slong, ulong> A(nrows, ncols);
     
     for (auto i = 0; i < nrows; i++) {
         for (auto k = rowptr[i]; k < rowptr[i + 1]; k++) {
@@ -89,7 +89,7 @@ EXTERN_C DLLEXPORT int modrref(WolframLibraryData ld, mint Argc, MArgument *Args
     field_init(F, FIELD_Fp, p);
 
     auto pivots = sparse_mat_rref(A, F, opt);
-    sparse_mat<ulong> K(sparse_mat_rref_kernel(A, pivots, F, opt));
+    auto K = sparse_mat_rref_kernel(A, pivots, F, opt);
     auto len = K.nrow;
     auto rank = pivots.size();
     

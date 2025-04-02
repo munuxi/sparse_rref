@@ -417,12 +417,12 @@ namespace sparse_rref {
 		}
 
 		void init(const std::vector<size_t>& l, size_t aoc = 8) {
-			data.init(prepend_num(l, 1ULL), aoc);
+			data.init(prepend_num(l, (size_t)1), aoc);
 		}
 
 		sparse_tensor() {}
 		~sparse_tensor() {}
-		sparse_tensor(const std::vector<size_t>& l, size_t aoc = 8) : data(prepend_num(l, 1ULL), aoc) {}
+		sparse_tensor(const std::vector<size_t>& l, size_t aoc = 8) : data(prepend_num(l, (size_t)1), aoc) {}
 		sparse_tensor(const sparse_tensor& l) : data(l.data) {}
 		sparse_tensor(sparse_tensor&& l) noexcept : data(std::move(l.data)) {}
 		sparse_tensor& operator=(const sparse_tensor& l) { data = l.data; return *this; }
