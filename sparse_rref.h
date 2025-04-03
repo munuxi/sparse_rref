@@ -221,7 +221,7 @@ namespace sparse_rref {
 			multi_for(start, end, func);
 		}
 
-		int nthread = pool->get_thread_count();
+		size_t nthread = pool->get_thread_count();
 
 		size_t allsize = 1;
 		for (size_t i = 0; i < start.size(); i++)

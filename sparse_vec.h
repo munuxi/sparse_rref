@@ -161,7 +161,7 @@ namespace sparse_rref {
 			return result;
 		}
 
-		template <typename U = T> requires Flint::IsOneOf<U, ulong>
+		template <typename U = T> requires Flint::IsOneOf<U, size_t>
 		operator sparse_vec<index_type, int_t>() {
 			sparse_vec<index_type, int_t> result;
 			result.reserve(_nnz);
@@ -336,12 +336,12 @@ namespace sparse_rref {
 		return vec.entries + (ptr - vec.indices);
 	}
 
-	template <typename index_type> using snmod_vec = sparse_vec<index_type, ulong>;
+	template <typename index_type> using snmod_vec = sparse_vec<index_type, size_t>;
 	template <typename index_type> using sfmpq_vec = sparse_vec<index_type, rat_t>;
 
 	template <typename index_type, typename T>
 	inline void sparse_vec_rescale(sparse_vec<index_type, T>& vec, const T scalar, const field_t F) {
-		if constexpr (std::is_same_v<T, ulong>) {
+		if constexpr (std::is_same_v<T, size_t>) {
 			_nmod_vec_scalar_mul_nmod_shoup(vec.entries, vec.entries, vec.nnz(), scalar, F->mod);
 		}
 		else if constexpr (Flint::IsOneOf<T, int_t, rat_t>) {

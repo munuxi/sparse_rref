@@ -814,7 +814,7 @@ namespace sparse_rref {
 
 		// store the pivots that have been used
 		// -1 is not used
-		std::vector<slong> rowpivs(mat.nrow, -1);
+		std::vector<index_type> rowpivs(mat.nrow, -1);
 		//std::vector<slong> colpivs(mat.ncol, -1);
 		std::vector<std::vector<std::pair<index_type, index_type>>> pivots;
 		std::vector<std::pair<index_type, index_type>> n_pivots;
