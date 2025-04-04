@@ -588,7 +588,8 @@ namespace sparse_rref {
 		vec.resize(nnz);
 		std::memcpy(vec.indices, buffer + ratio_e, nnz * sizeof(index_type));
 		std::memcpy(vec.entries, buffer + ratio_e + nnz * ratio_i, nnz * sizeof(ulong));
-		return buffer + ratio_e + nnz * (ratio_i + ratio_e);
+		char* ptr = (char*)(buffer + ratio_e + nnz * (ratio_i + ratio_e));
+		return ptr;
 	}
 
 	// debug only, not used to the large vector

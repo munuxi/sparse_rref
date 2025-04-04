@@ -148,9 +148,7 @@ int main(int argc, char** argv) {
 	else
 		field_init(F, sparse_rref::RING::FIELD_Fp, prime);
 
-	using index_type = long long;
-
-	sparse_mat<index_type, ulong> mat_Zp;
+	sparse_mat<ulong> mat_Zp;
 
 	auto start = sparse_rref::clocknow();
 	auto input_file = program.get<std::string>("input_file");
@@ -161,7 +159,7 @@ int main(int argc, char** argv) {
 	}
 
 	std::ifstream file(filePath);
-	auto mat_Q = sfmpq_mat_read<index_type>(file);
+	auto mat_Q = sfmpq_mat_read(file);
 
 	if (prime != 0) {
 		mat_Zp = snmod_mat_from_sfmpq(mat_Q, p);
@@ -189,7 +187,7 @@ int main(int argc, char** argv) {
 	}
 
 	start = sparse_rref::clocknow();
-	std::vector<std::vector<std::pair<index_type, index_type>>> pivots;
+	std::vector<std::vector<std::pair<slong, slong>>> pivots;
 	if (prime == 0) {
 		// pivots = sparse_mat_rref(mat_Q, F, pool, opt);
 		pivots = sparse_mat_rref_reconstruct(mat_Q, opt);
