@@ -600,7 +600,7 @@ namespace sparse_rref {
 					<< "  nnz: " << std::setw(bitlen_nnz) << now_nnz
 					<< "  density: " << std::setprecision(6) << std::setw(8)
 					<< 100 * (double)now_nnz / (rank * mat.ncol) << "%"
-					<< "  speed: " << std::setprecision(2) << std::setw(6)
+					<< "  speed: " << std::setprecision(6) << std::setw(6)
 					<< 1.0 * sub_pivots.size() * (cc - old_cc) / leftrows.size() / sparse_rref::usedtime(clock_begin, sparse_rref::clocknow())
 					<< " row/s    \r" << std::flush;
 				clock_begin = sparse_rref::clocknow();
@@ -963,7 +963,7 @@ namespace sparse_rref {
 						<< "  nnz: " << std::setw(bitlen_nnz) << now_nnz
 						<< "  density: " << std::setprecision(6) << std::setw(8)
 						<< 100 * (double)now_nnz / (mat.nrow * mat.ncol) << "%"
-						<< "  speed: " << std::setprecision(2) << std::setw(8) <<
+						<< "  speed: " << std::setprecision(6) << std::setw(8) <<
 						((pr - oldpr) / sparse_rref::usedtime(start, end))
 						<< " col/s    \r" << std::flush;
 					oldpr = pr;
