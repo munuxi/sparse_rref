@@ -30,13 +30,14 @@ namespace sparse_rref {
 		}
 
 		void clear() {
-			if (indices)
-				s_free(indices);
-			if (entries) {
-				for (size_t i = 0; i < _alloc; i++)
-					entries[i].~T();
-				s_free(entries);
-			}
+			if (_alloc == 0)
+				return;
+			s_free(indices);
+			indices = NULL;
+			for (size_t i = 0; i < _alloc; i++)
+				entries[i].~T();
+			s_free(entries);
+			entries = NULL;
 			_alloc = 0;
 			_nnz = 0;
 		}

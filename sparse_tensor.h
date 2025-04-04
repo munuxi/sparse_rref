@@ -91,6 +91,8 @@ namespace sparse_rref {
 				valptr[i].~T();
 			s_free(valptr);
 			s_free(colptr);
+			valptr = NULL;
+			colptr = NULL;
 			alloc = 0;
 		}
 
