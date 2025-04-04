@@ -343,6 +343,8 @@ namespace sparse_rref {
 		using index_v = std::vector<index_type>;
 		using index_p = index_type*;
 
+		void clear() { data.clear(); }
+
 		sparse_tensor() {}
 		~sparse_tensor() {}
 		sparse_tensor(std::vector<size_t> l, size_t aoc = 8) : data(l, aoc) {}
@@ -416,6 +418,7 @@ namespace sparse_rref {
 			return lp;
 		}
 
+		void clear() { data.clear(); }
 		void init(const std::vector<size_t>& l, size_t aoc = 8) {
 			data.init(prepend_num(l, (size_t)1), aoc);
 		}
@@ -1029,22 +1032,23 @@ namespace sparse_rref {
 
 			// merge the results
 			size_t allnnz = 0;
-			size_t nownnz = 0;
+			std::vector<size_t> start_ptrs;
 			for (size_t i = 0; i < nthread; i++) {
+				start_ptrs.push_back(allnnz);
 				allnnz += Cs[i].nnz();
 			}
 
 			C.reserve(allnnz);
 			C.resize(allnnz);
-			for (size_t i = 0; i < nthread; i++) {
-				// it is ordered, so we can directly push them back
+			pool->detach_loop(0, nthread, [&](size_t i) {
 				auto tmpnnz = Cs[i].nnz();
-				T* valptr = C.data.valptr + nownnz;
-				index_p colptr = C.data.colptr + nownnz * C.rank();
+				T* valptr = C.data.valptr + start_ptrs[i];
+				index_p colptr = C.data.colptr + start_ptrs[i] * C.rank();
 				s_copy(valptr, Cs[i].data.valptr, tmpnnz);
 				s_copy(colptr, Cs[i].data.colptr, tmpnnz * C.rank());
-				nownnz += tmpnnz;
-			}
+				Cs[i].clear();
+				}, nthread);
+			pool->wait();
 
 			return C;
 		}
