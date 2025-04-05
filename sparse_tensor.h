@@ -465,6 +465,7 @@ namespace sparse_rref {
 		inline void change_dims(const std::vector<size_t>& new_dims) {
 			auto dims = prepend_num(new_dims, 1ULL);
 			data.dims = dims;
+			data.rank = dims.size();
 			data.colptr = s_realloc<index_type>(data.colptr, new_dims.size() * alloc());
 		}
 

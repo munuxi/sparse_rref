@@ -15,8 +15,8 @@
 namespace sparse_rref {
 	// new sparse matrix
 	template <typename T> struct sparse_mat {
-		size_t nrow;
-		size_t ncol;
+		size_t nrow = 0;
+		size_t ncol = 0;
 		std::vector<sparse_vec<slong, T>> rows;
 
 		void init(size_t r, size_t c) {
@@ -44,7 +44,7 @@ namespace sparse_rref {
 		}
 
 		void realloc(size_t r) {
-			rows.reverse(r);
+			rows.reserve(r);
 		}
 
 		sparse_mat& operator=(const sparse_mat& l) {
@@ -95,10 +95,6 @@ namespace sparse_rref {
 			}
 			nrow = new_nrow;
 			rows.resize(nrow);
-		}
-
-		T* entry(size_t r, size_t c, bool isbinary = true) {
-			return sparse_vec_entry(rows[r], c, isbinary);
 		}
 
 		sparse_mat<T> transpose() {

@@ -17,10 +17,10 @@
 namespace sparse_rref {
 	// sparse vector
 	template <typename index_type, typename T> struct sparse_vec {
-		index_type* indices;
-		T* entries;
-		size_t _nnz;
-		size_t _alloc;
+		index_type* indices = NULL;
+		T* entries = NULL;
+		size_t _nnz = 0;
+		size_t _alloc = 0;
 
 		sparse_vec() {
 			indices = NULL;
