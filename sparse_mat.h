@@ -798,9 +798,13 @@ namespace sparse_rref {
 	template <typename T>
 	std::vector<std::vector<std::pair<slong, slong>>> sparse_mat_rref_c(sparse_mat<T>& mat, field_t F, rref_option_t opt) {
 		// first canonicalize, sort and compress the matrix
-		mat.compress();
 
 		auto& pool = opt->pool;
+
+		pool.detach_loop<slong>(0, mat.nrow, [&](slong i) {
+			mat[i].compress();
+			}, 0);
+		pool.wait();
 
 		// perm the col
 		std::vector<slong> leftcols(mat.ncol);
