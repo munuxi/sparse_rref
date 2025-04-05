@@ -879,9 +879,9 @@ namespace sparse_rref {
 	// the result is sorted
 	template <typename index_type, typename T>
 	sparse_tensor<index_type, T, SPARSE_COO> tensor_contract(
-		const sparse_tensor<index_type, T, SPARSE_COO>& A, 
+		const sparse_tensor<index_type, T, SPARSE_COO>& A,
 		const sparse_tensor<index_type, T, SPARSE_COO>& B,
-		const std::vector<size_t>& i1, const std::vector<size_t>& i2, 
+		const std::vector<size_t>& i1, const std::vector<size_t>& i2,
 		const field_t F, thread_pool* pool = nullptr) {
 
 		using index_v = std::vector<index_type>;
@@ -978,11 +978,7 @@ namespace sparse_rref {
 			return 0;
 			};
 
-		auto method = [&](size_t ss, size_t ee) {
-			size_t id = 0;
-			if (pool != nullptr)
-				id = thread_id();
-
+		auto method = [&](sparse_tensor<index_type, T>& C, size_t ss, size_t ee) {
 			index_v indexC(dimsC.size());
 
 			for (size_t k = ss; k < ee; k++) {
@@ -1021,23 +1017,33 @@ namespace sparse_rref {
 						for (size_t l = 0; l < left_size_B; l++)
 							indexC[left_size_A + l] = B.index(permB[startB])[index_perm_B[l]];
 
-						Cs[id].push_back(indexC, entry);
+						C.push_back(indexC, entry);
 					}
 				}
 			}
 			};
-	
+
 		// parallel version
 
 		if (pool != nullptr) {
-			pool->detach_blocks(0, rowptrA.size() - 1, method, nthread); // num_block = num_thread
+			size_t base = (rowptrA.size() - 1) / nthread;
+			size_t rem = (rowptrA.size() - 1) % nthread;
+
+			std::vector<std::pair<size_t, size_t>> ranges(nthread);
+			size_t start = 0;
+			for (int i = 0; i < nthread; ++i) {
+				size_t end = start + base + (i < rem ? 1 : 0);
+				ranges[i] = { start, end };
+				start = end;
+			}
+			pool->submit_loop(0, nthread, [&](size_t i) { method(Cs[i], ranges[i].first, ranges[i].second); });
 			pool->wait();
 
 			// merge the results
 			size_t allnnz = 0;
-			std::vector<size_t> start_ptrs;
+			std::vector<size_t> start_pos(nthread);
 			for (size_t i = 0; i < nthread; i++) {
-				start_ptrs.push_back(allnnz);
+				start_pos[i] = allnnz;
 				allnnz += Cs[i].nnz();
 			}
 
@@ -1045,8 +1051,8 @@ namespace sparse_rref {
 			C.resize(allnnz);
 			pool->detach_loop(0, nthread, [&](size_t i) {
 				auto tmpnnz = Cs[i].nnz();
-				T* valptr = C.data.valptr + start_ptrs[i];
-				index_p colptr = C.data.colptr + start_ptrs[i] * C.rank();
+				T* valptr = C.data.valptr + start_pos[i];
+				index_p colptr = C.data.colptr + start_pos[i] * C.rank();
 				s_copy(valptr, Cs[i].data.valptr, tmpnnz);
 				s_copy(colptr, Cs[i].data.colptr, tmpnnz * C.rank());
 				Cs[i].clear();
@@ -1056,8 +1062,8 @@ namespace sparse_rref {
 			return C;
 		}
 		else {
-			method(0, rowptrA.size() - 1);
-			return Cs[0];
+			method(C, 0, rowptrA.size() - 1);
+			return C;
 		}
 	}
 
@@ -1273,6 +1279,7 @@ namespace sparse_rref {
 	// D_{i0,i3,i4} = sum_{i1,i2} A_{i0,i1,i4} B_{i2,i1} C_{i2,i3}
 
 	// TODO: it works, but the performance is not good
+	// TODO: parallel version may be wrong
 	template <typename index_type, typename T> 
 	sparse_tensor<index_type, T, SPARSE_COO> einstein_sum(
 		const std::vector<sparse_tensor<index_type, T, SPARSE_COO>*> tensors,
