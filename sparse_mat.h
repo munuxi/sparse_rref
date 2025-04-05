@@ -70,7 +70,7 @@ namespace sparse_rref {
 				rows[i].zero();
 		}
 
-		size_t nnz() {
+		size_t nnz() const {
 			size_t n = 0;
 			for (size_t i = 0; i < nrow; i++)
 				n += rows[i].nnz();
