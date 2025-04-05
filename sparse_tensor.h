@@ -463,7 +463,7 @@ namespace sparse_rref {
 		// change the dimensions of the tensor
 		// it is dangerous, only for internal use
 		inline void change_dims(const std::vector<size_t>& new_dims) {
-			auto dims = prepend_num(new_dims, 1ULL);
+			auto dims = prepend_num(new_dims, (size_t)1);
 			data.dims = dims;
 			data.rank = dims.size();
 			data.colptr = s_realloc<index_type>(data.colptr, new_dims.size() * alloc());
@@ -575,7 +575,7 @@ namespace sparse_rref {
 
 		// constructor from CSR
 		sparse_tensor(const sparse_tensor<index_type, T, SPARSE_CSR>& l) {
-			data.init(prepend_num(l.dims(), 1ULL), l.nnz());
+			data.init(prepend_num(l.dims(), (size_t)1), l.nnz());
 			resize(l.nnz());
 
 			auto r = rank();
@@ -628,7 +628,7 @@ namespace sparse_rref {
 			data.alloc = l.data.alloc;
 			data.colptr = s_realloc(data.colptr, l.data.alloc * l.rank());
 			std::swap(data.valptr, l.data.valptr); // no need to copy
-			data.dims = prepend_num(l.dims(), 1ULL);
+			data.dims = prepend_num(l.dims(), (size_t)1);
 			data.rowptr = { 0, l.nnz() };
 
 			auto r = l.rank();
@@ -653,7 +653,7 @@ namespace sparse_rref {
 			data.colptr = s_malloc<index_type>(l.data.alloc * l.rank());
 			data.valptr = l.data.valptr;
 			l.data.valptr = NULL;
-			data.dims = prepend_num(l.dims(), 1ULL);
+			data.dims = prepend_num(l.dims(), (size_t)1);
 			data.rowptr = { 0, l.nnz() };
 
 			auto r = l.rank();
@@ -1036,7 +1036,7 @@ namespace sparse_rref {
 				ranges[i] = { start, end };
 				start = end;
 			}
-			pool->submit_loop(0, nthread, [&](size_t i) { method(Cs[i], ranges[i].first, ranges[i].second); });
+			pool->detach_loop(0, nthread, [&](size_t i) { method(Cs[i], ranges[i].first, ranges[i].second); });
 			pool->wait();
 
 			// merge the results
