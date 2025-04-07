@@ -542,7 +542,7 @@ namespace sparse_rref {
 	// return true if the result is zero
 	template <typename index_type, typename T>
 	T sparse_vec_dot(const sparse_vec<index_type, T> v1, const sparse_vec<index_type, T> v2, field_t F) {
-		if (v1->nnz == 0 || v2->nnz == 0) {
+		if (v1.nnz() == 0 || v2.nnz() == 0) {
 			return T(0);
 		}
 		size_t ptr1 = 0, ptr2 = 0;
