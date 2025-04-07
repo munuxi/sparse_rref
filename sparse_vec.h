@@ -229,9 +229,9 @@ namespace sparse_rref {
 	};
 
 	template <typename index_type> struct sparse_vec<index_type, bool> {
-		index_type* indices;
-		size_t _nnz;
-		size_t _alloc;
+		index_type* indices = NULL;
+		size_t _nnz = 0;
+		size_t _alloc = 0;
 
 		sparse_vec() {
 			indices = NULL;
