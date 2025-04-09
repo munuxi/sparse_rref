@@ -135,11 +135,12 @@ namespace sparse_rref {
 		for (size_t i = 0; i < rows.size(); i++) {
 			for (size_t j = 0; j < mat[rows[i]].nnz(); j++) {
 				auto col = mat[rows[i]](j);
-				T ptr = mat[rows[i]][j];
 				if constexpr (std::is_same_v<S, T>) {
+					T ptr = mat[rows[i]][j];
 					tranmat[col].push_back(rows[i], ptr);
 				}
 				else if constexpr (std::is_same_v<S, T*>) {
+					T ptr = mat[rows[i]][j];
 					tranmat[col].push_back(rows[i], &ptr);
 				}
 				else {
@@ -163,7 +164,8 @@ namespace sparse_rref {
 	// we assume that mat is canonical, i.e. each index is sorted
 	// and the result is also canonical
 	template <typename T>
-	size_t eliminate_row_with_one_nnz(sparse_mat<T>& mat, std::vector<slong>& donelist) {
+	size_t eliminate_row_with_one_nnz(sparse_mat<T>& mat, std::vector<slong>& donelist,
+		rref_option_t opt) {
 		auto localcounter = 0;
 		std::vector<slong> pivlist(mat.nrow, -1);
 		std::vector<slong> collist(mat.ncol, -1);
@@ -182,7 +184,7 @@ namespace sparse_rref {
 		if (localcounter == 0)
 			return localcounter;
 
-		for (size_t i = 0; i < mat.nrow; i++) {
+		opt->pool.detach_loop(0, mat.nrow, [&](size_t i) {
 			for (size_t j = 0; j < mat[i].nnz(); j++) {
 				if (collist[mat[i](j)] != -1) {
 					if (pivlist[i] == mat[i](j))
@@ -191,10 +193,9 @@ namespace sparse_rref {
 						mat[i][j] = 0;
 				}
 			}
-		}
-
-		for (size_t i = 0; i < mat.nrow; i++)
 			mat[i].canonicalize();
+			});
+		opt->pool.wait();
 
 		for (size_t i = 0; i < mat.nrow; i++)
 			if (pivlist[i] != -1)
@@ -220,7 +221,7 @@ namespace sparse_rref {
 		int bitlen_ndir = (int)std::floor(std::log(ndir) / std::log(10)) + 1;
 
 		do {
-			localcounter = eliminate_row_with_one_nnz(mat, donelist);
+			localcounter = eliminate_row_with_one_nnz(mat, donelist, opt);
 			count += localcounter;
 			if (verbose) {
 				oldnnz = mat.nnz();
@@ -535,8 +536,13 @@ namespace sparse_rref {
 			}
 		}
 
-		mat[k].zero();
 		auto pos = nonzero_c.nonzero();
+		if (pos.size() == 0) {
+			mat[k].clear();
+			return;
+		}
+
+		mat[k].zero();
 		for (auto p : pos) {
 			mat[k].push_back(p, tmpvec[p]);
 		}
@@ -681,7 +687,7 @@ namespace sparse_rref {
 		}
 
 		std::vector<slong> leftrows(mat.nrow, -1);
-		eliminate_row_with_one_nnz(mat, leftrows);
+		eliminate_row_with_one_nnz(mat, leftrows, opt);
 
 		leftrows.clear();
 
