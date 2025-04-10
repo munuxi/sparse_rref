@@ -20,6 +20,7 @@
 #include <iomanip>
 #include <iostream>
 #include <list>
+#include <numeric>
 #include <queue>
 #include <set>
 #include <sstream>
