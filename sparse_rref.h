@@ -288,8 +288,8 @@ namespace sparse_rref {
 				d.reset();
 		}
 
-		std::bitset<bitset_size>& operator[](size_t idx) {
-			return data[idx];
+		bool operator[](size_t idx) {
+			return count(idx);
 		}
 
 		size_t size() {

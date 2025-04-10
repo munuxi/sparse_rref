@@ -167,16 +167,16 @@ namespace sparse_rref {
 	size_t eliminate_row_with_one_nnz(sparse_mat<T>& mat, std::vector<slong>& donelist,
 		rref_option_t opt) {
 		auto localcounter = 0;
-		std::vector<slong> pivlist(mat.nrow, -1);
-		std::vector<slong> collist(mat.ncol, -1);
+		std::unordered_map<slong, slong> pivlist;
+		uset collist(mat.ncol);
 		for (size_t i = 0; i < mat.nrow; i++) {
 			if (donelist[i] != -1)
 				continue;
 			if (mat[i].nnz() == 1) {
-				if (collist[mat[i](0)] == -1) {
+				if (!collist[mat[i](0)]) {
 					localcounter++;
 					pivlist[i] = mat[i](0);
-					collist[mat[i](0)] = i;
+					collist.insert(mat[i](0));
 				}
 			}
 		}
@@ -186,8 +186,8 @@ namespace sparse_rref {
 
 		opt->pool.detach_loop(0, mat.nrow, [&](size_t i) {
 			for (size_t j = 0; j < mat[i].nnz(); j++) {
-				if (collist[mat[i](j)] != -1) {
-					if (pivlist[i] == mat[i](j))
+				if (collist[mat[i](j)]) {
+					if (pivlist.contains(i) && pivlist[i] == mat[i](j))
 						mat[i][j] = 1;
 					else
 						mat[i][j] = 0;
@@ -195,11 +195,11 @@ namespace sparse_rref {
 			}
 			mat[i].canonicalize();
 			});
-		opt->pool.wait();
 
-		for (size_t i = 0; i < mat.nrow; i++)
-			if (pivlist[i] != -1)
-				donelist[i] = pivlist[i];
+		for (auto [a, b] : pivlist)
+			donelist[a] = b;
+
+		opt->pool.wait();
 
 		return localcounter;
 	}
