@@ -509,12 +509,12 @@ namespace sparse_rref {
 
 	template <typename index_type>
 	static inline int sfmpq_vec_add_mul(sfmpq_vec<index_type>& vec, const sfmpq_vec<index_type>& src, const rat_t& a) {
-		return sfmpq_vec_addsub_mul<true>(vec, src, a);
+		return sfmpq_vec_addsub_mul<index_type, true>(vec, src, a);
 	}
 
 	template <typename index_type>
 	static inline int sfmpq_vec_sub_mul(sfmpq_vec<index_type>& vec, const sfmpq_vec<index_type>& src, const rat_t& a) {
-		return sfmpq_vec_addsub_mul<false>(vec, src, a);
+		return sfmpq_vec_addsub_mul<index_type, false>(vec, src, a);
 	}
 
 	template <typename index_type>
@@ -537,6 +537,10 @@ namespace sparse_rref {
 		return snmod_vec_sub_mul(vec, src, a, F);
 	}
 
+	template <typename index_type>
+	static inline int sparse_vec_sub_mul(sfmpq_vec<index_type>& vec, const sfmpq_vec<index_type>& src, const rat_t& a, field_t F) {
+		return sfmpq_vec_sub_mul(vec, src, a);
+	}
 
 	// dot product
 	// return true if the result is zero
