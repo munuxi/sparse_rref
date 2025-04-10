@@ -175,23 +175,20 @@ namespace sparse_rref {
 
 		void canonicalize() {
 			size_t new_nnz = 0;
-			size_t i = 0;
-			for (; i < _nnz; i++) {
-				if (entries[i] != 0)
-					break;
-			}
-			for (; i < _nnz; i++) {
-				if (entries[i] == 0)
-					continue;
-				indices[new_nnz] = indices[i];
-				entries[new_nnz] = entries[i];
-				new_nnz++;
+			for (size_t i = 0; i < _nnz && new_nnz < _nnz; i++) {
+				if (entries[i] != 0) {
+					if (new_nnz != i) {
+						indices[new_nnz] = indices[i];
+						entries[new_nnz] = entries[i];
+					}
+					new_nnz++;
+				}
 			}
 			_nnz = new_nnz;
 		}
 
 		void sort_indices() {
-			if (_nnz <= 1)
+			if (_nnz <= 1 || std::is_sorted(indices, indices + _nnz))
 				return;
 
 			auto perm = perm_init(_nnz);
@@ -199,27 +196,28 @@ namespace sparse_rref {
 				return indices[a] < indices[b];
 				});
 
-			bool is_sorted = true;
-			for (size_t i = 0; i < _nnz; i++) {
-				if (perm[i] != i) {
-					is_sorted = false;
-					break;
+			// apply permutation in-place using cycle swapping
+			auto apply_permutation = [&](auto& data) {
+				std::vector<bool> visited(_nnz, false);
+				for (size_t i = 0; i < _nnz; ++i) {
+					if (visited[i] || perm[i] == i) continue;
+					size_t j = i;
+					auto tmp = std::move(data[i]);
+					while (!visited[j]) {
+						visited[j] = true;
+						size_t k = perm[j];
+						if (k == i) {
+							data[j] = std::move(tmp);
+							break;
+						}
+						data[j] = std::move(data[k]);
+						j = k;
+					}
 				}
-			}
-			if (is_sorted)
-				return;
+				};
 
-			std::vector<T> tentries(_nnz);
-
-			// apply permutation
-			for (size_t i = 0; i < _nnz; i++) {
-				tentries[i] = entries[perm[i]];
-			}
-			for (size_t i = 0; i < _nnz; i++) {
-				entries[i] = tentries[i];
-			}
-
-			std::sort(indices, indices + _nnz);
+			apply_permutation(indices);
+			apply_permutation(entries);
 		}
 
 		void compress() {
@@ -320,6 +318,7 @@ namespace sparse_rref {
 		const index_type& operator()(const size_t pos) const { return indices[pos]; }
 		void zero() { _nnz = 0; }
 		void sort_indices() { std::sort(indices, indices + _nnz); }
+		void canonicalize() {}
 		void compress() { sort_indices(); }
 	};
 

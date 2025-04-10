@@ -129,33 +129,55 @@ namespace sparse_rref {
 	}
 
 	template <typename T, typename S>
-	void sparse_mat_transpose_part_replace(sparse_mat<S>& tranmat, const sparse_mat<T>& mat, const std::vector<slong>& rows) {
+	void sparse_mat_transpose_part_replace(sparse_mat<S>& tranmat, const sparse_mat<T>& mat, 
+		const std::vector<slong>& rows, thread_pool* pool = nullptr) {
 		tranmat.zero();
 
-		for (size_t i = 0; i < rows.size(); i++) {
+		if (pool == nullptr) {
+			for (size_t i = 0; i < rows.size(); i++) {
+				for (size_t j = 0; j < mat[rows[i]].nnz(); j++) {
+					auto col = mat[rows[i]](j);
+					if constexpr (std::is_same_v<S, T>) {
+						tranmat[col].push_back(rows[i], mat[rows[i]][j]);
+					}
+					else if constexpr (std::is_same_v<S, T*>) {
+						tranmat[col].push_back(rows[i], &(mat[rows[i]][j]));
+					}
+					else {
+						tranmat[col].push_back(rows[i], true);
+					}
+				}
+			}
+			return;
+		}
+
+		std::mutex mtxes[256];
+		pool->detach_loop(0, rows.size(), [&](size_t i) {
 			for (size_t j = 0; j < mat[rows[i]].nnz(); j++) {
 				auto col = mat[rows[i]](j);
+				std::lock_guard<std::mutex> lock(mtxes[col % 256]);
 				if constexpr (std::is_same_v<S, T>) {
-					T ptr = mat[rows[i]][j];
-					tranmat[col].push_back(rows[i], ptr);
+					tranmat[col].push_back(rows[i], mat[rows[i]][j]);
 				}
 				else if constexpr (std::is_same_v<S, T*>) {
-					T ptr = mat[rows[i]][j];
-					tranmat[col].push_back(rows[i], &ptr);
+					tranmat[col].push_back(rows[i], &(mat[rows[i]][j]));
 				}
 				else {
 					tranmat[col].push_back(rows[i], true);
 				}
 			}
-		}
+			});
+		pool->wait();
 	}
 
 	template <typename T, typename S>
-	void sparse_mat_transpose_replace(sparse_mat<S>& tranmat, const sparse_mat<T>& mat) {
+	void sparse_mat_transpose_replace(sparse_mat<S>& tranmat, 
+		const sparse_mat<T>& mat,
+		thread_pool* pool = nullptr) {
 		std::vector<slong> rows(mat.nrow);
 		for (size_t i = 0; i < mat.nrow; i++)
 			rows[i] = i;
-		sparse_mat_transpose_part_replace(tranmat, mat, rows);
+		sparse_mat_transpose_part_replace(tranmat, mat, rows, pool);
 	}
 
 	// rref staffs
@@ -821,7 +843,6 @@ namespace sparse_rref {
 		// store the pivots that have been used
 		// -1 is not used
 		std::vector<slong> rowpivs(mat.nrow, -1);
-		//std::vector<slong> colpivs(mat.ncol, -1);
 		std::vector<std::vector<std::pair<slong, slong>>> pivots;
 		std::vector<std::pair<slong, slong>> n_pivots;
 
@@ -838,7 +859,7 @@ namespace sparse_rref {
 		pivots.push_back(n_pivots);
 
 		sparse_mat<bool> tranmat(mat.ncol, mat.nrow);
-		sparse_mat_transpose_replace(tranmat, mat);
+		sparse_mat_transpose_replace(tranmat, mat, &pool);
 
 		// sort pivots by nnz, it will be faster
 		std::stable_sort(leftcols.begin(), leftcols.end(),
@@ -890,6 +911,8 @@ namespace sparse_rref {
 
 		std::unordered_set<slong> tmp_set(mat.ncol);
 
+		std::mutex mtxes[256];
+
 		while (kk < mat.ncol) {
 			auto start = sparse_rref::clocknow();
 
@@ -920,12 +943,14 @@ namespace sparse_rref {
 			}
 			leftrows.resize(n_leftrows);
 
+			std::atomic<size_t> loop_done_count = 0;
 			std::vector<int> flags(leftrows.size(), 0);
 			pool.detach_blocks<size_t>(0, leftrows.size(), [&](const size_t s, const size_t e) {
 				auto id = sparse_rref::thread_id();
 				for (size_t i = s; i < e; i++) {
 					schur_complete(mat, leftrows[i], n_pivots, F, cachedensedmat.data() + id * mat.ncol, nonzero_c[id]);
 					flags[i] = 1;
+					loop_done_count++;
 				}
 				}, (leftrows.size() < 20 * nthreads ? 0 : leftrows.size() / 10));
 
@@ -948,15 +973,32 @@ namespace sparse_rref {
 
 			size_t localcount = 0;
 			while (localcount < leftrows.size()) {
-				for (size_t i = 0; i < leftrows.size(); i++) {
-					if (flags[i]) {
-						auto row = leftrows[i];
-						for (size_t j = 0; j < mat[row].nnz(); j++) {
-							tranmat[mat[row](j)].push_back(row, true);
+				if (loop_done_count < leftrows.size()) {
+					for (size_t i = 0; i < leftrows.size(); i++) {
+						if (flags[i]) {
+							auto row = leftrows[i];
+							for (size_t j = 0; j < mat[row].nnz(); j++) {
+								tranmat[mat[row](j)].push_back(row, true);
+							}
+							flags[i] = 0;
+							localcount++;
 						}
-						flags[i] = 0;
-						localcount++;
 					}
+				}
+				else {
+					// parallel elimination is done, we can parallel compute the transpose
+					localcount = leftrows.size();
+					pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
+						if (flags[i]) {
+							auto row = leftrows[i];
+							for (size_t j = 0; j < mat[row].nnz(); j++) {
+								auto col = mat[row](j);
+								std::lock_guard<std::mutex> lock(mtxes[col % 256]);
+								tranmat[col].push_back(row, true);
+							}
+						}
+						}, 0);
+					pool.wait();
 				}
 
 				double pr = kk + (1.0 * ps.size() * localcount) / leftrows.size();
