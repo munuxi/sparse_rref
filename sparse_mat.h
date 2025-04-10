@@ -1067,7 +1067,11 @@ namespace sparse_rref {
 		field_t F;
 		field_init(F, FIELD_Fp, prime);
 
-		auto matul = snmod_mat_from_sfmpq(mat, F->mod);
+		sparse_mat<ulong> matul(mat.nrow, mat.ncol);
+		pool.detach_loop<slong>(0, mat.nrow, [&](slong i) {
+			snmod_vec_from_sfmpq(matul[i], mat[i], F->mod);
+			});
+		pool.wait();
 
 		pivots = sparse_mat_rref_c(matul, F, opt);
 
