@@ -1168,10 +1168,10 @@ namespace sparse_rref {
 		if (rank == 0) {
 			K.init(M.ncol, M.ncol);
 			for (size_t i = 0; i < M.ncol; i++)
-				K[i].push_back(i, 1);
+				K[i].push_back(i, (T)1);
 			return K;
 		}
-		T m1 = scalar_neg(1, F);
+		T m1 = scalar_neg((T)1, F);
 
 		sparse_mat<T> rows(rank, M.ncol);
 		sparse_mat<T> trows(M.ncol, rank);
