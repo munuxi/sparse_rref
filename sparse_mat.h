@@ -93,6 +93,7 @@ namespace sparse_rref {
 			}
 			nrow = new_nrow;
 			rows.resize(nrow);
+			rows.shrink_to_fit();
 		}
 
 		sparse_mat<T> transpose() {
