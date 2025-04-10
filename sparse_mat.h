@@ -822,9 +822,9 @@ namespace sparse_rref {
 		// first canonicalize, sort and compress the matrix
 
 		auto& pool = opt->pool;
+		auto nthreads = pool.get_thread_count();
 
 		pool.detach_loop<slong>(0, mat.nrow, [&](slong i) { mat[i].compress(); });
-		pool.wait();
 
 		// perm the col
 		std::vector<slong> leftcols = perm_init((slong)(mat.ncol));
@@ -839,6 +839,8 @@ namespace sparse_rref {
 		std::vector<slong> rowpivs(mat.nrow, -1);
 		std::vector<std::vector<std::pair<slong, slong>>> pivots;
 		std::vector<std::pair<slong, slong>> n_pivots;
+
+		pool.wait();
 
 		// look for row with only one non-zero entry
 
@@ -884,7 +886,6 @@ namespace sparse_rref {
 		pivots.push_back(n_pivots);
 		auto rank = pivots[0].size() + pivots[1].size();
 
-		auto nthreads = pool.get_thread_count();
 		std::vector<T> cachedensedmat(mat.ncol * nthreads);
 		std::vector<sparse_rref::uset> nonzero_c(nthreads);
 		for (size_t i = 0; i < nthreads; i++)
@@ -1056,9 +1057,11 @@ namespace sparse_rref {
 		rref_option_t opt) {
 		std::vector<std::vector<std::pair<slong, slong>>> pivots;
 
-		mat.compress();
 		auto& pool = opt->pool;
 		auto nthreads = pool.get_thread_count();
+
+		pool.detach_loop<slong>(0, mat.nrow, [&](slong i) { mat[i].compress(); });
+		pool.wait();
 
 		ulong prime = n_nextprime(1ULL << 60, 0);
 		field_t F;
