@@ -80,8 +80,6 @@ namespace sparse_rref {
 		void compress() {
 			for (size_t i = 0; i < nrow; i++) {
 				rows[i].compress();
-				rows[i].sort_indices();
-				rows[i].reserve(rows[i].nnz());
 			}
 		}
 
@@ -825,15 +823,11 @@ namespace sparse_rref {
 
 		auto& pool = opt->pool;
 
-		pool.detach_loop<slong>(0, mat.nrow, [&](slong i) {
-			mat[i].compress();
-			}, 0);
+		pool.detach_loop<slong>(0, mat.nrow, [&](slong i) { mat[i].compress(); });
 		pool.wait();
 
 		// perm the col
-		std::vector<slong> leftcols(mat.ncol);
-		for (size_t i = 0; i < mat.ncol; i++)
-			leftcols[i] = i;
+		std::vector<slong> leftcols = perm_init((slong)(mat.ncol));
 
 		auto printstep = opt->print_step;
 		bool verbose = opt->verbose;
@@ -997,7 +991,7 @@ namespace sparse_rref {
 								tranmat[col].push_back(row, true);
 							}
 						}
-						}, 0);
+						});
 					pool.wait();
 				}
 

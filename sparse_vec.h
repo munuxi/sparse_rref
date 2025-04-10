@@ -223,6 +223,7 @@ namespace sparse_rref {
 		void compress() {
 			canonicalize();
 			sort_indices();
+			reserve(_nnz);
 		}
 	};
 
