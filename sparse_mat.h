@@ -205,15 +205,21 @@ namespace sparse_rref {
 			return localcounter;
 
 		opt->pool.detach_loop(0, mat.nrow, [&](size_t i) {
+			bool is_changed = false;
 			for (size_t j = 0; j < mat[i].nnz(); j++) {
 				if (collist[mat[i](j)]) {
 					if (pivlist.contains(i) && pivlist[i] == mat[i](j))
 						mat[i][j] = 1;
-					else
+					else {
 						mat[i][j] = 0;
+						is_changed = true;
+					}
 				}
 			}
-			mat[i].canonicalize();
+			if (is_changed) {
+				mat[i].canonicalize();
+				mat[i].reserve(mat[i].nnz());
+			}
 			});
 
 		for (auto [a, b] : pivlist)
