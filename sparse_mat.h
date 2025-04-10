@@ -973,37 +973,18 @@ namespace sparse_rref {
 			// we need first set the transpose matrix zero
 			tranmat.zero();
 
-			size_t localcount = 0;
-			while (localcount < leftrows.size()) {
-				if (loop_done_count < leftrows.size()) {
-					for (size_t i = 0; i < leftrows.size(); i++) {
-						if (flags[i]) {
-							auto row = leftrows[i];
-							for (size_t j = 0; j < mat[row].nnz(); j++) {
-								tranmat[mat[row](j)].push_back(row, true);
-							}
-							flags[i] = 0;
-							localcount++;
+			while (loop_done_count < leftrows.size()) {
+				for (size_t i = 0; i < leftrows.size(); i++) {
+					if (flags[i]) {
+						auto row = leftrows[i];
+						for (size_t j = 0; j < mat[row].nnz(); j++) {
+							tranmat[mat[row](j)].push_back(row, true);
 						}
+						flags[i] = 0;
 					}
 				}
-				else {
-					// parallel elimination is done, we can parallel compute the transpose
-					localcount = leftrows.size();
-					pool.detach_loop<slong>(0, leftrows.size(), [&](slong i) {
-						if (flags[i]) {
-							auto row = leftrows[i];
-							for (size_t j = 0; j < mat[row].nnz(); j++) {
-								auto col = mat[row](j);
-								std::lock_guard<std::mutex> lock(mtxes[col % 256]);
-								tranmat[col].push_back(row, true);
-							}
-						}
-						});
-					pool.wait();
-				}
 
-				double pr = kk + (1.0 * ps.size() * localcount) / leftrows.size();
+				double pr = kk + (1.0 * ps.size() * loop_done_count) / leftrows.size();
 				if (verbose && (print_once || pr - oldpr > printstep)) {
 					auto end = sparse_rref::clocknow();
 					now_nnz = mat.nnz();
@@ -1022,6 +1003,27 @@ namespace sparse_rref {
 				}
 			}
 			pool.wait();
+
+			// parallel elimination is done, we can parallel compute the transpose
+			auto tran_tmp = [&](slong i) {
+				if (flags[i]) {
+					auto row = leftrows[i];
+					for (size_t j = 0; j < mat[row].nnz(); j++) {
+						auto col = mat[row](j);
+						std::lock_guard<std::mutex> lock(mtxes[col % 256]);
+						tranmat[col].push_back(row, true);
+					}
+				}
+				};
+
+			if (leftrows.size() - loop_done_count < 256) {
+				for (size_t i = 0; i < leftrows.size(); i++)
+					tran_tmp(i);
+			}
+			else {
+				pool.detach_loop<slong>(0, leftrows.size(), tran_tmp);
+				pool.wait();
+			}
 
 			kk += ps.size();
 		}
