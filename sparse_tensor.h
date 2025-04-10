@@ -1053,8 +1053,9 @@ namespace sparse_rref {
 				auto tmpnnz = Cs[i].nnz();
 				T* valptr = C.data.valptr + start_pos[i];
 				index_p colptr = C.data.colptr + start_pos[i] * C.rank();
-				s_copy(valptr, Cs[i].data.valptr, tmpnnz);
 				s_copy(colptr, Cs[i].data.colptr, tmpnnz * C.rank());
+				for (size_t j = 0; j < tmpnnz; j++)
+					valptr[j] = std::move(Cs[i].data.valptr[j]);
 				Cs[i].clear();
 				}, nthread);
 			pool->wait();
@@ -1202,9 +1203,11 @@ namespace sparse_rref {
 				auto tmpnnz = Cs[i].nnz();
 				T* valptr = C.data.valptr + nownnz;
 				index_p colptr = C.data.colptr + nownnz * C.rank();
-				s_copy(valptr, Cs[i].data.valptr, tmpnnz);
 				s_copy(colptr, Cs[i].data.colptr, tmpnnz * C.rank());
+				for (size_t j = 0; j < tmpnnz; j++)
+					valptr[j] = std::move(Cs[i].data.valptr[j]);
 				nownnz += tmpnnz;
+				Cs[i].clear();
 			}
 		}
 		else {
