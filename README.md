@@ -19,9 +19,11 @@ Some algorithms are inspired by [Spasm](https://github.com/cbouilla/spasm), but 
 
 The code mainly depends on [FLINT](https://flintlib.org/) to support arithmetic, and [BS::thread_pool](https://github.com/bshoshany/thread-pool) and [argparse](https://github.com/p-ranav/argparse) (they are included) are also used to support thread pool and parse args.
 
+If one use functions on sparse_tensor, it also requires to link tbb (Threading Building Blocks) library (for GCC and CLANG), since the Parallel STL of C++20 is used there.
+
 ### What to compute?
 
-For a sparse matrix $M$, the code computes its RREF  $\Lambda$ with row and column permutations. Instead of permute the row and column directly, we keep the row and column ordering of the matrix, i.e. the i-th row/column of $\Lambda$ is the i-th row/column of $M$, and the row and column permutation of this RREF is implicitly given by its pivots, which is a list of pairs of (row,col). In the ordering of pivots, the submatrix $\Lambda[\text{rows in pivots},\text{cols in pivots}]$ of $\Lambda$ is an identity matrix (if `--no-backward-substitution` is enabled, it is upper triangular). 
+For a sparse matrix $M$, the code computes its RREF $\Lambda$ with row and column permutations. Instead of permute the row and column directly, we keep the row and column ordering of the matrix, i.e. the i-th row/column of $\Lambda$ is the i-th row/column of $M$, and the row and column permutation of this RREF is implicitly given by its pivots, which is a list of pairs of (row,col). In the ordering of pivots, the submatrix $\Lambda[\text{rows in pivots},\text{cols in pivots}]$ of $\Lambda$ is an identity matrix (if `--no-backward-substitution` is enabled, it is upper triangular). 
 
 ### How to use compile code
 
@@ -49,27 +51,26 @@ The `main.cpp` is an example to use the head only library, the help is
 Usage: sparserref [--help] [--version] [--output VAR]
                   [--kernel] [--output-pivots]
                   [--field VAR] [--prime VAR] [--threads VAR]
-                  [--pivot_direction VAR]
                   [--verbose] [--print_step VAR]
                   [--no-backward-substitution]
                   input_file
 
-(exact) Sparse Reduced Row Echelon Form v0.2.5
+(exact) Sparse Reduced Row Echelon Form v0.3.0
 
 Positional arguments:
-  input_file                  input file in matrix market format
+  input_file                  input file in the Matrix Market exchange formats (MTX) or
+                              Sparse/Symbolic Matrix Storage (SMS)
 
 Optional arguments:
   -h, --help                  shows help message and exits
   -v, --version               prints version information and exits
-  -o, --output                output file in matrix market format [default: "<input_file>.rref"]
+  -o, --output                output file in SMS format [default: "<input_file>.rref"]
   -k, --kernel                output the kernel (null vectors)
   --output-pivots             output pivots
   -F, --field                 QQ: rational field
                               Zp or Fp: Z/p for a prime p [default: "QQ"]
   -p, --prime                 a prime number, only vaild when field is Zp  [default: "34534567"]
   -t, --threads               the number of threads  [default: 1]
-  -pd, --pivot_direction      the direction to select pivots [default: "col"]
   -V, --verbose               prints information of calculation
   -ps, --print_step           print step when --verbose is enabled [default: 100]
   --no-backward-substitution  no backward substitution
@@ -109,9 +110,10 @@ SparseRREF uses less memory than Spasm since its result has less non zero values
 
 ### TODO
 
+* Add document.
 * Improve the algorithms.
 * Add PLUQ decomposition.
 * Add more fields/rings.
 * Improve I/O.
-* Add document.
+
 
