@@ -237,10 +237,10 @@ int main(int argc, char** argv) {
 
 	file2.open(outname + outname_add);
 	if (prime == 0) {
-		sparse_mat_write(mat_Q, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
+		sparse_mat_write(mat_Q, file2, sparse_rref::SPARSE_FILE_TYPE_MTX);
 	}
 	else {
-		sparse_mat_write(mat_Zp, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
+		sparse_mat_write(mat_Zp, file2, sparse_rref::SPARSE_FILE_TYPE_MTX);
 	}
 	file2.close();
 
@@ -250,14 +250,14 @@ int main(int argc, char** argv) {
 		if (prime == 0) {
 			auto K = sparse_mat_rref_kernel(mat_Q, pivots, F, opt);
 			if (K.nrow > 0)
-				sparse_mat_write(K, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
+				sparse_mat_write(K, file2, sparse_rref::SPARSE_FILE_TYPE_MTX);
 			else
 				std::cout << "kernel is empty" << std::endl;
 		}
 		else {
 			auto K = sparse_mat_rref_kernel(mat_Zp, pivots, F, opt);
 			if (K.nrow > 0)
-				sparse_mat_write(K, file2, sparse_rref::SPARSE_FILE_TYPE_SMS);
+				sparse_mat_write(K, file2, sparse_rref::SPARSE_FILE_TYPE_MTX);
 			else
 				std::cout << "kernel is empty" << std::endl;
 		}

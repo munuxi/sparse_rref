@@ -573,6 +573,11 @@ namespace sparse_rref {
 		for (auto p : pos) {
 			mat[k].push_back(p, tmpvec[p]);
 		}
+
+		// to avoid the memory blowup (even if it is not a memory leak)
+		if (mat[k]._alloc > 4 * mat[k].nnz()) {
+			mat[k].reserve(2 * mat[k].nnz());
+		}
 	}
 
 	// TODO: CHECK!!!
@@ -1283,9 +1288,6 @@ namespace sparse_rref {
 			// MTX only support integer
 			if constexpr (std::is_same_v<T, ulong>) {
 				st << "%%MatrixMarket matrix coordinate integer general" << '\n';
-			}
-			else {
-				return;
 			}
 			st << mat.nrow << ' ' << mat.ncol << ' ' << mat.nnz() << '\n';
 		}
