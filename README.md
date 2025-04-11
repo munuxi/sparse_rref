@@ -76,6 +76,28 @@ Optional arguments:
   --no-backward-substitution  no backward substitution
 ```
 
+The format (matrix market-like format) of input file looks like this:
+```
+% some comments
+number_of_rows number_of_columns number_of_non_zero_values
+row_index_1 column_index_1 value_1
+row_index_2 column_index_2 value_2
+...
+row_index_n column_index_n value_n
+```
+where the row and column indices are 1-based. 
+
+We also support the SMS format. It looks like this:
+```
+number_of_rows number_of_columns value_type
+row_index_1 column_index_1 value_1
+row_index_2 column_index_2 value_2
+...
+row_index_n column_index_n value_n
+0 0 0 
+```
+The last line is a dummy line, which is used to indicate the end of the matrix.
+
 The main function is `sparse_mat_rref`, its output is its pivots, and it modifies the input matrix $M$ to its RREF $\Lambda$.
 
 ### BenchMark
@@ -105,7 +127,7 @@ First two test matrices come from https://hpac.imag.fr, bs comes from symbol boo
 | ibp-1    | (69153, 73316, 1117324, 58252)         | (rank is wrong) 2543.92s + ? | 4.23s                |
 | ibp-2    | (169323, 161970, 2801475, 135009)      | too slow                     | 32.51s               |
 
-Some tests for Spasm are slow since the physical memory is not enought, and it uses swap. In the most of cases,
+Some tests for Spasm are slow since the physical memory is not enough, and it uses swap. In the most of cases,
 SparseRREF uses less memory than Spasm since its result has less non zero values.
 
 ### TODO
