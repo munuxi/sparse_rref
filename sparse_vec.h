@@ -442,7 +442,7 @@ namespace sparse_rref {
 
 		if (vec.nnz() == 0) {
 			vec = src;
-			sparse_vec_rescale(vec, a, field_t{});
+			sparse_vec_rescale(vec, a, nullptr);
 		}
 
 		rat_t na, entry;
