@@ -469,7 +469,7 @@ namespace sparse_rref {
 			data.colptr = s_realloc<index_type>(data.colptr, new_dims.size() * alloc());
 		}
 
-		inline flatten(const std::vector<std::vector<size_t>>& pos) {
+		inline void flatten(const std::vector<std::vector<size_t>>& pos) {
 			auto r = rank();
 			auto nr = pos.size();
 			std::vector<index_type> newindex(nr);
