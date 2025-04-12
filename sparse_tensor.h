@@ -469,6 +469,42 @@ namespace sparse_rref {
 			data.colptr = s_realloc<index_type>(data.colptr, new_dims.size() * alloc());
 		}
 
+		inline flatten(const std::vector<std::vector<size_t>>& pos) {
+			auto r = rank();
+			auto nr = pos.size();
+			std::vector<index_type> newindex(nr);
+			std::vector<size_t> new_dims(nr);
+			auto old_dim = dims();
+			auto init_ptr = data.colptr;
+
+			// first compute new dimensions
+			for (size_t i = 0; i < nr; i++) {
+				new_dims[i] = 1;
+				for (auto j : pos[i])
+					new_dims[i] *= old_dim[j];
+			}
+			new_dims = prepend_num(new_dims, (size_t)1);
+
+			for (size_t i = 0; i < nnz(); i++) {
+				auto ptr = index(i);
+				for (size_t j = 0; j < nr; j++) {
+					newindex[j] = 0;
+					for (auto k : pos[j])
+						newindex[j] = newindex[j] * old_dim[k] + ptr[k];
+				}
+				for (size_t j = 0; j < nr; j++)
+					init_ptr[i * nr + j] = newindex[j];
+			}
+			s_realloc(data.colptr, nr * nnz());
+
+			// change the dimensions
+			data.dims = new_dims;
+			data.rank = nr;
+		}
+
+		// TODO: resharp, for example {2,100} to {2,5,20}
+		inline void resharp() {}
+
 		inline void insert(const index_v& l, const T& val, bool mode = true) { data.insert(prepend_num(l), val, mode); }
 		inline void insert_add(const index_v& l, const T& val) { data.insert_add(prepend_num(l), val); }
 		void push_back(const index_p l, const T& new_val) { 
