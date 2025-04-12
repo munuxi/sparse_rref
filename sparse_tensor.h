@@ -1097,6 +1097,16 @@ namespace sparse_rref {
 		if (pool != nullptr) {
 			size_t nblocks = nthread;
 
+			if ((rowptrA.size() - 1) < 2 * nthread) {
+				method(C, 0, rowptrA.size() - 1);
+				return C;
+			}
+
+			if (rowptrA.size() - 1 < 64 * nthread)
+				nblocks = nthread;
+			else
+				nblocks = 8 * nthread;
+
 			std::vector<sparse_tensor<index_type, T, SPARSE_COO>> Cs(nblocks, C);
 
 			size_t base = (rowptrA.size() - 1) / nblocks;
@@ -1109,7 +1119,7 @@ namespace sparse_rref {
 				ranges[i] = { start, end };
 				start = end;
 			}
-			pool->detach_loop(0, nblocks, [&](size_t i) { method(Cs[i], ranges[i].first, ranges[i].second); });
+			pool->detach_sequence(0, nblocks, [&](size_t i) { method(Cs[i], ranges[i].first, ranges[i].second); });
 			pool->wait();
 
 			// merge the results
