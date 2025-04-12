@@ -1000,19 +1000,20 @@ namespace sparse_rref {
 			nthread = 1;
 		else
 			nthread = pool->get_thread_count();
-		std::vector<sparse_tensor<index_type, T, SPARSE_COO>> Cs(nthread, C);
 
-		auto temp_lexico_compare = [&](size_t a, size_t b) {
-			auto ptrA = A.index(permA[a]);
-			auto ptrB = B.index(permB[b]);
-			for (size_t l = 0; l < i1i2_size; l++) {
-				if (ptrA[i1[l]] < ptrB[i2[l]])
-					return -1;
-				if (ptrA[i1[l]] > ptrB[i2[l]])
-					return 1;
-			}
-			return 0;
-			};
+		std::vector<index_type> index_A_cache(i1i2_size * A.nnz());
+		std::vector<index_type> index_B_cache(i1i2_size * B.nnz());
+
+		for (size_t k = 0; k < A.nnz(); k++) {
+			auto ptr = A.index(permA[k]);
+			for (size_t l = 0; l < i1i2_size; l++)
+				index_A_cache[k * i1i2_size + l] = ptr[i1[l]];
+		}
+		for (size_t k = 0; k < B.nnz(); k++) {
+			auto ptr = B.index(permB[k]);
+			for (size_t l = 0; l < i1i2_size; l++)
+				index_B_cache[k * i1i2_size + l] = ptr[i2[l]];
+		}
 
 		auto method = [&](sparse_tensor<index_type, T>& C, size_t ss, size_t ee) {
 			index_v indexC(dimsC.size());
@@ -1029,23 +1030,55 @@ namespace sparse_rref {
 					auto startB = rowptrB[l];
 					auto endB = rowptrB[l + 1];
 
-					// if the maximum index of A is less than the minimum index of B, then continue
-					if (temp_lexico_compare(endA - 1, startB) < 0)
+					// if the maximum index of A is less than the minimum index of B, 
+					// or the minimum index of A is greater than the maximum index of B,
+					// we can skip this part
+					if (lexico_compare(
+						index_A_cache.data() + (endA - 1) * i1i2_size,
+						index_B_cache.data() + startB * i1i2_size,
+						i1i2_size) < 0 ||
+						lexico_compare(
+							index_A_cache.data() + startA * i1i2_size,
+							index_B_cache.data() + (endB - 1) * i1i2_size,
+							i1i2_size) > 0
+						) {
 						continue;
+					}
 
 					// double pointer to calculate the inner product
 					size_t ptrA = startA, ptrB = startB;
 					T entry = 0;
-					while (ptrA < endA && ptrB < endB) {
-						auto t1 = temp_lexico_compare(ptrA, ptrB);
-						if (t1 < 0)
-							ptrA++;
-						else if (t1 > 0)
-							ptrB++;
-						else {
-							entry = scalar_add(entry, scalar_mul(A.val(permA[ptrA]), B.val(permB[ptrB]), F), F);
-							ptrA++;
-							ptrB++;
+					auto pA = index_A_cache.data() + ptrA * i1i2_size;
+					auto pB = index_B_cache.data() + ptrB * i1i2_size;
+					if (i1i2_size == 1) {
+						while (ptrA < endA && ptrB < endB) {
+							if (*pA < *pB) {
+								ptrA++; pA++;
+							}
+							else if (*pA > *pB) {
+								ptrB++; pB++;
+							}
+							else {
+								entry = scalar_add(entry, scalar_mul(A.val(permA[ptrA]), B.val(permB[ptrB]), F), F);
+								ptrA++; pA++;
+								ptrB++; pB++;
+							}
+						}
+					}
+					else if (i1i2_size > 1) {
+						while (ptrA < endA && ptrB < endB) {
+							auto t1 = lexico_compare(pA, pB, i1i2_size);
+							if (t1 < 0) {
+								ptrA++; pA += i1i2_size;
+							}
+							else if (t1 > 0) {
+								ptrB++; pB += i1i2_size;
+							}
+							else {
+								entry = scalar_add(entry, scalar_mul(A.val(permA[ptrA]), B.val(permB[ptrB]), F), F);
+								ptrA++; pA += i1i2_size;
+								ptrB++; pB += i1i2_size;
+							}
 						}
 					}
 
@@ -1062,30 +1095,34 @@ namespace sparse_rref {
 		// parallel version
 
 		if (pool != nullptr) {
-			size_t base = (rowptrA.size() - 1) / nthread;
-			size_t rem = (rowptrA.size() - 1) % nthread;
+			size_t nblocks = nthread;
 
-			std::vector<std::pair<size_t, size_t>> ranges(nthread);
+			std::vector<sparse_tensor<index_type, T, SPARSE_COO>> Cs(nblocks, C);
+
+			size_t base = (rowptrA.size() - 1) / nblocks;
+			size_t rem = (rowptrA.size() - 1) % nblocks;
+
+			std::vector<std::pair<size_t, size_t>> ranges(nblocks);
 			size_t start = 0;
-			for (int i = 0; i < nthread; ++i) {
+			for (int i = 0; i < nblocks; ++i) {
 				size_t end = start + base + (i < rem ? 1 : 0);
 				ranges[i] = { start, end };
 				start = end;
 			}
-			pool->detach_loop(0, nthread, [&](size_t i) { method(Cs[i], ranges[i].first, ranges[i].second); });
+			pool->detach_loop(0, nblocks, [&](size_t i) { method(Cs[i], ranges[i].first, ranges[i].second); });
 			pool->wait();
 
 			// merge the results
 			size_t allnnz = 0;
-			std::vector<size_t> start_pos(nthread);
-			for (size_t i = 0; i < nthread; i++) {
+			std::vector<size_t> start_pos(nblocks);
+			for (size_t i = 0; i < nblocks; i++) {
 				start_pos[i] = allnnz;
 				allnnz += Cs[i].nnz();
 			}
 
 			C.reserve(allnnz);
 			C.resize(allnnz);
-			pool->detach_loop(0, nthread, [&](size_t i) {
+			pool->detach_loop(0, nblocks, [&](size_t i) {
 				auto tmpnnz = Cs[i].nnz();
 				T* valptr = C.data.valptr + start_pos[i];
 				index_p colptr = C.data.colptr + start_pos[i] * C.rank();
@@ -1093,7 +1130,7 @@ namespace sparse_rref {
 				for (size_t j = 0; j < tmpnnz; j++)
 					valptr[j] = std::move(Cs[i].data.valptr[j]);
 				Cs[i].clear();
-				}, nthread);
+				});
 			pool->wait();
 
 			return C;
