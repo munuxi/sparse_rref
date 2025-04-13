@@ -353,29 +353,18 @@ namespace sparse_rref {
 		if (rank == 1)
 			return std::lower_bound(begin, end, *val);
 
-		auto len = (end - begin) / rank;
-		T** vec = s_malloc<T*>(len);
-		for (size_t i = 0; i < len; i++)
-			vec[i] = begin + rank * i;
-		T** ptr_s = std::lower_bound(vec, vec + len, val,
-			[&rank](const T* a, const T* b) {
-				// lex order
-				for (ulong i = 0; i < rank; i++) {
-					if (a[i] < b[i])
-						return true;
-					else if (a[i] > b[i])
-						return false;
-				}
-				return false;
-			}
-		);
-		if (ptr_s == vec + len) {
-			s_free(vec);
-			return end;
+		size_t left = 0;
+		size_t right = (end - begin) / rank;
+
+		while (left < right) {
+			size_t mid = left + (right - left) / 2;
+			if (lexico_compare(begin + rank * mid, val, rank) < 0)
+				left = mid + 1;
+			else
+				right = mid;
 		}
-		T* ptr = *ptr_s;
-		s_free(vec);
-		return ptr;
+
+		return begin + rank * left;
 	}
 
 	template <typename T> inline T* binarysearch(T* begin, T* end, uint16_t rank, T* val) {
