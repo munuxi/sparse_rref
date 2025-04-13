@@ -209,7 +209,7 @@ namespace sparse_rref {
 			auto end = row(l[0] + 1).first;
 			if (begin == end)
 				return end;
-			return sparse_rref::lower_bound(begin, end, rank - 1, l + 1);
+			return sparse_rref::lower_bound(begin, end, l + 1, rank - 1);
 		}
 
 		index_p entry_lower_bound(const index_v& l) {
@@ -1030,33 +1030,24 @@ namespace sparse_rref {
 					auto startB = rowptrB[l];
 					auto endB = rowptrB[l + 1];
 
-					// if the maximum index of A is less than the minimum index of B, 
-					// or the minimum index of A is greater than the maximum index of B,
-					// we can skip this part
-					if (lexico_compare(
-						index_A_cache.data() + (endA - 1) * i1i2_size,
-						index_B_cache.data() + startB * i1i2_size,
-						i1i2_size) < 0 ||
-						lexico_compare(
-							index_A_cache.data() + startA * i1i2_size,
-							index_B_cache.data() + (endB - 1) * i1i2_size,
-							i1i2_size) > 0
-						) {
-						continue;
-					}
-
 					// double pointer to calculate the inner product
+					// since both are ordered, we can use binary search
 					size_t ptrA = startA, ptrB = startB;
 					T entry = 0;
 					auto pA = index_A_cache.data() + ptrA * i1i2_size;
 					auto pB = index_B_cache.data() + ptrB * i1i2_size;
+					auto eA = index_A_cache.data() + endA * i1i2_size;
+					auto eB = index_B_cache.data() + endB * i1i2_size;
+
 					if (i1i2_size == 1) {
 						while (ptrA < endA && ptrB < endB) {
 							if (*pA < *pB) {
-								ptrA++; pA++;
+								pA = sparse_rref::lower_bound(pA, eA, pB, 1);
+								ptrA = pA - index_A_cache.data();
 							}
 							else if (*pA > *pB) {
-								ptrB++; pB++;
+								pB = sparse_rref::lower_bound(pB, eB, pA, 1);
+								ptrB = pB - index_B_cache.data();
 							}
 							else {
 								entry = scalar_add(entry, scalar_mul(A.val(permA[ptrA]), B.val(permB[ptrB]), F), F);
@@ -1069,10 +1060,12 @@ namespace sparse_rref {
 						while (ptrA < endA && ptrB < endB) {
 							auto t1 = lexico_compare(pA, pB, i1i2_size);
 							if (t1 < 0) {
-								ptrA++; pA += i1i2_size;
+								pA = sparse_rref::lower_bound(pA, eA, pB, i1i2_size);
+								ptrA = ((pA - index_A_cache.data()) / i1i2_size);
 							}
 							else if (t1 > 0) {
-								ptrB++; pB += i1i2_size;
+								pB = sparse_rref::lower_bound(pB, eB, pA, i1i2_size);
+								ptrB = ((pB - index_B_cache.data()) / i1i2_size);
 							}
 							else {
 								entry = scalar_add(entry, scalar_mul(A.val(permA[ptrA]), B.val(permB[ptrB]), F), F);

@@ -349,7 +349,7 @@ namespace sparse_rref {
 			return end;
 	}
 
-	template <typename T> inline T* lower_bound(T* begin, T* end, ulong rank, T* val) {
+	template <typename T> inline T* lower_bound(T* begin, T* end, T* val, ulong rank) {
 		auto len = (end - begin) / rank;
 		T** vec = s_malloc<T*>(len);
 		for (size_t i = 0; i < len; i++)
