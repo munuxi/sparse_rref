@@ -350,6 +350,9 @@ namespace sparse_rref {
 	}
 
 	template <typename T> inline T* lower_bound(T* begin, T* end, T* val, ulong rank) {
+		if (rank == 1)
+			return std::lower_bound(begin, end, *val);
+
 		auto len = (end - begin) / rank;
 		T** vec = s_malloc<T*>(len);
 		for (size_t i = 0; i < len; i++)
