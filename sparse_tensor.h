@@ -1658,6 +1658,38 @@ namespace sparse_rref {
 
 		return tensor;
 	}
+
+	template<typename IndexType, typename T, typename S>
+	void COO_tensor_write(S& st, const sparse_tensor<IndexType, T>& tensor) {
+		const auto& dims = tensor.dims();
+		const size_t rank = dims.size();
+		char num_buf[32];
+
+		for (size_t i = 0; i < rank; ++i) {
+			auto [ptr, ec] = std::to_chars(num_buf, num_buf + sizeof(num_buf), dims[i]);
+			st.write(num_buf, ptr - num_buf);
+			st.put(' ');
+		}
+		auto [ptr, ec] = std::to_chars(num_buf, num_buf + sizeof(num_buf), tensor.nnz());
+		st.write(num_buf, ptr - num_buf);
+		st.put('\n');
+
+		std::vector<char> index_buf;
+		index_buf.reserve(rank * 20 + 64);
+
+		for (size_t i = 0; i < tensor.nnz(); ++i) {
+			index_buf.clear();
+			const auto& index = tensor.index(i);
+			for (size_t j = 0; j < rank; ++j) {
+				auto [ptr, ec] = std::to_chars(num_buf, num_buf + sizeof(num_buf), index[j] + 1);
+				index_buf.insert(index_buf.end(), num_buf, ptr);
+				index_buf.push_back(' ');
+			}
+			st.write(index_buf.data(), index_buf.size());
+			st << tensor.val(i) << '\n';
+		}
+	}
+
 } // namespace sparse_rref
 
 #endif
