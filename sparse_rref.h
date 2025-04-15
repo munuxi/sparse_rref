@@ -12,6 +12,7 @@
 #include "thread_pool.hpp"
 #include <algorithm>
 #include <bitset>
+#include <charconv> 
 #include <chrono>
 #include <climits>
 #include <cmath>
@@ -120,6 +121,15 @@ namespace sparse_rref {
 			end = s.find(delim, start);
 		}
 		result.push_back(s.substr(start, end));
+		return result;
+	}
+
+	size_t string_to_ull(std::string_view sv) {
+		size_t result;
+		auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), result);
+		if (ec != std::errc()) {
+			throw std::runtime_error("Failed to parse number");
+		}
 		return result;
 	}
 
