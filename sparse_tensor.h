@@ -1591,124 +1591,70 @@ namespace sparse_rref {
 
 	// IO
 
-	template <typename index_type, typename T> 
-	sparse_tensor<index_type, size_t> COO_tensor_read(T& st, const field_t F) {
+	template <typename IndexType, typename ScalarType, typename T>
+	sparse_tensor<IndexType, ScalarType, SPARSE_COO> COO_tensor_read(T& st, const field_t F) {
 		if (!st.is_open())
-			return sparse_tensor<index_type, size_t>();
-		std::string strLine;
+			return sparse_tensor<IndexType, ScalarType, SPARSE_COO>();
 
-		bool is_size = true;
-
-		using index_v = std::vector<index_type>;
-		using index_p = index_type*;
-
+		std::string line;
+		std::vector<IndexType> index;
 		std::vector<size_t> dims;
-		sparse_tensor<index_type, size_t> tensor;
-		index_v index;
+		sparse_tensor<IndexType, ScalarType> tensor;
 
-		while (getline(st, strLine)) {
-			if (strLine[0] == '%')
+		while (std::getline(st, line)) {
+			if (line.empty() || line[0] == '%')
 				continue;
 
-			auto tokens = sparse_rref::SplitString(strLine, " ");
-			if (is_size) {
-				for (size_t i = 0; i < tokens.size() - 1; i++)
-					dims.push_back(std::stoull(tokens[i]));
-				size_t nnz = std::stoull(tokens.back());
-				tensor = sparse_tensor<index_type, size_t, SPARSE_COO>(dims, nnz);
-				index.reserve(dims.size());
-				is_size = false;
-			}
-			else {
-				if (tokens.size() != dims.size() + 1) {
-					std::cerr << "Error: wrong format in the matrix file" << std::endl;
-					std::exit(-1);
+			size_t start = 0;
+			size_t end = line.find(' ');
+			while (end != std::string::npos) {
+				if (start != end) {
+					dims.push_back(string_to_ull(line.substr(start, end - start)));
 				}
-				index.clear();
-				for (size_t i = 0; i < tokens.size() - 1; i++)
-					index.push_back(std::stoull(tokens[i]) - 1);
-				sparse_rref::DeleteSpaces(tokens.back());
-				rat_t val(tokens.back());
-				ulong val2 = val % F->mod;
-				tensor.push_back(index, val2);
+				start = end + 1;
+				end = line.find(' ', start);
 			}
+			if (start < line.size()) {
+				size_t nnz = string_to_ull(line.substr(start));
+				tensor = sparse_tensor<IndexType, ScalarType, SPARSE_COO>(dims, nnz);
+				index.reserve(dims.size());
+			}
+			break;
 		}
 
-		return tensor;
-	}
+		while (std::getline(st, line)) {
+			if (line.empty() || line[0] == '%')
+				continue;
 
-	template <typename index_type, typename T> 
-	sparse_tensor<index_type, size_t> COO_tensor_read_asyn(T& st, const field_t F) {
-		if (!st.is_open())
-			return sparse_tensor<index_type, size_t>();
-		std::string strLine;
+			index.clear();
+			size_t start = 0;
+			size_t end = line.find(' ');
+			size_t count = 0;
 
-		bool is_size = true;
-
-		using index_v = std::vector<index_type>;
-		using index_p = index_type*;
-
-		std::vector<size_t> dims;
-		sparse_tensor<index_type, size_t> tensor;
-		index_v index;
-
-		LockFreeQueue<std::string> queue;
-		std::atomic<ulong> nnz = 0;
-		std::atomic<bool> wait_start = true;
-		std::atomic<bool> is_done = false;
-
-		std::thread t1([&]() {
-			while (getline(st, strLine)) {
-				if (strLine[0] == '%')
-					continue;
-
-				if (is_size) {
-					auto tokens = sparse_rref::SplitString(strLine, " ");
-
-					for (size_t i = 0; i < tokens.size() - 1; i++)
-						dims.push_back(std::stoull(tokens[i]));
-					size_t nnz = std::stoull(tokens.back());
-					tensor = sparse_tensor<index_type, size_t, SPARSE_COO>(dims, nnz);
-					index.reserve(dims.size());
-					is_size = false;
+			while (end != std::string::npos && count < dims.size()) {
+				if (start != end) {
+					index.push_back(string_to_ull(line.substr(start, end - start)) - 1);
+					count++;
 				}
-				else {
-					queue.enqueue(strLine);
-					nnz++;
-					wait_start = false;
-				}
+				start = end + 1;
+				end = line.find(' ', start);
 			}
-			is_done = true;
+
+			if (count != dims.size()) {
+				throw std::runtime_error("Error: wrong format in the matrix file");
 			}
-		);
 
-		std::thread t2([&]() {
-			while (wait_start || nnz > 0 || !is_done) {
-				if (nnz == 0)
-					continue;
-
-				auto strline = queue.dequeue();
-				auto tokens = sparse_rref::SplitString(*strline, " ");
-
-				if (tokens.size() != dims.size() + 1) {
-					std::cerr << "Error: wrong format in the matrix file" << std::endl;
-					std::exit(-1);
-				}
-				index.clear();
-				for (size_t i = 0; i < tokens.size() - 1; i++)
-					index.push_back(std::stoull(tokens[i]) - 1);
-				sparse_rref::DeleteSpaces(tokens.back());
-				rat_t val(tokens.back());
-				ulong val2 = val % F->mod;
-				tensor.push_back(index, val2);
-
-				nnz--;
+			ScalarType val;
+			if constexpr (std::is_same_v<ScalarType, size_t>) {
+				rat_t raw_val(line.substr(start));
+				val = raw_val % F->mod;
 			}
+			else if constexpr (std::is_same_v<ScalarType, rat_t>) {
+				val = rat_t(line.substr(start));
 			}
-		);
 
-		t1.join();
-		t2.join();
+			tensor.push_back(index, val);
+		}
 
 		return tensor;
 	}
