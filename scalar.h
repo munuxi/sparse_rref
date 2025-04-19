@@ -10,6 +10,7 @@
 #define SCALAR_H
 
 #include <string>
+#include "sparse_rref.h"
 #include "flint/nmod.h"
 #include "flint/fmpz.h"
 #include "flint/fmpq.h"
@@ -87,6 +88,10 @@ namespace Flint {
 		template <unsigned_builtin_integral T> int_t operator*(const T other) const { int_t result; fmpz_mul_ui(result._data, _data, other); return result; }
 		template <signed_builtin_integral T> int_t operator*(const T other) const { int_t result; fmpz_mul_si(result._data, _data, other); return result; }
 
+		int_t operator%(const int_t& other) const { int_t result; fmpz_mod(result._data, _data, other._data); return result; }
+		template <unsigned_builtin_integral T> int_t operator%(const T other) const { int_t result; fmpz_mod_ui(result._data, _data, other); return result; }
+		ulong operator%(const nmod_t other) const { return fmpz_get_nmod(_data, other); }
+
 		void operator+=(const int_t& other) { fmpz_add(_data, _data, other._data); }
 		template <unsigned_builtin_integral T> void operator+=(const T other) { fmpz_add_ui(_data, _data, other); }
 		template <signed_builtin_integral T> void operator+=(const T other) { fmpz_add_si(_data, _data, other); }
@@ -99,14 +104,19 @@ namespace Flint {
 		template <unsigned_builtin_integral T> void operator*=(const T other) { fmpz_mul_ui(_data, _data, other); }
 		template <signed_builtin_integral T> void operator*=(const T other) { fmpz_mul_si(_data, _data, other); }
 
+		void operator%=(const int_t& other) { fmpz_mod(_data, _data, other._data); }
+		template <unsigned_builtin_integral T> void operator%=(const T other) { fmpz_mod_ui(_data, _data, other); }
+
+
 		template <unsigned_builtin_integral T>
 		int_t pow(const T n) const { int_t result; fmpz_pow_ui(result._data, _data, n); return result; }
 		int_t pow(const int_t& n) const { int_t result; fmpz_pow_fmpz(result._data, _data, n._data); return result; }
 		int_t abs() const { int_t result; fmpz_abs(result._data, _data); return result; }
 		int_t neg() const { int_t result; fmpz_neg(result._data, _data); return result; }
-
-		ulong operator%(const nmod_t other) const { return fmpz_get_nmod(_data, other); }
-		int_t operator%(const int_t& other) const { int_t result; fmpz_mod(result._data, _data, other._data); return result; }
+		int sign() const { return fmpz_sgn(_data); }
+		bool even() const { return fmpz_is_even(_data); }
+		bool odd() const { return fmpz_is_odd(_data); }
+		bool is_prime() const { return fmpz_is_prime(_data); }
 
 		int_t operator-() const { return neg(); }
 
@@ -114,10 +124,10 @@ namespace Flint {
 			auto len = fmpz_sizeinbase(_data, base) + 3;
 
 			if (thread_safe || len > MAX_STR_LEN - 4) {
-				char* str = (char*)malloc(len * sizeof(char));
+				char* str = sparse_rref::s_malloc<char>(len);
 				fmpz_get_str(str, base, _data);
 				std::string result(str);
-				free(str);
+				sparse_rref::s_free(str);
 				return result;
 			}
 			else {
@@ -139,6 +149,8 @@ namespace Flint {
 		rat_t(const rat_t& other) { fmpq_init(_data); fmpq_set(_data, other._data); }
 		rat_t(rat_t&& other) noexcept { fmpq_init(_data); fmpq_swap(_data, other._data); }
 		rat_t(const fmpq_t a) { fmpq_init(_data); fmpq_set(_data, a); }
+
+		void canonicalise() { fmpq_canonicalise(_data); }
 
 		template <signed_builtin_integral T> rat_t(const T a, const T b) { fmpq_init(_data); fmpq_set_si(_data, a, b); }
 		template <signed_builtin_integral T> rat_t(const T a) { fmpq_init(_data); fmpq_set_si(_data, a, 1); }
@@ -255,9 +267,9 @@ namespace Flint {
 	T& operator<< (T& os, const int_t& i) {
 		auto len = fmpz_sizeinbase(i._data, 10);
 		if (len > MAX_STR_LEN - 4) {
-			char* str = fmpz_get_str(nullptr, 10, i._data);
-			os << str;
-			flint_free(str);
+			char* str = sparse_rref::s_malloc<char>(len + 10);
+			os << fmpz_get_str(str, 10, i._data);
+			sparse_rref::s_free(str);
 		}
 		else {
 			fmpz_get_str(_buf, 10, i._data);
@@ -272,9 +284,9 @@ namespace Flint {
 			+ fmpz_sizeinbase(fmpq_denref(r._data), 10) + 3;
 
 		if (len > MAX_STR_LEN - 4) {
-			char* str = fmpq_get_str(nullptr, 10, r._data);
-			os << str;
-			flint_free(str);
+			char* str = sparse_rref::s_malloc<char>(len + 10);
+			os << fmpq_get_str(str, 10, r._data);
+			sparse_rref::s_free(str);
 		}
 		else {
 			fmpq_get_str(_buf, 10, r._data);
@@ -308,6 +320,26 @@ namespace Flint {
 		return  fmpq_reconstruct_fmpz(q._data, a._data, mod._data);
 	}
 
+	// GCD & LCM
+
+	int_t GCD(const int_t& a, ulong b) {
+		int_t result;
+		fmpz_gcd_ui(result._data, a._data, b);
+		return result;
+	}
+
+	int_t GCD(const int_t& a, const int_t& b) {
+		int_t result;
+		fmpz_gcd(result._data, a._data, b._data);
+		return result;
+	}
+
+	int_t LCM(const int_t& a, const int_t& b) {
+		int_t result;
+		fmpz_lcm(result._data, a._data, b._data);
+		return result;
+	}
+
 	// CRT
 	int_t CRT(const int_t& r1, const int_t& m1, ulong r2, ulong m2) {
 		int_t result;
@@ -320,7 +352,6 @@ namespace Flint {
 		fmpz_CRT(result._data, r1._data, m1._data, r2._data, m2._data, 0);
 		return result;
 	}
-
 }
 
 namespace sparse_rref {

@@ -77,6 +77,13 @@ namespace sparse_rref {
 			return n;
 		}
 
+		size_t alloc() const {
+			size_t n = 0;
+			for (size_t i = 0; i < nrow; i++)
+				n += rows[i].alloc();
+			return n;
+		}
+
 		void compress() {
 			for (size_t i = 0; i < nrow; i++) {
 				rows[i].compress();
@@ -564,19 +571,9 @@ namespace sparse_rref {
 		}
 
 		auto pos = nonzero_c.nonzero();
-		if (pos.size() == 0) {
-			mat[k].clear();
-			return;
-		}
-
 		mat[k].zero();
 		for (auto p : pos) {
 			mat[k].push_back(p, tmpvec[p]);
-		}
-
-		// to avoid the memory blowup (even if it is not a memory leak)
-		if (mat[k]._alloc > 4 * mat[k].nnz()) {
-			mat[k].reserve(2 * mat[k].nnz());
 		}
 	}
 
@@ -935,10 +932,11 @@ namespace sparse_rref {
 			pivots.push_back(n_pivots);
 			rank += n_pivots.size();
 
-			for (auto [r, c] : n_pivots) {
+			pool.detach_sequence(0, n_pivots.size(), [&](size_t i) {
+				auto [r, c] = n_pivots[i];
 				T scalar = scalar_inv(*sparse_mat_entry(mat, r, c), F);
 				sparse_vec_rescale(mat[r], scalar, F);
-			}
+				});
 
 			size_t n_leftrows = 0;
 			for (size_t i = 0; i < leftrows.size(); i++) {
@@ -950,6 +948,7 @@ namespace sparse_rref {
 			}
 			leftrows.resize(n_leftrows);
 
+			pool.wait();
 			std::atomic<size_t> loop_done_count = 0;
 			std::vector<int> flags(leftrows.size(), 0);
 			pool.detach_blocks<size_t>(0, leftrows.size(), [&](const size_t s, const size_t e) {
@@ -1231,48 +1230,82 @@ namespace sparse_rref {
 	// IO
 	template <typename T>
 	sparse_mat<rat_t> sfmpq_mat_read(T& st) {
-		if (!st.is_open())
+		if (!st.is_open()) {
 			return sparse_mat<rat_t>();
-		std::string strLine;
+		}
 
 		sparse_mat<rat_t> mat;
+		std::string line;
 
-		bool is_size = true;
-
-		while (getline(st, strLine)) {
-			if (strLine[0] == '%')
+		while (std::getline(st, line)) {
+			if (line.empty() || line[0] == '%') {
 				continue;
+			}
 
-			auto tokens = sparse_rref::SplitString(strLine, " ");
-			if (is_size) {
-				size_t nrow = std::stoull(tokens[0]);
-				size_t ncol = std::stoull(tokens[1]);
-				// ulong nnz = std::stoul(tokens[2]);
-				// here we alloc 1, or alloc nnz/ncol ?
-				mat.init(nrow, ncol);
-				is_size = false;
+			std::vector<std::string_view> tokens;
+			size_t start = 0;
+			size_t end = line.find(' ');
+			while (end != std::string::npos) {
+				if (start != end) {
+					tokens.emplace_back(line.data() + start, end - start);
+				}
+				start = end + 1;
+				end = line.find(' ', start);
 			}
-			else {
-				if (tokens.size() != 3) {
-					std::cerr << "Error: wrong format in the matrix file" << std::endl;
-					std::exit(-1);
-				}
-				slong row, col;
-				if constexpr (std::is_same_v<slong, slong>) {
-					row = std::stoll(tokens[0]) - 1;
-					col = std::stoll(tokens[1]) - 1;
-				}
-				else {
-					row = std::stoi(tokens[0]) - 1;
-					col = std::stoi(tokens[1]) - 1;
-				}
-				// SMS stop at 0 0 0
-				if (row < 0 || col < 0)
-					break;
-				sparse_rref::DeleteSpaces(tokens[2]);
-				rat_t val(tokens[2]);
-				mat[row].push_back(col, val);
+			if (start < line.size()) {
+				tokens.emplace_back(line.data() + start, line.size() - start);
 			}
+
+			size_t nrow, ncol;
+			auto [ptr1, ec1] = std::from_chars(tokens[0].data(), tokens[0].data() + tokens[0].size(), nrow);
+			auto [ptr2, ec2] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), ncol);
+			if (ec1 != std::errc() || ec2 != std::errc()) {
+				throw std::runtime_error("Failed to parse matrix dimensions");
+			}
+			mat.init(nrow, ncol);
+			break;
+		}
+
+		while (std::getline(st, line)) {
+			if (line.empty() || line[0] == '%') {
+				continue;
+			}
+
+			std::vector<std::string_view> tokens;
+			size_t start = 0;
+			size_t end = line.find(' ');
+			while (end != std::string::npos) {
+				if (start != end) {
+					tokens.emplace_back(line.data() + start, end - start);
+				}
+				start = end + 1;
+				end = line.find(' ', start);
+			}
+			if (start < line.size()) {
+				tokens.emplace_back(line.data() + start, line.size() - start);
+			}
+
+			if (tokens.size() != 3) {
+				throw std::runtime_error("Error: wrong format in the matrix file");
+			}
+
+			slong row, col;
+			auto [ptr1, ec1] = std::from_chars(tokens[0].data(), tokens[0].data() + tokens[0].size(), row);
+			auto [ptr2, ec2] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), col);
+			if (ec1 != std::errc() || ec2 != std::errc()) {
+				throw std::runtime_error("Failed to parse matrix indices");
+			}
+			// it is 0-based
+			row--;
+			col--;
+
+			if (row < 0 || col < 0) {
+				break;
+			}
+
+			rat_t val;
+			val.set_str(std::string(tokens[2]));
+			mat[row].push_back(col, val);
 		}
 
 		return mat;
@@ -1280,40 +1313,59 @@ namespace sparse_rref {
 
 	template <typename T, typename S>
 	void sparse_mat_write(sparse_mat<T>& mat, S& st, enum SPARSE_FILE_TYPE type) {
-		if (!st.is_open())
+		if (!st.is_open()) {
 			return;
+		}
 
-		if (type == SPARSE_FILE_TYPE_MTX) {
-			// write the header
-			// MTX only support integer
+		switch (type) {
+		case SPARSE_FILE_TYPE_PLAIN: {
+			st << mat.nrow << ' ' << mat.ncol << ' ' << mat.nnz() << '\n';
+			break;
+		}
+		case SPARSE_FILE_TYPE_MTX: {
 			if constexpr (std::is_same_v<T, ulong>) {
-				st << "%%MatrixMarket matrix coordinate integer general" << '\n';
+				st << "%%MatrixMarket matrix coordinate integer general\n";
 			}
 			st << mat.nrow << ' ' << mat.ncol << ' ' << mat.nnz() << '\n';
+			break;
 		}
-		else if (type == SPARSE_FILE_TYPE_SMS) {
-			if constexpr (std::is_same_v<T, ulong> || std::is_same_v<T, int_t>) {
-				st << mat.nrow << ' ' << mat.ncol << ' ' << 'M' << '\n';
-			}
-			else if constexpr (std::is_same_v<T, rat_t>) {
-				st << mat.nrow << ' ' << mat.ncol << ' ' << 'Q' << '\n';
-			}
-			else
+		case SPARSE_FILE_TYPE_SMS: {
+			char type_char =
+				std::is_same_v<T, rat_t> ? 'Q' :
+				(std::is_same_v<T, ulong> || std::is_same_v<T, int_t>) ? 'M' : '\0';
+			if (type_char == '\0') {
 				return;
+			}
+			st << mat.nrow << ' ' << mat.ncol << ' ' << type_char << '\n';
+			break;
 		}
-		else {
+		default:
 			return;
 		}
 
-		for (size_t i = 0; i < mat.nrow; i++) {
-			for (size_t j = 0; j < mat[i].nnz(); j++) {
-				if (mat[i][j] == 0)
+		char num_buf[32];
+
+		for (size_t i = 0; i < mat.nrow; ++i) {
+			for (size_t j = 0; j < mat[i].nnz(); ++j) {
+				if (mat[i][j] == 0) {
 					continue;
-				st << i + 1 << ' ' << mat[i](j) + 1 << ' ' << mat[i][j] << '\n';
+				}
+				auto [ptr1, ec1] = std::to_chars(num_buf, num_buf + sizeof(num_buf), i + 1);
+				st.write(num_buf, ptr1 - num_buf);
+				st.put(' ');
+
+				auto [ptr2, ec2] = std::to_chars(num_buf, num_buf + sizeof(num_buf), mat[i](j) + 1);
+				st.write(num_buf, ptr2 - num_buf);
+				st.put(' ');
+
+				st << mat[i][j];
+				st.put('\n');
 			}
 		}
-		if (type == SPARSE_FILE_TYPE_SMS)
-			st << "0 0 0" << '\n';
+
+		if (type == SPARSE_FILE_TYPE_SMS) {
+			st << "0 0 0\n";
+		}
 	}
 
 	

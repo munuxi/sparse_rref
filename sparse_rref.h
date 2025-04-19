@@ -77,6 +77,7 @@ namespace sparse_rref {
 		uint8_t method = 0;
 		int print_step = 100;
 		int search_depth = INT_MAX;
+		bool shrink_memory = false;
 		thread_pool pool = thread_pool(1); // default: thread pool with 1 thread
 	};
 	using rref_option_t = rref_option[1];
@@ -594,6 +595,7 @@ namespace sparse_rref {
 	}
 
 	enum SPARSE_FILE_TYPE {
+		SPARSE_FILE_TYPE_PLAIN,
 		SPARSE_FILE_TYPE_SMS,
 		SPARSE_FILE_TYPE_MTX,
 		SPARSE_FILE_TYPE_BIN
