@@ -43,10 +43,6 @@ namespace sparse_rref {
 			rows = std::move(l.rows);
 		}
 
-		void realloc(size_t r) {
-			rows.reserve(r);
-		}
-
 		sparse_mat& operator=(const sparse_mat& l) {
 			if (this == &l)
 				return *this;
@@ -157,11 +153,12 @@ namespace sparse_rref {
 			return;
 		}
 
-		std::mutex mtxes[256];
+		constexpr size_t mtx_size = 128;
+		std::mutex mtxes[mtx_size];
 		pool->detach_loop(0, rows.size(), [&](size_t i) {
 			for (size_t j = 0; j < mat[rows[i]].nnz(); j++) {
 				auto col = mat[rows[i]](j);
-				std::lock_guard<std::mutex> lock(mtxes[col % 256]);
+				std::lock_guard<std::mutex> lock(mtxes[col % mtx_size]);
 				if constexpr (std::is_same_v<S, T>) {
 					tranmat[col].push_back(rows[i], mat[rows[i]][j]);
 				}
@@ -273,49 +270,53 @@ namespace sparse_rref {
 	}
 
 	template <typename T, typename S>
-	std::vector<std::pair<slong, slong>> findmanypivots(const sparse_mat<T>& mat, const sparse_mat<S>& tranmat,
-		std::vector<slong>& rdivpivs, std::vector<slong>& dirperm, bool mat_dir, size_t max_depth = ULLONG_MAX) {
+	std::vector<std::pair<slong, slong>> findmanypivots(
+		const sparse_mat<T>& mat, const sparse_mat<S>& tranmat,
+		std::vector<slong>& rowpivs, std::vector<slong>& leftcols,
+		std::function<slong(slong)> col_weight = [](slong i) {return i; }) {
 
-		if (!mat_dir)
-			return findmanypivots(tranmat, mat, rdivpivs, dirperm, true, max_depth);
+		auto start = leftcols.begin();
+		auto end = leftcols.end();
 
-		auto start = dirperm.begin();
-		auto end = dirperm.end();
-
-		auto ndir = mat.nrow;
-		auto nrdir = tranmat.nrow;
+		auto ncol = tranmat.nrow;
+		auto nrow = mat.nrow;
 
 		std::list<std::pair<slong, slong>> pivots;
 		std::unordered_set<slong> pdirs;
-		pdirs.reserve(std::min((size_t)4096, max_depth));
+		pdirs.reserve((size_t)4096);
 
 		// rightlook first
 		for (auto dir = start; dir < end; dir++) {
-			if ((size_t)(dir - start) > max_depth)
-				break;
-
-			auto& thedir = mat[*dir];
-			if (thedir.nnz() == 0)
+			auto& thecol = tranmat[*dir];
+			if (thecol.nnz() == 0)
 				continue;
 
 			slong rdiv;
 			size_t mnnz = ULLONG_MAX;
 			bool flag = true;
 
-			for (size_t i = 0; i < thedir.nnz(); i++) {
-				flag = (pdirs.count(thedir(i)) == 0);
+			for (size_t i = 0; i < thecol.nnz(); i++) {
+				flag = (pdirs.count(thecol(i)) == 0);
 				if (!flag)
 					break;
-				if (rdivpivs[thedir(i)] != -1)
+				if (rowpivs[thecol(i)] != -1)
 					continue;
-				size_t newnnz = tranmat[thedir(i)].nnz();
+				size_t newnnz = mat[thecol(i)].nnz();
 				if (newnnz < mnnz) {
-					rdiv = thedir(i);
+					// negative weight means that we do not want to select this column
+					if (col_weight(thecol(i)) < 0)
+						continue;
+					rdiv = thecol(i);
 					mnnz = newnnz;
 				}
 				// make the result stable
-				else if (newnnz == mnnz && thedir(i) < rdiv) {
-					rdiv = thedir(i);
+				else if (newnnz == mnnz) {
+					if (col_weight(thecol(i)) < 0)
+						continue;
+					if (col_weight(thecol(i)) < col_weight(rdiv))
+						rdiv = thecol(i);
+					else if (col_weight(thecol(i)) == col_weight(rdiv) && thecol(i) < rdiv)
+						rdiv = thecol(i);
 				}
 			}
 			if (!flag)
@@ -329,46 +330,52 @@ namespace sparse_rref {
 		// leftlook then
 		pdirs.clear();
 		// make a table to help to look for dir pointers
-		std::vector<slong> dirptrs(ndir, -1);
+		std::vector<slong> colptrs(ncol, -1);
 		for (auto it = start; it != end; it++)
-			dirptrs[*it] = *it;
+			colptrs[*it] = *it;
 
 		for (auto p : pivots)
 			pdirs.insert(p.second);
 
-		for (size_t i = 0; i < nrdir; i++) {
-			if (pivots.size() > max_depth)
-				break;
-			auto rdir = i;
+		for (size_t i = 0; i < nrow; i++) {
+			auto row = i;
 			// auto rdir = nrdir - i - 1; // reverse ordering
-			if (rdivpivs[rdir] != -1)
+			if (rowpivs[row] != -1)
 				continue;
 
 			slong dir = 0;
 			size_t mnnz = ULLONG_MAX;
 			bool flag = true;
 
-			auto& tc = tranmat[rdir];
+			auto& tc = mat[row];
 
 			for (size_t j = 0; j < tc.nnz(); j++) {
-				if (dirptrs[tc(j)] == -1)
+				if (colptrs[tc(j)] == -1)
 					continue;
 				flag = (pdirs.count(tc(j)) == 0);
 				if (!flag)
 					break;
-				if (mat[tc(j)].nnz() < mnnz) {
-					mnnz = mat[tc(j)].nnz();
+				if (tranmat[tc(j)].nnz() < mnnz) {
+					// negative weight means that we do not want to select this column
+					if (col_weight(tc(j)) < 0)
+						continue;
+					mnnz = tranmat[tc(j)].nnz();
 					dir = tc(j);
 				}
 				// make the result stable
-				else if (mat[tc(j)].nnz() == mnnz && tc(j) < dir) {
-					dir = tc(j);
+				else if (tranmat[tc(j)].nnz() == mnnz) {
+					if (col_weight(tc(j)) < 0)
+						continue;
+					if (col_weight(tc(j)) < col_weight(dir))
+						dir = tc(j);
+					else if (col_weight(tc(j)) == col_weight(dir) && tc(j) < dir)
+						dir = tc(j);
 				}
 			}
 			if (!flag)
 				continue;
 			if (mnnz != ULLONG_MAX) {
-				pivots.push_front(std::make_pair(rdir, dir));
+				pivots.push_front(std::make_pair(row, dir));
 				pdirs.insert(dir);
 			}
 		}
@@ -915,12 +922,13 @@ namespace sparse_rref {
 
 		std::unordered_set<slong> tmp_set(mat.ncol);
 
-		std::mutex mtxes[256];
+		constexpr size_t mtx_size = 128;
+		std::mutex mtxes[mtx_size];
 
 		while (kk < mat.ncol) {
 			auto start = sparse_rref::clocknow();
 
-			auto ps = findmanypivots(mat, tranmat, rowpivs, leftcols, false);
+			auto ps = findmanypivots(mat, tranmat, rowpivs, leftcols, opt->col_weight);
 			if (ps.size() == 0)
 				break;
 
@@ -1014,13 +1022,13 @@ namespace sparse_rref {
 					auto row = leftrows[i];
 					for (size_t j = 0; j < mat[row].nnz(); j++) {
 						auto col = mat[row](j);
-						std::lock_guard<std::mutex> lock(mtxes[col % 256]);
+						std::lock_guard<std::mutex> lock(mtxes[col % mtx_size]);
 						tranmat[col].push_back(row, true);
 					}
 				}
 				};
 
-			if (leftrows.size() - loop_done_count < 256) {
+			if (leftrows.size() - loop_done_count < mtx_size) {
 				for (size_t i = 0; i < leftrows.size(); i++)
 					tran_tmp(i);
 			}
@@ -1228,84 +1236,72 @@ namespace sparse_rref {
 	}
 
 	// IO
-	template <typename T>
-	sparse_mat<rat_t> sfmpq_mat_read(T& st) {
-		if (!st.is_open()) {
-			return sparse_mat<rat_t>();
-		}
+	template <typename ScalarType, typename T>
+	sparse_mat<ScalarType> sparse_mat_read(T& st, const field_t F) {
+		if (!st.is_open())
+			return sparse_mat<ScalarType>();
 
-		sparse_mat<rat_t> mat;
 		std::string line;
+		std::vector<size_t> dims;
+		sparse_mat<ScalarType> mat;
 
 		while (std::getline(st, line)) {
-			if (line.empty() || line[0] == '%') {
+			if (line.empty() || line[0] == '%')
 				continue;
-			}
 
-			std::vector<std::string_view> tokens;
 			size_t start = 0;
 			size_t end = line.find(' ');
 			while (end != std::string::npos) {
 				if (start != end) {
-					tokens.emplace_back(line.data() + start, end - start);
+					dims.push_back(string_to_ull(line.substr(start, end - start)));
 				}
 				start = end + 1;
 				end = line.find(' ', start);
 			}
 			if (start < line.size()) {
-				tokens.emplace_back(line.data() + start, line.size() - start);
+				// size_t nnz = string_to_ull(line.substr(start));
+				if (dims.size() != 2) {
+					throw std::runtime_error("Error: wrong format in the matrix file");
+				}
+				mat = sparse_mat<ScalarType>(dims[0], dims[1]);
 			}
-
-			size_t nrow, ncol;
-			auto [ptr1, ec1] = std::from_chars(tokens[0].data(), tokens[0].data() + tokens[0].size(), nrow);
-			auto [ptr2, ec2] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), ncol);
-			if (ec1 != std::errc() || ec2 != std::errc()) {
-				throw std::runtime_error("Failed to parse matrix dimensions");
-			}
-			mat.init(nrow, ncol);
 			break;
 		}
 
 		while (std::getline(st, line)) {
-			if (line.empty() || line[0] == '%') {
+			if (line.empty() || line[0] == '%')
 				continue;
-			}
 
-			std::vector<std::string_view> tokens;
+			size_t rowcol[2];
+			size_t* rowcolptr = rowcol;
 			size_t start = 0;
 			size_t end = line.find(' ');
-			while (end != std::string::npos) {
+			size_t count = 0;
+
+			while (end != std::string::npos && count < 2) {
 				if (start != end) {
-					tokens.emplace_back(line.data() + start, end - start);
+					*rowcolptr = string_to_ull(line.substr(start, end - start)) - 1;
+					rowcolptr++;
+					count++;
 				}
 				start = end + 1;
 				end = line.find(' ', start);
 			}
-			if (start < line.size()) {
-				tokens.emplace_back(line.data() + start, line.size() - start);
-			}
 
-			if (tokens.size() != 3) {
+			if (count != 2) {
 				throw std::runtime_error("Error: wrong format in the matrix file");
 			}
 
-			slong row, col;
-			auto [ptr1, ec1] = std::from_chars(tokens[0].data(), tokens[0].data() + tokens[0].size(), row);
-			auto [ptr2, ec2] = std::from_chars(tokens[1].data(), tokens[1].data() + tokens[1].size(), col);
-			if (ec1 != std::errc() || ec2 != std::errc()) {
-				throw std::runtime_error("Failed to parse matrix indices");
+			ScalarType val;
+			if constexpr (std::is_same_v<ScalarType, ulong>) {
+				rat_t raw_val(line.substr(start));
+				val = raw_val % F->mod;
 			}
-			// it is 0-based
-			row--;
-			col--;
-
-			if (row < 0 || col < 0) {
-				break;
+			else if constexpr (std::is_same_v<ScalarType, rat_t>) {
+				val = rat_t(line.substr(start));
 			}
 
-			rat_t val;
-			val.set_str(std::string(tokens[2]));
-			mat[row].push_back(col, val);
+			mat[rowcol[0]].push_back(rowcol[1], val);
 		}
 
 		return mat;

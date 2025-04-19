@@ -11,6 +11,7 @@
 
 #include "thread_pool.hpp"
 #include <algorithm>
+#include <bit>
 #include <bitset>
 #include <charconv> 
 #include <chrono>
@@ -78,6 +79,7 @@ namespace sparse_rref {
 		int print_step = 100;
 		int search_depth = INT_MAX;
 		bool shrink_memory = false;
+		std::function<slong(slong)> col_weight = [](slong i) { return i; };
 		thread_pool pool = thread_pool(1); // default: thread pool with 1 thread
 	};
 	using rref_option_t = rref_option[1];
@@ -85,25 +87,15 @@ namespace sparse_rref {
 	// version
 	constexpr static const char version[] = "v0.3.0";
 
-
-	// if c++20, use std::countr_zero
-	// if c++17, use flint_ctz (__builtin_ctzll or _tzcnt_u64)
-#if __cplusplus >= 202002L
-#include <bit>
 	inline size_t ctz(ulong x) {
 		return std::countr_zero(x);
 	}
 	inline size_t clz(ulong x) {
 		return std::countl_zero(x);
 	}
-#else
-	inline size_t ctz(ulong x) {
-		return flint_ctz(x);
+	inline size_t popcount(ulong x) {
+		return std::popcount(x);
 	}
-	inline size_t clz(ulong x) {
-		return flint_clz(x);
-	}
-#endif
 
 	// string
 	inline void DeleteSpaces(std::string& str) {
@@ -125,8 +117,8 @@ namespace sparse_rref {
 		return result;
 	}
 
-	size_t string_to_ull(std::string_view sv) {
-		size_t result;
+	unsigned long long string_to_ull(std::string_view sv) {
+		unsigned long long result;
 		auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), result);
 		if (ec != std::errc()) {
 			throw std::runtime_error("Failed to parse number");
@@ -217,46 +209,6 @@ namespace sparse_rref {
 		}
 	}
 
-	// mulit for parallel
-	void multi_for(
-		const std::vector<size_t>& start,
-		const std::vector<size_t>& end,
-		const std::function<void(std::vector<size_t>&)> func,
-		thread_pool* pool) {
-
-		if (start.size() != end.size()) {
-			std::cerr << "Error: start and end size not match." << std::endl;
-			exit(1);
-		}
-
-		if (pool == nullptr) {
-			multi_for(start, end, func);
-		}
-
-		size_t nthread = pool->get_thread_count();
-
-		size_t allsize = 1;
-		for (size_t i = 0; i < start.size(); i++)
-			allsize *= (end[i] - start[i]);
-		size_t block_size = allsize / nthread;
-
-		size_t n = 0;
-		std::vector<std::vector<size_t>> indexes;
-
-		multi_for(start, end, [&](std::vector<size_t>& index) {
-			if (n % block_size == 0) {
-				indexes.push_back(index);
-			}
-			n++;
-			});
-		indexes.push_back(end);
-
-		pool->detach_loop(0, indexes.size() - 1, [&](size_t i) {
-			multi_for(indexes[i], indexes[i + 1], func);
-			});
-		pool->wait();
-	}
-
 	// uset
 	struct uset {
 		constexpr static size_t bitset_size = std::numeric_limits<unsigned long long>::digits; // 64 or 32
@@ -318,13 +270,12 @@ namespace sparse_rref {
 			tmp.reserve(bitset_size);
 			for (size_t i = 0; i < data.size(); i++) {
 				if (data[i].any()) {
-#ifndef flint_ctz
-					// naive version
-					 for (size_t j = 0; j < bitset_size; j++) {
-					 	if (data[i].test(j))
-					 		result.push_back(i * bitset_size + j);
-					 }
-#else
+					//// naive version
+					// for (size_t j = 0; j < bitset_size; j++) {
+					// 	if (data[i].test(j))
+					// 		result.push_back(i * bitset_size + j);
+					// }
+
 					tmp.clear();
 					ulong c = data[i].to_ullong();
 
@@ -345,7 +296,6 @@ namespace sparse_rref {
 						c = c ^ (1ULL << clzpos) ^ (1ULL << ctzpos);
 					}
 					result.insert(result.end(), tmp.rbegin(), tmp.rend());
-#endif
 				}
 			}
 			return result;

@@ -148,8 +148,6 @@ int main(int argc, char** argv) {
 	else
 		field_init(F, sparse_rref::RING::FIELD_Fp, prime);
 
-	sparse_mat<ulong> mat_Zp;
-
 	auto start = sparse_rref::clocknow();
 	auto input_file = program.get<std::string>("input_file");
 	std::filesystem::path filePath = input_file;
@@ -159,10 +157,14 @@ int main(int argc, char** argv) {
 	}
 
 	std::ifstream file(filePath);
-	auto mat_Q = sfmpq_mat_read(file);
+	sparse_mat<rat_t> mat_Q;
+	sparse_mat<ulong> mat_Zp;
 
-	if (prime != 0) {
-		mat_Zp = snmod_mat_from_sfmpq(mat_Q, p);
+	if (prime == 0) {
+		mat_Q = sparse_mat_read<rat_t>(file, F);
+	} 
+	else {
+		mat_Zp = sparse_mat_read<ulong>(file, F);
 	}
 	file.close();
 

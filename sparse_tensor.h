@@ -1641,11 +1641,11 @@ namespace sparse_rref {
 			}
 
 			if (count != dims.size()) {
-				throw std::runtime_error("Error: wrong format in the matrix file");
+				throw std::runtime_error("Error: wrong format in the tensor file");
 			}
 
 			ScalarType val;
-			if constexpr (std::is_same_v<ScalarType, size_t>) {
+			if constexpr (std::is_same_v<ScalarType, ulong>) {
 				rat_t raw_val(line.substr(start));
 				val = raw_val % F->mod;
 			}

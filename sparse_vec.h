@@ -337,12 +337,12 @@ namespace sparse_rref {
 		return vec.entries + (ptr - vec.indices);
 	}
 
-	template <typename index_type> using snmod_vec = sparse_vec<index_type, size_t>;
+	template <typename index_type> using snmod_vec = sparse_vec<index_type, ulong>;
 	template <typename index_type> using sfmpq_vec = sparse_vec<index_type, rat_t>;
 
 	template <typename index_type, typename T>
 	inline void sparse_vec_rescale(sparse_vec<index_type, T>& vec, const T scalar, const field_t F) {
-		if constexpr (std::is_same_v<T, size_t>) {
+		if constexpr (std::is_same_v<T, ulong>) {
 			_nmod_vec_scalar_mul_nmod_shoup(vec.entries, vec.entries, vec.nnz(), scalar, F->mod);
 		}
 		else if constexpr (Flint::IsOneOf<T, int_t, rat_t>) {
